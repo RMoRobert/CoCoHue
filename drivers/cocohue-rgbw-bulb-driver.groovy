@@ -14,7 +14,7 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2019-11-28
+ *  Last modified: 2019-11-29
  * 
  *  Changelog:
  * 
@@ -92,7 +92,7 @@ def parse(String description) {
 
 /**
  * Parses Hue Bridge device ID number out of Hubitat DNI for use with Hue API calls
- * Hubitat DNI is created in format "CCH/BridgeMACAbbrev/Lights/HueDeviceID", so just
+ * Hubitat DNI is created in format "CCH/BridgeMACAbbrev/Light/HueDeviceID", so just
  * looks for number after third "/" character
  */
 def getHueDeviceNumber() {
@@ -328,9 +328,9 @@ def createEventsFromMap(Map bridgeCmd = state.nextCmd, boolean isFromBridge = fa
                 if (!isOn && !isFromBridge) {
                     // Will get stuck in "EFFECT" mode otherwise, but Hue resets when turned off/on so try to anticipate
                     eventName = "colorMode"
-                    eventValue = (state.preEffectColorMode ?: "RGB")
+                    eventValue = (state.preEffectColorMode)
                     eventUnit = null
-                    doSendEvent(eventName, eventValue, eventUnit)
+                    if (eventValue) doSendEvent(eventName, eventValue, eventUnit)
                 }
                 break
             case "bri":
@@ -492,8 +492,6 @@ def doSendEvent(eventName, eventValue, eventUnit) {
 def refresh() {
     log.warn "Refresh CoCoHue Bridge device instead of individual device to update (all) bulbs/groups"
 }
-
-def configure() {}
 
 // Hubiat-provided color/name mappings
 def setGenericName(hue){
