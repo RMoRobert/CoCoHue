@@ -225,7 +225,7 @@ def pageSelectLights() {
         }
         bridge.getAllBulbs()
         def refreshInt = 10
-        def enumNewBulbs = [:]
+        def arrNewBulbs = []
         def bulbCache = bridge.getAllBulbsCache()
         if (bulbCache) {
             refreshInt = 0
@@ -234,10 +234,16 @@ def pageSelectLights() {
                 if (bulbChild) {
                     state.addedBulbs.put(it.key, bulbChild.name)
                 } else {
-                    enumNewBulbs.put(it.key, it.value.name)
+                    def newBulb = [:]
+                    newBulb << [(it.key): (it.value.name)]
+                    log.warn newBulb
+                    arrNewBulbs << newBulb
                 }
             }
-            enumNewBulbs = enumNewBulbs.sort { it.value }  // doesn't work to display this way, but maybe can figure out something else?
+            arrNewBulbs = arrNewBulbs.sort { a, b ->
+                // Sort by bulb name (default would be hue ID)
+                a.entrySet().iterator().next()?.value <=> b.entrySet().iterator().next()?.value
+            }
         }
         if (!bulbCache) {            
             refreshInt = 10
@@ -249,7 +255,7 @@ def pageSelectLights() {
         else {
             section("Manage Lights") {
                 input(name: "newBulbs", type: "enum", title: "Select Hue lights to add:",
-                      multiple: true, options: enumNewBulbs)
+                      multiple: true, options: arrNewBulbs)
             }
             section("Previously added lights") {
                 if (state.addedBulbs) {
@@ -269,6 +275,7 @@ def pageSelectLights() {
         }
     }    
 }
+
 
 def pageSelectGroups() {
     dynamicPage(name: "pageSelectGroups", refreshInterval: refreshInt, uninstall: true, install: true, nextPage: pageManageBridge) {
