@@ -20,11 +20,12 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2019-11-26
+ *  Last modified: 2019-11-28
  * 
  *  Changelog:
  * 
- *  1.0 - Initial Public Release
+ *  v1.0 - Initial Public Release
+ *  v1.1 - TBD
  *
  */ 
  

@@ -14,11 +14,12 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2019-11-23
+ *  Last modified: 2019-11-28
  * 
  *  Changelog:
  * 
  *  v1.0 - Initial Release
+ *  v1.1 - TBD (adjust to match bulb behvaior)
  *
  */ 
 
@@ -28,7 +29,7 @@
 // Manipulate member bulb states when group state changed (so no need for poll to update)
 
 metadata {
-    definition (name: "CoCoHue Group", namespace: "RMoRobert", author: "Robert Morris", importURL: "https://raw.githubusercontent.com/RMoRobert/CoCoHue/master/drivers/cocohue-group-driver.groovy") {
+    definition (name: "CoCoHue Group", namespace: "RMoRobert", author: "Robert Morris", importUrl: "https://raw.githubusercontent.com/RMoRobert/CoCoHue/master/drivers/cocohue-group-driver.groovy") {
         capability "Actuator"
         capability "Color Control"
         capability "Color Temperature"
@@ -416,6 +417,8 @@ def doSendEvent(eventName, eventValue, eventUnit) {
 def refresh() {
     log.warn "Refresh CoCoHue Bridge device instead of individual device to update (all) bulbs/groups"
 }
+
+def configure() {}
 
 // Hubiat-provided color/name mappings
 def setGenericName(hue){

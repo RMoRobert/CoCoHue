@@ -14,11 +14,12 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2019-11-26
+ *  Last modified: 2019-11-28
  * 
  *  Changelog:
  * 
  *  v1.0 - Initial Release
+ *  v1.1 - Added flash commands
  *
  */ 
 
@@ -26,10 +27,10 @@
 import groovy.json.JsonSlurper
 import groovy.transform.Field
 
-@Field static Map lightEffects = [1:"Color Loop",2:"Select",3:"Flash",4:"None"]
+@Field static Map lightEffects = [0: "None", 1:"Color Loop"]
 
 metadata {
-    definition (name: "CoCoHue RGBW Bulb", namespace: "RMoRobert", author: "Robert Morris", importURL: "https://raw.githubusercontent.com/RMoRobert/CoCoHue/master/drivers/cocohue-rgbw-bulb-driver.groovy") {
+    definition (name: "CoCoHue RGBW Bulb", namespace: "RMoRobert", author: "Robert Morris", importUrl: "https://raw.githubusercontent.com/RMoRobert/CoCoHue/master/drivers/cocohue-rgbw-bulb-driver.groovy") {
         capability "Actuator"
         capability "Color Control"
         capability "Color Temperature"
@@ -41,6 +42,9 @@ metadata {
         capability "Light"
         capability "ColorMode"
         capability "LightEffects"
+
+        command "flash"
+        command "flashOnce"
                 
         attribute "colorName", "string"        
     }
@@ -101,7 +105,8 @@ def on() {
      check if current level is different from lastXYZ value, in which case it was probably
      changed outside of Hubitat and we should not set the pre-staged value(s)--Hue does not
      support "true" prestaging, so any prestaging is a Hubitat-only workaround */
-    addToNextBridgeCommand(["on": true], !(colorStaging || levelStaging))
+    // Disables lselect alert if in progress to be consistent with other drivers that stop flash with on()
+    addToNextBridgeCommand(["on": true, "alert": "none"], !(colorStaging || levelStaging))
     sendBridgeCommand()
     state.remove("lastHue")
     state.remove("lastSat")
@@ -266,6 +271,18 @@ def setPreviousEffect() {
     currentEffect--
     if (currentEffect < 0) currentEffect = 0
     setEffect(currentEffect)
+}
+
+def flash() {
+    logDebug("Starting flash (note: Hue will automatically stop flashing after 15 cycles; this is not indefinite)...")
+    def cmd = ["alert": "lselect"]
+    sendBridgeCommand(cmd, false) 
+}
+
+def flashOnce() {
+    logDebug("Running flashOnce...")
+    def cmd = ["alert": "select"]
+    sendBridgeCommand(cmd, false) 
 }
 
 /**
@@ -475,6 +492,8 @@ def doSendEvent(eventName, eventValue, eventUnit) {
 def refresh() {
     log.warn "Refresh CoCoHue Bridge device instead of individual device to update (all) bulbs/groups"
 }
+
+def configure() {}
 
 // Hubiat-provided color/name mappings
 def setGenericName(hue){

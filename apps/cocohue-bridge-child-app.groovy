@@ -20,12 +20,12 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2019-11-26
+ *  Last modified: 2019-11-28
  * 
  *  Changelog:
  * 
- *  1.0 - Initial Public Release
- *
+ *  v1.0 - Initial Public Release
+ *  v1.1 - Added more polling intervals
  */ 
 
 definition(
@@ -188,13 +188,15 @@ def pageBridgeLinked() {
 
 def pageManageBridge() {
     if (settings["newBulbs"]) {
+        logDebug("New bulbs selected. Creating...")
         createNewSelectedBulbDevices()
     }
     if (settings["newGroups"]) {
+        logDebug("New groups selected. Creating...")
         createNewSelectedGroupDevices()
     }    
     dynamicPage(name: "pageManageBridge", uninstall: true, install: true) {  
-        section("Manage Hue Bridge Devices"/*, hideable: true, hidden: false*/) {
+        section("Manage Hue Bridge Devices") {
             href(name: "hrefSelectLights", title: "Select Lights",
                 description: "", page: "pageSelectLights")
             href(name: "hrefSelectGroups", title: "Select Groups",
@@ -204,7 +206,7 @@ def pageManageBridge() {
         }
         section("Bridge Device Options", hideable: true, hidden: true) {
             input(name: "pollInterval", type: "enum", title: "Poll bridge every...",
-               options: [0:"Disabled", 10:"10 seconds", 30:"30 seconds", 60:"1 minute (recommended)", 300:"5 minutes", 3600:"1 hour"], defaultValue:60)
+               options: [0:"Disabled", 10:"10 seconds", 15:"15 seconds", 20:"20 seconds", 30:"30 seconds", 60:"1 minute (recommended)", 300:"5 minutes", 3600:"1 hour"], defaultValue:60)
             href(name: "hrefAddBridge", title: "Edit Bridge IP or re-authorize",
                  description: "", page: "pageAddBridge")            
             label(title: "Name for this Hue Bridge child app (optional)", required: false)
