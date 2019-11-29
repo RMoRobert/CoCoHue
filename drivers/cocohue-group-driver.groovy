@@ -249,13 +249,21 @@ def setEffect(String effect) {
 }
 
 def setEffect(id) {
-    logDebug("Setting effect...")
+    logDebug("Setting effect $id...")
     state.remove("lastHue")
     state.remove("lastSat")
     state.remove("lastCT")
     addToNextBridgeCommand(["effect": (id == 1 ? "colorloop" : "none"), "on": true], true)
-    if (id) state.preEffectColorMode = device.currentValue("colorMode" ?: "RGB")
-    else state.remove("state.preEffectColorMode")
+    if (id) {
+        def prevMode = device.currentValue("colorMode")
+        if (prevMode != "EFFECTS") {
+            state.preEffectColorMode = device.currentValue("colorMode" ?: "RGB")
+        }
+        state.crntEffectId = id
+    } else {
+        state.remove("crntEffectId")
+        state.remove("state.preEffectColorMode")
+    }
     // No prestaging implemented here
     sendBridgeCommand()
 }
@@ -263,14 +271,14 @@ def setEffect(id) {
 def setNextEffect() {
     def currentEffect = state.crntEffectId ?: 0
     currentEffect++
-    if (currentEffect >= 1) currentEffect = 0
+    if (currentEffect > 1) currentEffect = 0
     setEffect(currentEffect)
 }
 
 def setPreviousEffect() {
-    def currentEffect = state.crntEffectId ?: 1
+    def currentEffect = state.crntEffectId ?: 0
     currentEffect--
-    if (currentEffect < 0) currentEffect = 0
+    if (currentEffect < 0) currentEffect = 1
     setEffect(currentEffect)
 }
 
@@ -333,7 +341,10 @@ def createEventsFromMap(Map bridgeCmd = state.nextCmd, boolean isFromBridge = fa
                     eventName = "colorMode"
                     eventValue = (state.preEffectColorMode)
                     eventUnit = null
-                    if (eventValue) doSendEvent(eventName, eventValue, eventUnit)
+                    if (eventValue) {
+                        doSendEvent(eventName, eventValue, eventUnit)
+                        state.remove("preEffectColorMode")
+                    }
                 }
                 break
             case "bri":
@@ -416,13 +427,20 @@ def createEventsFromMap(Map bridgeCmd = state.nextCmd, boolean isFromBridge = fa
             case "effect":
                 eventName = "colorMode"
                 eventValue = (it.value == "colorloop" ? "EFFECTS" : null)
+                if (!eventValue) {
+                    def cm = state.preEffectColorMode
+                    if (cm) {
+                        eventValue = cm
+                        state.remove("preEffectColorMode")
+                    }
+                }
                 if (eventValue == null) break
                 eventUnit = null
                 if (device.currentValue(eventName) != eventValue) {
                     doSendEvent(eventName, eventValue, eventUnit)
                 }
                 eventUnit = null
-                if (device.currentValue(eventName) != eventValue) doSendEvent(eventName, eventValue, eventUnit)
+                if (device.currentValue(eventName) != eventValue && eventUnit != null) doSendEvent(eventName, eventValue, eventUnit)
                 break
             case "transitiontime":
             case "mode":
@@ -447,7 +465,7 @@ def createEventsFromMap(Map bridgeCmd = state.nextCmd, boolean isFromBridge = fa
  *        affected device attributes (e.g., will send an "on" event for "switch" if map contains "on": true)
  */
 def sendBridgeCommand(Map customMap = null, boolean createHubEvents=true) {    
-    logDebug("Sending command to Bridge: $state.nextCmd")
+    logDebug("Sending command to Bridge: ${customMap ?: state.nextCmd}")
     Map cmd = [:]
     if (customMap != null) {
         cmd = customMap
@@ -529,7 +547,7 @@ def setGenericName(hue){
             break
     }
     def descriptionText = "${device.getDisplayName()} color is ${colorName}"
-    if (txtEnable) log.info "${descriptionText}"
+    logDesc("${descriptionText}")
     sendEvent(name: "colorName", value: colorName ,descriptionText: descriptionText)
 }
 
@@ -551,7 +569,7 @@ def setGenericTempName(temp){
     else if (value <= 6500) genericName = "Skylight"
     else if (value < 20000) genericName = "Polar"
     def descriptionText = "${device.getDisplayName()} color is ${genericName}"
-    if (txtEnable) log.info "${descriptionText}"
+    logDesc("${descriptionText}")
     sendEvent(name: "colorName", value: genericName ,descriptionText: descriptionText)
 }
 
