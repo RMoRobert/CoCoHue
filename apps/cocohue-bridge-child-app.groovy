@@ -248,6 +248,7 @@ def pageSelectLights() {
                 // Sort by bulb name (default would be hue ID)
                 a.entrySet().iterator().next()?.value <=> b.entrySet().iterator().next()?.value
             }
+            state.addedBulbs = state.addedBulbs.sort { it.value }
         }
         if (!bulbCache) {            
             refreshInt = 10
@@ -310,6 +311,7 @@ def pageSelectGroups() {
                 // Sort by group name (default would be Hue ID)
                 a.entrySet().iterator().next()?.value <=> b.entrySet().iterator().next()?.value
                 }
+            state.addedGroups = state.addedGroups.sort { it.value }
         }
 
         if (!groupCache) {            
@@ -390,6 +392,9 @@ def pageSelectScenes() {
                 // Sort by group name (default would be Hue ID)
                 a.entrySet().iterator().next()?.value <=> b.entrySet().iterator().next()?.value
             }
+            log.warn state.addedScenes
+            state.addedScenes = state.addedScenes.sort { it.value }
+            log.warn state.addedScenes
         }
 
         if (!sceneCache) {            
