@@ -14,13 +14,13 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2019-11-29
+ *  Last modified: 2019-12-01
  * 
  *  Changelog:
  * 
  *  v1.0 - Initial Release
  *  v1.1 - Added flash commands
- *
+ *  v1.5 - Added additional custom commands and more consistency with effect behavior
  */ 
 
 //import groovy.json.JsonBuilder
@@ -45,7 +45,7 @@ metadata {
 
         command "flash"
         command "flashOnce"
-                
+        
         attribute "colorName", "string"        
     }
        

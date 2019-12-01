@@ -14,11 +14,11 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2019-11-29
+ *  Last modified: 2019-12-01
  * 
  *  Changelog:
  * 
- *  v1.1 - Initial Release
+ *  v1.5 - Initial public release
  *
  */ 
 
@@ -30,6 +30,8 @@ metadata {
         capability "Switch"
         capability "Light"
         capability "PushableButton"
+        
+        command "push",	[[name:"NUMBER", type: "NUMBER", description: "Button number" ]]
     }
        
    preferences {

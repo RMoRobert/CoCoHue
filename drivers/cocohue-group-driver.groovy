@@ -14,16 +14,15 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2019-11-29
+ *  Last modified: 2019-12-01
  * 
  *  Changelog:
  * 
  *  v1.0 - Initial Release
  *  v1.1 - Added parity with bulb features (effects, etc.)
+ *  v1.5 - Group switch/level/etc. states now propagated to member bulbs w/o polling
  *
  */ 
-
-// TODO: Manipulate member bulb states when group state changed (so no need for poll to update)
 
 import groovy.json.JsonSlurper
 import groovy.transform.Field
@@ -128,7 +127,12 @@ def off() {
 
 def startLevelChange(direction) {
     logDebug("Running startLevelChange($direction)...")
-    def cmd = ["bri": (direction == "up" ? 254 : 1), "transitiontime": 40]
+    def transitionTime = 40
+    if ((direction == "up" && device.currentValue("level") > 70) ||
+        (direction == "down" && device.currentValue("level") < 30)) {
+        transitionTime = 30
+    }
+    def cmd = ["bri": (direction == "up" ? 254 : 1), "transitiontime": transitionTime]
     sendBridgeCommand(cmd, false) 
 }
 
@@ -422,7 +426,7 @@ def createEventsFromMap(Map bridgeCmd = state.nextCmd, boolean isFromBridge = fa
                 eventName = "colorMode"
                 eventValue = "RGB"
                 eventUnit = null
-                if (device.currentValue(eventName) != eventValue) doSendEvent(eventName, eventValue, eventUnit)
+                if (device.currentValue(eventName) != eventValue && device.currentValue(eventName) != "EFFECTS") doSendEvent(eventName, eventValue, eventUnit)
                 break
             case "effect":
                 eventName = "colorMode"
@@ -493,6 +497,9 @@ def sendBridgeCommand(Map customMap = null, boolean createHubEvents=true) {
         body: cmd
         ]
     asynchttpPut("parseBridgeResponse", params)
+    if (cmd.containsKey("on") || cmd.containsKey("bri")) {
+        parent.updateGroupMemberBulbStates(cmd, state.memberBulbs) 
+    }
     logDebug("---- Command sent to Bridge! ----")
 }
 
@@ -627,6 +634,23 @@ private scaleSatFromBridge(bridgeLevel) {
     else if (scaledLevel > 100) scaledLevel = 100
     return scaledLevel
 }
+
+/**
+ *  Sets state.memberBulbs to IDs of bulbs contained in this group; used to manipulate CoCoHue member
+ *  bulb states (e.g., on, off, level, etc.) when group state changed so this info propogates faster than
+ *  polling (or if polling disabled)
+ */ 
+def setMemberBulbIDs(List ids) {
+    state.memberBulbs = ids
+}
+
+/**
+ *  Returns Hue IDs of member bulbs (see setMemberBulbIDs for use case; exposed for use by bridge child app)
+ */
+def getMemberBulbIDs() {
+    return state.memberBulbs
+}
+
 
 def logDebug(str) {
     if (settings.enableDebug) log.debug(str)

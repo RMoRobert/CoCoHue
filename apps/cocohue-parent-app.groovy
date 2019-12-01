@@ -20,12 +20,12 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2019-11-28
+ *  Last modified: 2019-12-01
  * 
  *  Changelog:
  * 
  *  v1.0 - Initial Public Release
- *  v1.1 - TBD
+ *  v1.5 - Minor formatting changes, version ugpraded to match most components
  *
  */ 
  
@@ -70,4 +70,3 @@ def initialize() {
         log.debug "  child app: ${child.label}"
     }
 }
-
