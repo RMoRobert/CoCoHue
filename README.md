@@ -24,6 +24,7 @@ For discussion and more information, visit the Hubitat Community forum thread (l
     * Install the bulb, group, and scene drivers:
     https://raw.githubusercontent.com/RMoRobert/CoCoHue/master/drivers/cocohue-rgbw-bulb-driver.groovy,
     https://raw.githubusercontent.com/RMoRobert/CoCoHue/master/drivers/cocohue-group-driver.groovy,
+    https://raw.githubusercontent.com/RMoRobert/CoCoHue/master/drivers/cocohue-scene-driver.groovy,
     (more coming soon)
 
 4. Install an instance of app: go to **Apps > Add User App**, choose **CoCoHue**, and follow the prompts. At the moment, your
