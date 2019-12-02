@@ -18,7 +18,7 @@
  * 
  *  Changelog:
  * 
- *  v1.5 - Initial public release
+ *  v1.5b - Initial public release
  *
  */ 
 
