@@ -35,11 +35,10 @@ may be considered a bug. Please report any such behavior in the Community forum.
 and notes on these features are below:
 
 1. Prestaging: this integration adds color and level prestaging options to mimic those found in many other native drivers.
-This means that if a `setLevel` (for level prestaging) or a `setColorTemperature`, `setColor`, `setHue`, or `setSaturation` command
-are received when the bulb is off, it will not turn on. Instead, the next time the bulb is turned on, it will be turned on
-with those settings. This works well if your bulbs are manipulated entirely from Hubitat. Unfortunately, Hue itself does not
-support prestaging on the Bridge (these prestaged settings are "remembered" entirely on the Hubitat device), so this
-will *not* work if you prestage in Hubitat and then turn the bulbs on outside of Hubitat.
+This means that if a `setLevel` (for level prestaging) or a `setColorTemperature`, `setColor`, `setHue`, or
+`setSaturation` command are received when the bulb is off, it will not turn on. Instead, the next time the bulb is turned on, it will be turned on with those settings. This works well if your bulbs are manipulated entirely from Hubitat. Unfortunately,
+Hue itself does not support prestaging on the Bridge (these prestaged settings are "remembered" entirely on the
+Hubitat device), so this will *not* work if you prestage in Hubitat and then turn the bulbs on outside of Hubitat.
 (Recommendation: manipulate bulbs only from Hubitat if prestaging is enabled.)
 
 2. Color loop effect: to fit in with Hubitat's "Light Effects" capability, Hue's only effect, `colorloop`, is implemented using
@@ -50,11 +49,13 @@ a color, hue, or color temperature will also cancel the effect (this is consiste
 Setting a level or saturation will *not* because Hue allows adjustment of these while the effect (which does not manipulate these
 values) is in progress.
 
-3. "Alert" and "LAlert" effects: these are basically a one-time flash and a 15-time flash. These are not currently implemented
-but will likely be implemented as custom commands. They do not fit into the "Light Effects" capability (little-used as it is
-anyway) because the Bridge cannot report on teh current status, and both are uncontrollably fleeting in duration (the first
-is more or less momentary and the latter lasts 15 seconds). 
+3. "Select" and "LSelect" alerts: these are basically a one-time flash and a 15-time flash. These are implemented as the
+`flashOnce()` command and the pseudo-standard `flash()` command, respectively.
 
 4. Groups: besides "Change Level" (implemnted here), it appears that a Hubitat Hue group is smart enough to know which
 Hue bulbs are contained as members and adjusts their state without them needing to be updated via a Bridge poll. This
 will be coming soon here.
+
+5. Scenes: implemented as button and switch devices. To activate, do a `push(1)` or an `on()` command (the `off()` command
+has no effect but can be used if desired without harm). If you use scenes, it is recommended to keep polling enabled (a
+good idea regardless, though if bulb devices are manipulated only through Hubitat it may not be necessary). 
