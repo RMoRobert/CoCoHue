@@ -23,7 +23,7 @@
  */ 
 
 metadata {
-    definition (name: "CoCoHue Scene", namespace: "RMoRobert", author: "Robert Morris", importURL: "https://raw.githubusercontent.com/RMoRobert/CoCoHue/master/drivers/cocohue-rgbw-bulb-driver.groovy") {
+    definition (name: "CoCoHue Scene", namespace: "RMoRobert", author: "Robert Morris", importURL: "https://raw.githubusercontent.com/RMoRobert/CoCoHue/master/drivers/cocohue-scene-driver.groovy") {
         capability "Actuator"
         capability "Configuration"
         capability "Refresh"
