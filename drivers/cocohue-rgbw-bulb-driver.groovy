@@ -20,7 +20,7 @@
  * 
  *  v1.0 - Initial Release
  *  v1.1 - Added flash commands
- *  v1.5 - Added additional custom commands and more consistency with effect behavior
+ *  v1.5b - Added additional custom commands and more consistency with effect behavior
  */ 
 
 //import groovy.json.JsonBuilder
