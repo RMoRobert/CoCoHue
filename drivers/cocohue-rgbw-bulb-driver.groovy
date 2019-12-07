@@ -14,7 +14,7 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2019-12-03
+ *  Last modified: 2019-12-07
  * 
  *  Changelog:
  * 
@@ -22,6 +22,7 @@
  *  v1.1 - Added flash commands
  *  v1.5 - Added additional custom commands and more consistency with effect behavior
  *  v1.6 - Eliminated duplicate color/CT events on refresh
+*   v1.6b - Changed bri_inc to match Hubitat behavior
  */ 
 
 import groovy.json.JsonSlurper
@@ -127,7 +128,7 @@ def off() {
 
 def startLevelChange(direction) {
     logDebug("Running startLevelChange($direction)...")
-    def cmd = ["bri": (direction == "up" ? 254 : 1), "transitiontime": 40]
+    def cmd = ["bri_inc": (direction == "up" ? 254 : -254), "transitiontime": 30]
     sendBridgeCommand(cmd, false) 
 }
 

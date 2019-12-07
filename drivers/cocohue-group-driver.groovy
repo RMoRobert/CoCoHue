@@ -14,7 +14,7 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2019-12-03
+ *  Last modified: 2019-12-07
  * 
  *  Changelog:
  * 
@@ -22,6 +22,7 @@
  *  v1.1 - Added parity with bulb features (effects, etc.)
  *  v1.5 - Group switch/level/etc. states now propagated to member bulbs w/o polling
  *  v1.5b - Eliminated duplicate color/CT events on refresh
+ *   v1.6b - Changed bri_inc to match Hubitat behavior
  *
  */ 
 
@@ -128,12 +129,7 @@ def off() {
 
 def startLevelChange(direction) {
     logDebug("Running startLevelChange($direction)...")
-    def transitionTime = 40
-    if ((direction == "up" && device.currentValue("level") > 70) ||
-        (direction == "down" && device.currentValue("level") < 30)) {
-        transitionTime = 30
-    }
-    def cmd = ["bri": (direction == "up" ? 254 : 1), "transitiontime": transitionTime]
+    def cmd = ["bri_inc": (direction == "up" ? 254 : -254), "transitiontime": 30]
     sendBridgeCommand(cmd, false) 
 }
 
