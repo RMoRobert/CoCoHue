@@ -14,7 +14,7 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2019-12-07
+ *  Last modified: 2019-12-27
  * 
  *  Changelog:
  * 
@@ -22,7 +22,8 @@
  *  v1.1 - Added parity with bulb features (effects, etc.)
  *  v1.5 - Group switch/level/etc. states now propagated to member bulbs w/o polling
  *  v1.5b - Eliminated duplicate color/CT events on refresh
- *   v1.6b - Changed bri_inc to match Hubitat behavior
+ *  v1.6b - Changed bri_inc to match Hubitat behavior
+ *  v1.7 - Bulb switch/level states now propgate to groups w/o polling (TODO: add option to disable both?)
  *
  */ 
 
@@ -500,7 +501,7 @@ def sendBridgeCommand(Map customMap = null, boolean createHubEvents=true) {
         ]
     asynchttpPut("parseBridgeResponse", params)
     if (cmd.containsKey("on") || cmd.containsKey("bri")) {
-        parent.updateGroupMemberBulbStates(cmd, state.memberBulbs) 
+        parent.updateMemberBulbStatesFromGroup(cmd, state.memberBulbs) 
     }
     logDebug("---- Command sent to Bridge! ----")
 }
@@ -520,6 +521,11 @@ def doSendEvent(eventName, eventValue, eventUnit) {
 
 def refresh() {
     log.warn "Refresh CoCoHue Bridge device instead of individual device to update (all) bulbs/groups"
+}
+
+def configure() {
+    // Do I need to do anything here?
+    log.warn "configure()"
 }
 
 // Hubiat-provided color/name mappings
@@ -648,7 +654,6 @@ def setMemberBulbIDs(List ids) {
 def getMemberBulbIDs() {
     return state.memberBulbs
 }
-
 
 def logDebug(str) {
     if (settings.enableDebug) log.debug(str)
