@@ -382,23 +382,22 @@ def pageSelectScenes() {
                             if (k && k == sc.value.group) {
                                 def v = g.value
                                 // "Group Name - Scene Name" naming convention:
-                                if (v) 
-                                sceneName = "$v - $sceneName"
-                                state.sceneFullNames.put(sc.key, sceneName)
+                                if (v) sceneName = "$v - $sceneName"
+                                }
                             }
                         }
+                        if (sc.value?.group || settings["showAllScenes"]) {
+                            state.sceneFullNames.put(sc.key, sceneName)
+                            newScene << [(sc.key): (sceneName)]                        
+                            arrNewScenes << newScene
+                        }
                     }
-                    newScene << [(sc.key): (sceneName)]
-                    arrNewScenes << newScene
                 }
-            }
             arrNewScenes = arrNewScenes.sort {a, b ->
                 // Sort by group name (default would be Hue ID)
                 a.entrySet().iterator().next()?.value <=> b.entrySet().iterator().next()?.value
             }
-            log.warn state.addedScenes
             state.addedScenes = state.addedScenes.sort { it.value }
-            log.warn state.addedScenes
         }
 
         if (!sceneCache) {            
@@ -412,6 +411,7 @@ def pageSelectScenes() {
             section("Manage Scenes") {
                 input(name: "newScenes", type: "enum", title: "Select Hue scenes to add:",
                       multiple: true, options: arrNewScenes)
+                input(name: "showAllScenes", type: "bool", title: "Include scenes not associated with rooms/zones")
             }
             section("Previously added scenes") {
                 if (state.addedScenes) {
@@ -424,9 +424,9 @@ def pageSelectScenes() {
                 }
             }
             section("Rediscover Scenes") {
-                paragraph("If you added new scenes to the Hue Bridge and do not see them above, or if room/zone names are " +
-                          "missing from scenes (if assigned to one), click/tap the button " +
-                          "below to retrieve new information from the Bridge.")
+                paragraph("If you added new scenes to the Hue Bridge and do not see them above, if room/zone names are " +
+                          "missing from scenes (if assigned to one), or if you changed the \"Include scenes...\" setting above, "
+                          "click/tap the button below to retrieve new information from the Bridge.")
                 input(name: "btnSceneRefresh", type: "button", title: "Refresh Scene List", submitOnChange: true)
             }
         }
