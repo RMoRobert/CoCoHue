@@ -425,7 +425,7 @@ def pageSelectScenes() {
             }
             section("Rediscover Scenes") {
                 paragraph("If you added new scenes to the Hue Bridge and do not see them above, if room/zone names are " +
-                          "missing from scenes (if assigned to one), or if you changed the \"Include scenes...\" setting above, "
+                          "missing from scenes (if assigned to one), or if you changed the \"Include scenes...\" setting above, " +
                           "click/tap the button below to retrieve new information from the Bridge.")
                 input(name: "btnSceneRefresh", type: "button", title: "Refresh Scene List", submitOnChange: true)
             }
