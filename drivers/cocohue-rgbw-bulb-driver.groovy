@@ -25,6 +25,7 @@
  *  v1.6b - Changed bri_inc to match Hubitat behavior
  *  v1.7 - Bulb switch/level states now propgate to groups w/o polling (TODO: add option to disable both?)
  *  v1.7b - Modified startLevelChange behavior to avoid possible problems with third-party devices
+ *  v1.7c - Changed effect state to custom attribute instead of colorMode
  */ 
 
 import groovy.json.JsonSlurper
@@ -49,7 +50,8 @@ metadata {
         command "flash"
         command "flashOnce"
         
-        attribute "colorName", "string"        
+        attribute "colorName", "string"
+        attribute "effect", "string"
     }
        
    preferences {
@@ -251,26 +253,17 @@ def setSaturation(value) {
 }
 
 def setEffect(String effect) {
-    def id = lightEffects.find{ it.value == effect }
-    if (id) setEffect(id.key)
+    def id = lightEffects.find { it.value == effect }
+    if (id != null) setEffect(id.key)
 }
 
 def setEffect(id) {
     logDebug("Setting effect $id...")
     state.remove("lastHue")
+    // May want to see if it really makes sense to remove these too:
     state.remove("lastSat")
     state.remove("lastCT")
     addToNextBridgeCommand(["effect": (id == 1 ? "colorloop" : "none"), "on": true], true)
-    if (id) {
-        def prevMode = device.currentValue("colorMode")
-        if (prevMode != "EFFECTS") {
-            state.preEffectColorMode = device.currentValue("colorMode" ?: "RGB")
-        }
-        state.crntEffectId = id
-    } else {
-        state.remove("crntEffectId")
-        state.remove("state.preEffectColorMode")
-    }
     // No prestaging implemented here
     sendBridgeCommand()
 }
@@ -341,16 +334,6 @@ def createEventsFromMap(Map bridgeCmd = state.nextCmd, boolean isFromBridge = fa
                 eventUnit = null                
                 if (device.currentValue(eventName) != eventValue) doSendEvent(eventName, eventValue, eventUnit)
                 isOn = it.value
-                if (!isOn && !isFromBridge) {
-                    // Will get stuck in "EFFECT" mode otherwise, but Hue resets when turned off/on so try to anticipate
-                    eventName = "colorMode"
-                    eventValue = (state.preEffectColorMode)
-                    eventUnit = null
-                    if (eventValue) {
-                        doSendEvent(eventName, eventValue, eventUnit)
-                        state.remove("preEffectColorMode")
-                    }
-                }
                 break
             case "bri":
                 eventName = "level"
@@ -427,25 +410,17 @@ def createEventsFromMap(Map bridgeCmd = state.nextCmd, boolean isFromBridge = fa
                 eventName = "colorMode"
                 eventValue = "RGB"
                 eventUnit = null
-                if (device.currentValue(eventName) != eventValue && device.currentValue(eventName) != "EFFECTS") doSendEvent(eventName, eventValue, eventUnit)
+                if (device.currentValue(eventName) != eventValue) doSendEvent(eventName, eventValue, eventUnit)
                 break
             case "effect":
-                eventName = "colorMode"
-                eventValue = (it.value == "colorloop" ? "EFFECTS" : null)
-                if (!eventValue) {
-                    def cm = state.preEffectColorMode
-                    if (cm) {
-                        eventValue = cm
-                        state.remove("preEffectColorMode")
-                    }
-                }
-                if (eventValue == null) break
+                eventName = "effect"
+                eventValue = (it.value == "colorloop" ? "colorloop" : "none")
                 eventUnit = null
                 if (device.currentValue(eventName) != eventValue) {
                     doSendEvent(eventName, eventValue, eventUnit)
                 }
                 eventUnit = null
-                if (device.currentValue(eventName) != eventValue && eventUnit != null) doSendEvent(eventName, eventValue, eventUnit)
+                if (device.currentValue(eventName) != eventValue) doSendEvent(eventName, eventValue, eventUnit)
                 break
             case "transitiontime":
             case "mode":
@@ -478,13 +453,7 @@ def sendBridgeCommand(Map customMap = null, boolean createHubEvents=true) {
         cmd = state.nextCmd
         state.remove("nextCmd")
     }
-    // Remove color effect if present and user setting hue or CT.
-    // Hue apparently needs this as a separate command first, or it will just restore
-    // to what it was before (not what else is passed along with)
-    if (customMap == null && !(cmd.containsKey("effect")) &&
-        (cmd.containsKey("hue") || cmd.containsKey("ct")) ) {
-            sendBridgeCommand(["effect": "none"], false)
-    }
+
     if (!cmd) {
         log.debug("Commands not sent to Bridge because command map empty")
         return
