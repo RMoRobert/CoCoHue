@@ -59,6 +59,7 @@ metadata {
         input(name: "hiRezHue", type: "bool", title: "Enable hue in degrees (0-360 instead of 0-100)", defaultValue: false)
         input(name: "colorStaging", type: "bool", description: "", title: "Enable color pseudo-prestaging", defaultValue: false)
         input(name: "levelStaging", type: "bool", description: "", title: "Enable level pseudo-prestaging", defaultValue: false)
+        input(name: "updateGroups", type: "bool", description: "", title: "Update state of groups when bulb state changed (without polling)", defaultValue: false)
         input(name: "enableDebug", type: "bool", title: "Enable debug logging", defaultValue: true)
         input(name: "enableDesc", type: "bool", title: "Enable descriptionText logging", defaultValue: true)
     }
@@ -326,6 +327,7 @@ def createEventsFromMap(Map bridgeCmd = state.nextCmd, boolean isFromBridge = fa
     def eventName, eventValue, eventUnit, descriptionText
     String colorMode
     boolean isOn
+    // TODO: Parse isOn and colorMode first? Don't create color events for CT and vice versa (or if off and not pre-staged?)
     bridgeCmd.each {
         switch (it.key) {
             case "on":
@@ -467,8 +469,8 @@ def sendBridgeCommand(Map customMap = null, boolean createHubEvents=true) {
         body: cmd
         ]
     asynchttpPut("parseBridgeResponse", params)
-    if (cmd.containsKey("on") || cmd.containsKey("bri")) {
-        parent.updateGroupStatesFromBulb(cmd, getHueDeviceNumber()) 
+    if ((cmd.containsKey("on") || cmd.containsKey("bri")) && settings["updateGroups"]) {
+        parent.updateGroupStatesFromBulb(cmd, getHueDeviceNumber())
     }
     logDebug("-- Command sent to Bridge!" --)
 }

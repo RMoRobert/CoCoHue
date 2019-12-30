@@ -60,6 +60,7 @@ metadata {
         input(name: "hiRezHue", type: "bool", title: "Enable hue in degrees (0-360 instead of 0-100)", defaultValue: false)
         input(name: "colorStaging", type: "bool", description: "", title: "Enable color pseudo-prestaging", defaultValue: false)
         input(name: "levelStaging", type: "bool", description: "", title: "Enable level pseudo-prestaging", defaultValue: false)
+        input(name: "updateBulbs", type: "bool", description: "TEST", title: "Update member bulb states when group state changes (without polling)", defaultValue: true)
         input(name: "enableDebug", type: "bool", title: "Enable debug logging", defaultValue: true)
         input(name: "enableDesc", type: "bool", title: "Enable descriptionText logging", defaultValue: true)
     }
@@ -468,8 +469,8 @@ def sendBridgeCommand(Map customMap = null, boolean createHubEvents=true) {
         body: cmd
         ]
     asynchttpPut("parseBridgeResponse", params)
-    if (cmd.containsKey("on") || cmd.containsKey("bri")) {
-        parent.updateMemberBulbStatesFromGroup(cmd, state.memberBulbs) 
+    if ((cmd.containsKey("on") || cmd.containsKey("bri")) && settings["updateBulbs"]) {
+        parent.updateMemberBulbStatesFromGroup(cmd, state.memberBulbs)
     }
     logDebug("---- Command sent to Bridge! ----")
 }
