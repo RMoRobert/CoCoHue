@@ -14,7 +14,7 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2019-12-29
+ *  Last modified: 2019-12-30
  * 
  *  Changelog:
  * 
@@ -25,7 +25,7 @@
  *  v1.6b - Changed bri_inc to match Hubitat behavior
  *  v1.7 - Bulb switch/level states now propgate to groups w/o polling (TODO: add option to disable both?)
  *  v1.7b - Modified startLevelChange behavior to avoid possible problems with third-party devices
- *  v1.7c - Changed effect state to custom attribute instead of colorMode
+ *  v1.7c - Changed effect state to custom attribute instead of colorMode, added ability to disable group->bulb state propagation
  *
  */ 
 
@@ -60,7 +60,7 @@ metadata {
         input(name: "hiRezHue", type: "bool", title: "Enable hue in degrees (0-360 instead of 0-100)", defaultValue: false)
         input(name: "colorStaging", type: "bool", description: "", title: "Enable color pseudo-prestaging", defaultValue: false)
         input(name: "levelStaging", type: "bool", description: "", title: "Enable level pseudo-prestaging", defaultValue: false)
-        input(name: "updateBulbs", type: "bool", description: "TEST", title: "Update member bulb states when group state changes (without polling)", defaultValue: true)
+        input(name: "updateBulbs", type: "bool", description: "", title: "Update member bulb states immediately when group state changes", defaultValue: true)
         input(name: "enableDebug", type: "bool", title: "Enable debug logging", defaultValue: true)
         input(name: "enableDesc", type: "bool", title: "Enable descriptionText logging", defaultValue: true)
     }
@@ -331,6 +331,8 @@ def createEventsFromMap(Map bridgeCmd = state.nextCmd, boolean isFromBridge = fa
     bridgeCmd.each {
         switch (it.key) {
             case "on":
+                if (isFromBridge) break
+            case "any_on":
                 eventName = "switch"
                 eventValue = it.value ? "on" : "off"
                 eventUnit = null                

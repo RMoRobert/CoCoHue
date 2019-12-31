@@ -496,6 +496,7 @@ def createNewSelectedGroupDevices() {
     }    
     bridge.clearGroupsCache()
     bridge.getAllGroups()
+    bridge.refresh()
     app.removeSetting("newGroups")
 }
 
