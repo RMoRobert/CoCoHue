@@ -31,7 +31,9 @@ metadata {
         
         // Not supported on (most?) plugs; can uncomment if you are using for lights that support this:
         //command "flash" 
-        //command "flashOnce"  
+        //command "flashOnce" 
+        //command "flashOff"  
+
     }
        
    preferences {
@@ -89,7 +91,7 @@ def getHueDeviceNumber() {
 
 def on() {    
     logDebug("Turning on...")
-    addToNextBridgeCommand(["on": true, "alert": "none"], true)
+    addToNextBridgeCommand(["on": true], true)
     sendBridgeCommand()
 }
 
@@ -108,6 +110,12 @@ def flash() {
 def flashOnce() {
     logDebug("Running flashOnce... (note: not supported on plugs)")
     def cmd = ["alert": "select"]
+    sendBridgeCommand(cmd, false) 
+}
+
+def flashOff() {
+    logDebug("Stopping flash if in progress...")
+    def cmd = ["alert": "none"]
     sendBridgeCommand(cmd, false) 
 }
 
