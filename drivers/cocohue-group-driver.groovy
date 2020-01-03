@@ -1,7 +1,7 @@
 /*
  * =============================  CoCoHue Group (Driver) ===============================
  *
- *  Copyright 2019 Robert Morris
+ *  Copyright 2019-2020 Robert Morris
  * 
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  *  in compliance with the License. You may obtain a copy of the License at:
@@ -14,7 +14,7 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2019-12-30
+ *  Last modified: 2020-01-02
  * 
  *  Changelog:
  * 
@@ -25,7 +25,9 @@
  *  v1.6b - Changed bri_inc to match Hubitat behavior
  *  v1.7 - Bulb switch/level states now propgate to groups w/o polling (TODO: add option to disable both?)
  *  v1.7b - Modified startLevelChange behavior to avoid possible problems with third-party devices
- *  v1.7c - Changed effect state to custom attribute instead of colorMode, added ability to disable group->bulb state propagation
+ *  v1.8 - Changed effect state to custom attribute instead of colorMode
+ *         Added ability to disable group->bulb state propagation;
+ *         Removed ["alert:" "none"] from on() command, now possible explicitly with flashOff()   
  *
  */ 
 
@@ -50,6 +52,7 @@ metadata {
 
         command "flash"
         command "flashOnce"
+        command "flashOff"
                 
         attribute "colorName", "string"
         attribute "effect", "string"
@@ -112,8 +115,7 @@ def on() {
      check if current level is different from lastXYZ value, in which case it was probably
      changed outside of Hubitat and we should not set the pre-staged value(s)--Hue does not
      support "true" prestaging, so any prestaging is a Hubitat-only workaround */
-    // Disables lselect alert if in progress to be consistent with other drivers that stop flash with on()
-    addToNextBridgeCommand(["on": true, "alert": "none"], !(colorStaging || levelStaging))
+    addToNextBridgeCommand(["on": true], !(colorStaging || levelStaging))
     sendBridgeCommand()
     state.remove("lastHue")
     state.remove("lastSat")
@@ -293,6 +295,12 @@ def flash() {
 def flashOnce() {
     logDebug("Running flashOnce...")
     def cmd = ["alert": "select"]
+    sendBridgeCommand(cmd, false) 
+}
+
+def flashOff() {
+    logDebug("Stopping flash if in progress...")
+    def cmd = ["alert": "none"]
     sendBridgeCommand(cmd, false) 
 }
 
