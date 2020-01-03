@@ -1,7 +1,7 @@
 /*
  * =============================  CoCoHue On/Off Plug/Light (Driver) ===============================
  *
- *  Copyright 2019 Robert Morris
+ *  Copyright 2019-2020 Robert Morris
  * 
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  *  in compliance with the License. You may obtain a copy of the License at:
@@ -14,11 +14,13 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2019-12-27
+ *  Last modified: 2020-01-02
  * 
  *  Changelog:
  * 
  *  v1.7 Initial Release
+ *  v1.8 - Added ability to disable plug->group state propagation;
+ *         Removed ["alert:" "none"] from on() command, now possible explicitly with flashOff()   
  */
  
 metadata {
@@ -39,6 +41,7 @@ metadata {
    preferences {
         input(name: "enableDebug", type: "bool", title: "Enable debug logging", defaultValue: true)
         input(name: "enableDesc", type: "bool", title: "Enable descriptionText logging", defaultValue: true)
+        input(name: "updateGroups", type: "bool", description: "", title: "Update state of groups immediately when plug state changes", defaultValue: false)
     }
 }
 
@@ -203,8 +206,8 @@ def sendBridgeCommand(Map customMap = null, boolean createHubEvents=true) {
         body: cmd
         ]
     asynchttpPut("parseBridgeResponse", params)
-    if (cmd.containsKey("on") || cmd.containsKey("bri")) {
-        parent.updateGroupStatesFromBulb(cmd, getHueDeviceNumber()) 
+    if ((cmd.containsKey("on") && settings["updateGroups"]) {
+        parent.updateGroupStatesFromBulb(cmd, getHueDeviceNumber())
     }
     logDebug("-- Command sent to Bridge!" --)
 }
