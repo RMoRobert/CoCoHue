@@ -105,19 +105,19 @@ def off() {
 }
 
 def flash() {
-    logDebug("Starting flash (note: not supported on plugs; bulbs will stop automatically after 15 cycles)...")
+    logDesc("${device.displayName} started 15-cycle flash")
     def cmd = ["alert": "lselect"]
     sendBridgeCommand(cmd, false) 
 }
 
 def flashOnce() {
-    logDebug("Running flashOnce... (note: not supported on plugs)")
+    logDesc("${device.displayName} started 1-cycle flash")
     def cmd = ["alert": "select"]
     sendBridgeCommand(cmd, false) 
 }
 
 def flashOff() {
-    logDebug("Stopping flash if in progress...")
+    logDesc("${device.displayName} was sent command to stop flash")
     def cmd = ["alert": "none"]
     sendBridgeCommand(cmd, false) 
 }

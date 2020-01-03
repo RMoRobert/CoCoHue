@@ -287,19 +287,19 @@ def setPreviousEffect() {
 }
 
 def flash() {
-    logDebug("Starting flash (note: Hue will automatically stop flashing after 15 cycles; this is not indefinite)...")
+    logDesc("${device.displayName} started 15-cycle flash")
     def cmd = ["alert": "lselect"]
     sendBridgeCommand(cmd, false) 
 }
 
 def flashOnce() {
-    logDebug("Running flashOnce...")
+    logDesc("${device.displayName} started 1-cycle flash")
     def cmd = ["alert": "select"]
     sendBridgeCommand(cmd, false) 
 }
 
 def flashOff() {
-    logDebug("Stopping flash if in progress...")
+    logDesc("${device.displayName} was sent command to stop flash")
     def cmd = ["alert": "none"]
     sendBridgeCommand(cmd, false) 
 }
