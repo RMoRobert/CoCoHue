@@ -206,7 +206,7 @@ def sendBridgeCommand(Map customMap = null, boolean createHubEvents=true) {
         body: cmd
         ]
     asynchttpPut("parseBridgeResponse", params)
-    if ((cmd.containsKey("on") && settings["updateGroups"]) {
+    if (cmd.containsKey("on") && settings["updateGroups"]) {
         parent.updateGroupStatesFromBulb(cmd, getHueDeviceNumber())
     }
     logDebug("-- Command sent to Bridge!" --)
