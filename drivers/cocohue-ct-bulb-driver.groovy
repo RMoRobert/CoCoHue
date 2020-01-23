@@ -53,8 +53,6 @@ metadata {
 
 def installed(){
     log.debug "Installed..."
-    def le = new groovy.json.JsonBuilder(lightEffects)
-    sendEvent(name: "lightEffects", value: le)
     initialize()
 }
 
