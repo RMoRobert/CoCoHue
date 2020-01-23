@@ -340,12 +340,12 @@ def createEventsFromMap(Map bridgeCommandMap = state.nextCmd, boolean isFromBrid
     def bridgeMap = bridgeCommandMap
     logDebug("Preparing to create events from map${isFromBridge ? ' from Bridge' : ''}: ${bridgeMap}")
     def eventName, eventValue, eventUnit, descriptionText
-    boolean isOn
     def colorMode = bridgeMap["colormode"]
     if (isFromBridge && bridgeMap["colormode"] == "xy") {
         colorMode == "ct"
         logDebug("In XY mode but parsing as CT")
     }
+    boolean isOn = bridgeMap["on"]
     bridgeMap.each {
         switch (it.key) {
             case "on":
@@ -353,7 +353,6 @@ def createEventsFromMap(Map bridgeCommandMap = state.nextCmd, boolean isFromBrid
                 eventValue = it.value ? "on" : "off"
                 eventUnit = null                
                 if (device.currentValue(eventName) != eventValue) doSendEvent(eventName, eventValue, eventUnit)
-                isOn = it.value
                 break
             case "bri":
                 eventName = "level"
