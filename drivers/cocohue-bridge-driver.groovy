@@ -73,13 +73,13 @@ def refresh() {
         uri: data.fullHost,
         path: "/api/${data.username}/lights",
         contentType: 'application/json',
-        body: cmds
+        //body: cmds
         ]
     def groupParams = [
         uri: data.fullHost,
         path: "/api/${data.username}/groups",
         contentType: 'application/json',
-        body: cmds
+        //body: cmds
         ]
     asynchttpGet("parseLightStates", lightParams)    
     asynchttpGet("parseGroupStates", groupParams)
