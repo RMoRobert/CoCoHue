@@ -18,7 +18,7 @@
  * 
  *  Changelog:
  * 
- *  v1.8 - Initial release (based on CT bulb driver)
+ *  v1.9 - Initial release (based on CT bulb driver)
  *  
  */ 
 

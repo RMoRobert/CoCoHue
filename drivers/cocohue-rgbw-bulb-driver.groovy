@@ -30,7 +30,7 @@
  *         Removed ["alert:" "none"] from on() command, now possible explicitly with flashOff()
  *  v1.8b - Fix for sprious color name event if bulb in different mode  
  *  v1.8c - Added back color/CT events for manual commands not from bridge without polling
- *  v1.8d - Parse xy as ct (previously did rgb but without parsing actual color)
+ *  v1.9 - Parse xy as ct (previously did rgb but without parsing actual color)
  *  
  */ 
 

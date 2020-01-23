@@ -18,7 +18,7 @@
  * 
  *  Changelog:
  * 
- *  v1.8 - Initial release (based on RGBW bulb driver)
+ *  v1.9 - Initial release (based on RGBW bulb driver)
  *  
  */ 
 
@@ -36,6 +36,8 @@ metadata {
         command "flash"
         command "flashOnce"
         command "flashOff"
+
+         attribute "colorName", "string"
 
     }
        

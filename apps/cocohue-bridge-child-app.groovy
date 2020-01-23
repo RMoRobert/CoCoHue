@@ -20,7 +20,7 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2020-01-04
+ *  Last modified: 2020-01-22
  * 
  *  Changelog:
  * 
@@ -29,6 +29,7 @@
  *  v1.5 - Added scene integration
  *  v1.6 - Added options for bulb and group deivce naming
  *  v1.7 - Addition of new child device types, updating groups from member bulbs
+ *  v1.9 - Added CT and dimmable bulb types
  */ 
 
 definition (
