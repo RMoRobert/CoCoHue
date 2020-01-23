@@ -346,7 +346,6 @@ def createEventsFromMap(Map bridgeCommandMap = state.nextCmd, boolean isFromBrid
         colorMode == "ct"
         logDebug("In XY mode but parsing as CT")
     }
-    logDebug("Final map before parsing: $bridgeMap")
     bridgeMap.each {
         switch (it.key) {
             case "on":
@@ -390,7 +389,7 @@ def createEventsFromMap(Map bridgeCommandMap = state.nextCmd, boolean isFromBrid
                     if (!isOn && isFromBridge && colorStaging && (state.nextCmd?.get("hue") || state.nextCmd?.get("sat") || state.nextCmd?.get("ct"))) {
                         logDebug("Prestaging enabled, light off, and prestaged command found; not sending ${eventName} event")
                         break
-                    } else if (isFromBridge && colorMode != "ct") {
+                    } else if (isFromBridge && colorMode == "hs") {
                         logDebug("Skipping colorTemperature event creation because light not in ct mode")
                         break
                     }
