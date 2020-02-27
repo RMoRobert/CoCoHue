@@ -25,12 +25,13 @@ For discussion and more information, visit the <a href="https://community.hubita
 3. Install all necessary drivers from the "drivers" folder in this repository into the "Drivers Code" section of Hubitat. (There aren't very many, so I'd recommend just installing them all, but technically all you need is the Bridge driver plus the driver for any device types you plan to use.)
     * Install the Bridge driver code: https://raw.githubusercontent.com/RMoRobert/CoCoHue/master/drivers/cocohue-bridge-driver.groovy
     * Install the bulb, group, scene, and plug drivers:
-    https://raw.githubusercontent.com/RMoRobert/CoCoHue/master/drivers/cocohue-rgbw-bulb-driver.groovy,
-    https://raw.githubusercontent.com/RMoRobert/CoCoHue/master/drivers/cocohue-group-driver.groovy,
-    https://raw.githubusercontent.com/RMoRobert/CoCoHue/master/drivers/cocohue-scene-driver.groovy,
-    https://raw.githubusercontent.com/RMoRobert/CoCoHue/master/drivers/cocohue-plug-driver.groovy
-    (more coming soon)
-
+      * https://raw.githubusercontent.com/RMoRobert/CoCoHue/master/drivers/cocohue-rgbw-bulb-driver.groovy
+      * https://raw.githubusercontent.com/RMoRobert/CoCoHue/master/drivers/cocohue-ct-bulb-driver.groovy
+      * https://raw.githubusercontent.com/RMoRobert/CoCoHue/master/drivers/cocohue-dimmable-bulb-driver.groovy
+      * https://raw.githubusercontent.com/RMoRobert/CoCoHue/master/drivers/cocohue-plug-driver.groovy
+      * https://raw.githubusercontent.com/RMoRobert/CoCoHue/master/drivers/cocohue-group-driver.groovy
+      * https://raw.githubusercontent.com/RMoRobert/CoCoHue/master/drivers/cocohue-scene-driver.groovy
+      
 4. Install an instance of app: go to **Apps > Add User App**, choose **CoCoHue**, and follow the prompts. At the moment, your
    Hue Bridge needs a static IP address, as discovery is not supported.
 
@@ -53,19 +54,20 @@ this capability. It is effect `1`. It can be activated by calling the standard c
 as effect `0`, so the effect can be cancelled by calling `setEffect(0)`. The `nextEffect` and `previousEffect` commands are
 pretty boring for this reason, but they are part of the standard Hubitat capability as it is currently documented. Setting
 a color, hue, or color temperature will also cancel the effect (this is consistent with the behavior of other bulbs I tested).
-Setting a level or saturation will *not* because Hue allows adjustment of these while the effect (which does not manipulate these
-values) is in progress.
+Setting a level or saturation will *not* because Hue allows adjustment of these while the effect (which does not
+manipulate these values) is in progress.
 
 3. "Select" and "LSelect" alerts: these are basically a one-time flash and a 15-time flash. These are implemented as the
 `flashOnce()` command and the pseudo-standard `flash()` command, respectively.
 
-4. Groups: besides "Change Level" (implemnted here), most group changes will propagage to individual bulbs. This is consistent with
-Hubitat's stock behavior. CoCoHue adds the reverse, updating group states when individual bulbs are updated. In both cases, unlike
-Hubitat's stock integration, CoCoHue considers a group when any (not all) members are on. This is consistent with Hue app behavior and
-makes prestaging options make more sense when using both. It also means both bulbs and groups should get updated without polling
-when either is mannipulated, though it is recommended to configure some polling interval regardless.
+4. Groups: besides "Change Level" (implemnted here), most group changes will propagage to individual bulbs. This is
+consistent with Hubitat's stock behavior. CoCoHue adds the reverse, updating group states when individual bulbs are
+updated. (Both are optional; the former direction is on by default and the latter off.) In both cases, unlike Hubitat's
+stock integration, CoCoHue considers a group when any (not all) members are on. This is consistent with Hue app
+behavior and makes prestaging options make more sense when using both. It also means both bulbs and groups should get
+updated without polling when either is mannipulated, though it is recommended to configure some polling interval
+regardless.
 
-5. Scenes: implemented as button and switch devices. To activate, do a `push(1)` or an `on()` command (<b>the `off()` command
-is ignored</b> because Hue does not have a way to "turn off" a scene, but it can be used if desired without harm). If you use
+5. Scenes: implemented as button and switch devices. To activate, do a `push(1)` or an `on()` command. If you use
 scenes, it is recommended to keep polling enabled (actvating a scene will not update associated Hubitat group or bulb
-devices without polling).
+devices without polling). The `off()` command on scene devices will turn off the associated group (using the Hubitat device if available) or (for classic/"non-GroupScene" scenes) the associated lights, but in most cases it would be desirable to manually turn the group/lights off yourself instead of using the scene device.
