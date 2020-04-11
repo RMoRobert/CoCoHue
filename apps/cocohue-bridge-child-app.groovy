@@ -30,6 +30,7 @@
  *  v1.6 - Added options for bulb and group deivce naming
  *  v1.7 - Addition of new child device types, updating groups from member bulbs
  *  v1.9 - Added CT and dimmable bulb types
+ *  v1.9.1 - Defaulting to not using parent app (uncomment line below if do)
  */ 
 
 definition (
@@ -41,7 +42,8 @@ definition (
     iconUrl: "",
     iconX2Url: "",
     iconX3Url: "",
-    parent: "RMoRobert:CoCoHue - Hue Bridge Integration",
+    //Uncomment the following line (remove the '//') if you are upgrading from 1.9 or earlier and have the parent app installed:
+    //parent: "RMoRobert:CoCoHue - Hue Bridge Integration",
 )
 
 preferences {
