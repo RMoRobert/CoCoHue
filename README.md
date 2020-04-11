@@ -15,12 +15,11 @@ For discussion and more information, visit the <a href="https://community.hubita
 ## To Install
 1. Back up your hub and save a local copy before proceeding.
 
-2. Install the parent and child apps from the "apps" folder in this repository into the "Apps Code" section of Hubitat: 
-    * Install the parent app code: https://raw.githubusercontent.com/RMoRobert/CoCoHue/master/apps/cocohue-parent-app.groovy    
-    * Install the child app code: https://raw.githubusercontent.com/RMoRobert/CoCoHue/master/apps/cocohue-bridge-child-app.groovy
-    * Note: In v2.0, I plan to deprecate this parent/child strucutre. For new 1.x installs, you may wish to install only the
-      Bridge Child app and comment out or remove the `parent` line in the `defintion` "section," but I will release a new, to-be-deprecated
-      parent app for 2.0 so that 1.x users can upgrade without hassle.
+2. Install the app  from the "apps" folder in this repository into the "Apps Code" section of Hubitat: 
+    * Install the app code: https://raw.githubusercontent.com/RMoRobert/CoCoHue/master/apps/cocohue-bridge-child-app.groovy
+    * NOTE: Users upgrading from an old version (1.9 or earlier) that uses
+the <a href="https://raw.githubusercontent.com/RMoRobert/CoCoHue/master/apps/cocohue-parent-app.groovy">parent app</a>
+will need to uncomment line 47 in the above app as instructed in the file
 
 3. Install all necessary drivers from the "drivers" folder in this repository into the "Drivers Code" section of Hubitat. (There aren't very many, so I'd recommend just installing them all, but technically all you need is the Bridge driver plus the driver for any device types you plan to use.)
     * Install the Bridge driver code: https://raw.githubusercontent.com/RMoRobert/CoCoHue/master/drivers/cocohue-bridge-driver.groovy
