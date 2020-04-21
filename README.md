@@ -15,11 +15,12 @@ For discussion and more information, visit the <a href="https://community.hubita
 ## To Install
 1. Back up your hub and save a local copy before proceeding.
 
-2. Install the app  from the "apps" folder in this repository into the "Apps Code" section of Hubitat: 
-    * Install the app code: https://raw.githubusercontent.com/RMoRobert/CoCoHue/master/apps/cocohue-bridge-child-app.groovy
-    * NOTE: Users upgrading from an old version (1.9 or earlier) that uses
-the <a href="https://raw.githubusercontent.com/RMoRobert/CoCoHue/master/apps/cocohue-parent-app.groovy">parent app</a>
-will need to uncomment line 47 in the above app as instructed in the file if they want to keep/upgrade existing CoCoHue 1.x apps
+2. Install the app  from the "apps" folder in this repository into the "Apps Code" section of Hubitat: https://raw.githubusercontent.com/RMoRobert/CoCoHue/master/apps/cocohue-app.groovy
+    * Important for users upgrading from 1.x: if your installation is set up using the parent/child app strucutre (and you want to keep this installation), then
+    follow these steps instead. First, update the parent app: https://raw.githubusercontent.com/RMoRobert/CoCoHue/master/deprecated/cocohue-parent-app.groovy. Then,
+    install the (child) app as above, https://raw.githubusercontent.com/RMoRobert/CoCoHue/master/apps/cocohue-app.groovy. Finally, uncomment the
+    line `parent: "RMoRobert:CoCoHue (Parent App)"` (should be around line 50-55) in the "child" app by removing the two slashes, `//`, in front of it (you'll
+    get an error if you don't do this, so if everything saves, you should be good!).
 
 3. Install all necessary drivers from the "drivers" folder in this repository into the "Drivers Code" section of Hubitat. (There aren't very many, so I'd recommend just installing them all, but technically all you need is the Bridge driver plus the driver for any device types you plan to use.)
     * Install the Bridge driver code: https://raw.githubusercontent.com/RMoRobert/CoCoHue/master/drivers/cocohue-bridge-driver.groovy
