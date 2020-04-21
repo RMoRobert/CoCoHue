@@ -14,12 +14,12 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2020-01-22
+ *  Last modified: 2020-04-20
  * 
  *  Changelog:
  * 
- *  v1.9 - Initial release (based on CT bulb driver)
- *  
+ *  v2.0    - Added startLevelChange rate option; improved HTTP error handling
+ *  v1.9    - Initial release (based on CT bulb driver)
  */ 
 
 metadata {
@@ -42,6 +42,8 @@ metadata {
         input(name: "transitionTime", type: "enum", description: "", title: "Transition time", options:
             [[0:"ASAP"],[400:"400ms"],[500:"500ms"],[1000:"1s"],[1500:"1.5s"],[2000:"2s"],[5000:"5s"]], defaultValue: 400)
         input(name: "levelStaging", type: "bool", description: "", title: "Enable level pseudo-prestaging", defaultValue: false)
+        input(name: "levelChangeRate", type: "enum", description: "", title: '"Start level change" rate', options:
+            [["slow":"Slow"],["medium":"Medium"],["fast":"Fast (default)"]], defaultValue: "fast")
         input(name: "updateGroups", type: "bool", description: "", title: "Update state of groups immediately when bulb state changes",
             defaultValue: false)
         input(name: "enableDebug", type: "bool", title: "Enable debug logging", defaultValue: true)
@@ -110,7 +112,9 @@ def off() {
 
 def startLevelChange(direction) {
     logDebug("Running startLevelChange($direction)...")
-    def cmd = ["bri": (direction == "up" ? 254 : 1), "transitiontime": 30]
+    def cmd = ["bri": (direction == "up" ? 254 : 1),
+               "transitiontime": ((settings["levelChangeRate"] == "fast" || !settings["levelChangeRate"]) ?
+                                   30 : (settings["levelChangeRate"] == "slow" ? 60 : 45))]
     sendBridgeCommand(cmd, false) 
 }
 
@@ -259,7 +263,8 @@ def sendBridgeCommand(Map customMap = null, boolean createHubEvents=true) {
         uri: data.fullHost,
         path: "/api/${data.username}/lights/${getHueDeviceNumber()}/state",
         contentType: 'application/json',
-        body: cmd
+        body: cmd,
+        timeout: 15
         ]
     asynchttpPut("parseBridgeResponse", params)
     if ((cmd.containsKey("on") || cmd.containsKey("bri")) && settings["updateGroups"]) {
@@ -290,12 +295,14 @@ def configure() {
     log.warn "configure()"
 }
 
-/**
- * Generic callback for async Bridge calls when we don't care about
- * the response (but can log it if debug enabled)
- */
 def parseBridgeResponse(resp, data) {
-    logDebug("Response from Bridge: $resp.status")
+    logDebug("Response from Bridge: ${resp.status} - ${resp.data}")
+    if (resp.status >= 400) {
+        log.warn("HTTP status code ${resp.status} from Bridge: ${resp.data}")
+        if (resp.status >= 500) {
+            // TODO: consider trying again?
+        }
+    }
 }
 
 /**

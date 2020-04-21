@@ -14,19 +14,20 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2019-12-01
+ *  Last modified: 2020-04-20
  *
  *  Changelog:
  * 
- *  v1.0 - Initial Release
- *  v1.5 - Additional methods to support scenes and improved group behavior
- *
+ *  v2.0    - Added specific HTTP timeout; added Actuator capability
+ *  v1.5    - Additional methods to support scenes and improved group behavior
+ *  v1.0    - Initial Release
  */ 
 
 //import groovy.json.JsonBuilder
 
 metadata {
     definition (name: "CoCoHue Bridge", namespace: "RMoRobert", author: "Robert Morris", importUrl: "https://raw.githubusercontent.com/RMoRobert/CoCoHue/master/drivers/cocohue-bridge-driver.groovy") {
+        capability "Actuator"
         capability "Refresh"
         attribute "status", "string"
     }
@@ -73,13 +74,13 @@ def refresh() {
         uri: data.fullHost,
         path: "/api/${data.username}/lights",
         contentType: 'application/json',
-        //body: cmds
+        timeout: 15
         ]
     def groupParams = [
         uri: data.fullHost,
         path: "/api/${data.username}/groups",
         contentType: 'application/json',
-        //body: cmds
+        timeout: 15
         ]
     asynchttpGet("parseLightStates", lightParams)    
     asynchttpGet("parseGroupStates", groupParams)
@@ -101,6 +102,7 @@ def getAllBulbs() {
         uri: data.fullHost,
         path: "/api/${data.username}/lights",
         contentType: "application/json",
+        timeout: 15
         ]
     asynchttpGet("parseGetAllBulbsResponse", params)
 }
@@ -169,6 +171,7 @@ def getAllGroups() {
         uri: data.fullHost,
         path: "/api/${data.username}/groups",
         contentType: "application/json",
+        timeout: 15
         ]
     asynchttpGet("parseGetAllGroupsResponse", params)
 }
@@ -238,6 +241,7 @@ def getAllScenes() {
         uri: data.fullHost,
         path: "/api/${data.username}/scenes",
         contentType: "application/json",
+        timeout: 15
         ]
     asynchttpGet("parseGetAllScenesResponse", params)
 }

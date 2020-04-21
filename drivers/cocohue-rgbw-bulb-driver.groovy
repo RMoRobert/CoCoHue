@@ -14,24 +14,24 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2020-01-22
+ *  Last modified: 2020-04-20
  * 
  *  Changelog:
- * 
- *  v1.0 - Initial Release
- *  v1.1 - Added flash commands
- *  v1.5 - Added additional custom commands and more consistency with effect behavior
- *  v1.6 - Eliminated duplicate color/CT events on refresh
- *  v1.6b - Changed bri_inc to match Hubitat behavior
- *  v1.7 - Bulb switch/level states now propgate to groups w/o polling
- *  v1.7b - Modified startLevelChange behavior to avoid possible problems with third-party devices
- *  v1.8 - Changed effect state to custom attribute instead of colorMode
- *         Added ability to disable bulb->group state propagation;
- *         Removed ["alert:" "none"] from on() command, now possible explicitly with flashOff()
- *  v1.8b - Fix for sprious color name event if bulb in different mode  
- *  v1.8c - Added back color/CT events for manual commands not from bridge without polling
- *  v1.9 - Parse xy as ct (previously did rgb but without parsing actual color)
- *  
+
+ *  v2.0    - Added startLevelChange rate option; improved HTTP error handling; experimental xy support
+ *  v1.9    - Parse xy as ct (previously did rgb but without parsing actual color)
+ *  v1.8c   - Added back color/CT events for manual commands not from bridge without polling
+ *  v1.8b   - Fix for sprious color name event if bulb in different mode
+ *  v1.8    - Changed effect state to custom attribute instead of colorMode
+ *            Added ability to disable bulb->group state propagation;
+ *            Removed ["alert:" "none"] from on() command, now possible explicitly with flashOff()
+ *  v1.7b   - Modified startLevelChange behavior to avoid possible problems with third-party devices
+ *  v1.7    - Bulb switch/level states now propgate to groups w/o polling
+ *  v1.6b   - Changed bri_inc to match Hubitat behavior
+ *  v1.6    - Eliminated duplicate color/CT events on refresh
+ *  v1.5    - Added additional custom commands and more consistency with effect behavior
+ *  v1.1    - Added flash commands
+ *  v1.0    - Initial Release
  */ 
 
 import groovy.json.JsonSlurper
@@ -57,7 +57,7 @@ metadata {
         command "flashOnce"
         command "flashOff"
         
-        attribute "colorName", "string"
+        //attribute "colorName", "string"
         attribute "effect", "string"
     }
        
@@ -67,6 +67,8 @@ metadata {
         input(name: "hiRezHue", type: "bool", title: "Enable hue in degrees (0-360 instead of 0-100)", defaultValue: false)
         input(name: "colorStaging", type: "bool", description: "", title: "Enable color pseudo-prestaging", defaultValue: false)
         input(name: "levelStaging", type: "bool", description: "", title: "Enable level pseudo-prestaging", defaultValue: false)
+        input(name: "levelChangeRate", type: "enum", description: "", title: '"Start level change" rate', options:
+            [["slow":"Slow"],["medium":"Medium"],["fast":"Fast (default)"]], defaultValue: "fast")
         input(name: "updateGroups", type: "bool", description: "", title: "Update state of groups immediately when bulb state changes",
             defaultValue: false)
         input(name: "enableDebug", type: "bool", title: "Enable debug logging", defaultValue: true)
@@ -138,10 +140,11 @@ def off() {
     sendBridgeCommand()
 }
 
-
 def startLevelChange(direction) {
     logDebug("Running startLevelChange($direction)...")
-    def cmd = ["bri": (direction == "up" ? 254 : 1), "transitiontime": 30]
+    def cmd = ["bri": (direction == "up" ? 254 : 1),
+               "transitiontime": ((settings["levelChangeRate"] == "fast" || !settings["levelChangeRate"]) ?
+                                   30 : (settings["levelChangeRate"] == "slow" ? 60 : 45))]
     sendBridgeCommand(cmd, false) 
 }
 
@@ -490,7 +493,8 @@ def sendBridgeCommand(Map customMap = null, boolean createHubEvents=true) {
         uri: data.fullHost,
         path: "/api/${data.username}/lights/${getHueDeviceNumber()}/state",
         contentType: 'application/json',
-        body: cmd
+        body: cmd,
+        timeout: 15
         ]
     asynchttpPut("parseBridgeResponse", params)
     if ((cmd.containsKey("on") || cmd.containsKey("bri")) && settings["updateGroups"]) {
@@ -499,7 +503,7 @@ def sendBridgeCommand(Map customMap = null, boolean createHubEvents=true) {
     logDebug("-- Command sent to Bridge!" --)
 }
 
-def doSendEvent(eventName, eventValue, eventUnit) {
+def doSendEvent(String eventName, eventValue, eventUnit=null) {
     logDebug("Creating event for $eventName...")
     def descriptionText = "${device.displayName} ${eventName} is ${eventValue}${eventUnit ?: ''}"
     logDesc(descriptionText)
@@ -556,7 +560,8 @@ def setGenericName(hue){
         default: colorName = "undefined" // shouldn't happen, but just in case
             break            
     }
-    if (device.currentValue("colorName") != colorName) doSendEvent("colorName", colorName, null)
+    if (device.currentValue("saturation") < 1) colorName = "White"
+    if (device.currentValue("colorName") != colorName) doSendEvent("colorName", colorName)
 }
 
 // Hubitat-provided ct/name mappings
@@ -576,17 +581,22 @@ def setGenericTempName(temp){
     else if (value < 6000) genericName = "Electronic"
     else if (value <= 6500) genericName = "Skylight"
     else if (value < 20000) genericName = "Polar"
-    if (device.currentValue("colorName") != genericName) doSendEvent("colorName", genericName, null)
+    else genericName = "undefined" // shouldn't happen, but just in case
+    if (device.currentValue("colorName") != genericName) doSendEvent("colorName", genericName)
 }
 
-/**
- * Generic callback for async Bridge calls when we don't care about
- * the response (but can log it if debug enabled)
- */
 def parseBridgeResponse(resp, data) {
-    logDebug("Response from Bridge: $resp.status")
+    logDebug("Response from Bridge: ${resp.status} - ${resp.data}")
+    if (resp.status >= 400) {
+        log.warn("HTTP status code ${resp.status} from Bridge: ${resp.data}")
+        if (resp.status >= 500) {
+            // TODO: consider trying again?
+        }
+    }
+    else {
+        // TODO: Consider implementing non-optimistic mode where waits to hear back or parses return data?
+    }
 }
-
 /**
  * Scales Hubitat's 1-100 brightness levels to Hue Bridge's 1-254
  */

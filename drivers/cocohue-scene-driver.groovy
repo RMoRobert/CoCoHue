@@ -14,14 +14,14 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2019-01-23
+ *  Last modified: 2019-04-20
  * 
  *  Changelog:
  * 
- *  v1.5b - Initial public release
- *  v1.7  - Added configure() per Capability requirement
- *  v1.9  - Added off() functionality
- *
+ *  v2.0    - Improved HTTP error handling
+ *  v1.9    - Added off() functionality
+ *  v1.7    - Added configure() per Capability requirement
+ *  v1.5b   - Initial public release
  */ 
 
 metadata {
@@ -90,7 +90,8 @@ def on() {
         uri: data.fullHost,
         path: "/api/${data.username}/groups/0/action",
         contentType: 'application/json',
-        body: cmd
+        body: cmd,
+        timeout: 15
         ]
     asynchttpPut("parseBridgeResponse", params)
     logDebug("Command sent to Bridge: $cmd")
@@ -116,7 +117,8 @@ def off() {
                 uri: data.fullHost,
                 path: "/api/${data.username}/groups/${state.group}/action",
                 contentType: 'application/json',
-                body: cmd
+                body: cmd,
+                timeout: 15
             ]
             asynchttpPut("parseBridgeResponse", params)
             logDebug("Command sent to Bridge: $cmd")
@@ -138,7 +140,8 @@ def off() {
                     uri: data.fullHost,
                     path: "/api/${data.username}/lights/${it}/state",
                     contentType: 'application/json',
-                    body: cmd
+                    body: cmd,
+                    timeout: 15
                 ]
                 asynchttpPut("parseBridgeResponse", params)
                 logDebug("Command sent to Bridge: $cmd")
@@ -176,7 +179,7 @@ def refresh() {
         uri: data.fullHost,
         path: "/api/${data.username}/scenes/${getHueDeviceNumber()}",
         contentType: 'application/json',
-        //body: cmds
+        timeout: 15
         ]
     asynchttpGet("parseSceneAttributeResponse", sceneParams)  
 }
@@ -214,12 +217,14 @@ def parseSceneAttributeResponse(resp, data) {
     }
 }
 
-/**
- * Generic callback for async Bridge calls when we don't care about
- * the response (but can log it if debug enabled)
- */
 def parseBridgeResponse(resp, data) {
-    logDebug("Response from Bridge: $resp.status")
+    logDebug("Response from Bridge: ${resp.status} - ${resp.data}")
+    if (resp.status >= 400) {
+        log.warn("HTTP status code ${resp.status} from Bridge: ${resp.data}")
+        if (resp.status >= 500) {
+            // TODO: consider trying again?
+        }
+    }
 }
 
 def logDebug(str) {

@@ -14,13 +14,14 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2020-01-02
+ *  Last modified: 2020-04-20
  * 
  *  Changelog:
  * 
- *  v1.7 Initial Release
- *  v1.8 - Added ability to disable plug->group state propagation;
- *         Removed ["alert:" "none"] from on() command, now possible explicitly with flashOff()   
+ *  v2.0    - Improved HTTP error handling
+ *  v1.8    - Added ability to disable plug->group state propagation;
+ *            Removed ["alert:" "none"] from on() command, now possible explicitly with flashOff()
+ *  v1.7    - Initial Release  
  */
  
 metadata {
@@ -203,7 +204,8 @@ def sendBridgeCommand(Map customMap = null, boolean createHubEvents=true) {
         uri: data.fullHost,
         path: "/api/${data.username}/lights/${getHueDeviceNumber()}/state",
         contentType: 'application/json',
-        body: cmd
+        body: cmd,
+        timeout: 15
         ]
     asynchttpPut("parseBridgeResponse", params)
     if (cmd.containsKey("on") && settings["updateGroups"]) {
@@ -225,12 +227,14 @@ def doSendEvent(eventName, eventValue, eventUnit) {
     return event
 }
 
-/**
- * Generic callback for async Bridge calls when we don't care about
- * the response (but can log it if debug enabled)
- */
 def parseBridgeResponse(resp, data) {
-    logDebug("Response from Bridge: $resp.status")
+    logDebug("Response from Bridge: ${resp.status} - ${resp.data}")
+    if (resp.status >= 400) {
+        log.warn("HTTP status code ${resp.status} from Bridge: ${resp.data}")
+        if (resp.status >= 500) {
+            // TODO: consider trying again?
+        }
+    }
 }
 
 def logDebug(str) {

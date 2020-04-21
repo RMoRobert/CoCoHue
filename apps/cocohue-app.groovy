@@ -1,5 +1,5 @@
 /**
- * ==========================  CoCoHue (Bridge Instance Child App) ==========================
+ * ===========================  CoCoHue - Hue Bridge Integration =========================
  *
  *  DESCRIPTION:
  *  Community-developed Hue Bridge integration app for Hubitat, including support for lights,
@@ -23,31 +23,40 @@
  *  Last modified: 2020-04-10
  * 
  *  Changelog:
- * 
- *  v1.0 - Initial Public Release
- *  v1.1 - Added more polling intervals
- *  v1.5 - Added scene integration
- *  v1.6 - Added options for bulb and group deivce naming
- *  v1.7 - Addition of new child device types, updating groups from member bulbs
- *  v1.9 - Added CT and dimmable bulb types
- *  v1.9.1 - Defaulting to not using parent app (uncomment line below if do)
+ *
+     // TODO: Reduce amount of child->parent calls, push changes in parent to child devices when needed (IP address, etc.)
+
+ *  v2.0   - New non-parent/child structure and name change; Bridge discovery; added documentaiton links
+ *           Additiononal device features
+ *  v1.9   - Added CT and dimmable bulb types
+ *  v1.7   - Addition of new child device types, updating groups from member bulbs
+ *  v1.6   - Added options for bulb and group deivce naming
+ *  v1.5   - Added scene integration
+ *  v1.1   - Added more polling intervals
+ *  v1.0   - Initial Public Release
  */ 
 
+import groovy.transform.Field
+
+@Field static String childNamespaace = "RMoRobert"  // Namespace to search/use for driver when creating child devices
+
 definition (
-    name: "CoCoHue (Bridge Instance Child App)",
+    name: "CoCoHue - Hue Bridge Integration",
     namespace: "RMoRobert",
     author: "Robert Morris",
-    description: "Integrate Hue Bridge lights, groups, and scenes into Hubitat (use parent app to create instances)",
+    description: "Community-created Philips Hue integration for Hue Bridge lights, groups, and scenes",
     category: "Convenience",
+    documentationLink: "https://community.hubitat.com/t/release-cocohue-hue-bridge-integration-including-scenes/27978",
     iconUrl: "",
     iconX2Url: "",
     iconX3Url: "",
-    //Uncomment the following line (remove the '//') if you are upgrading from 1.9 or earlier and have the parent app installed:
-    //parent: "RMoRobert:CoCoHue - Hue Bridge Integration",
+    //Uncomment the following line if upgrading from existing CoCoHue 1.x installation:
+    //parent: "RMoRobert:CoCoHue (Parent App)",
 )
 
 preferences {
     page(name: "pageFirstPage", content: "pageFirstPage")
+    page(name: "pageIncomplete", content: "pageIncomplete")
     page(name: "pageAddBridge", content: "pageAddBridge")
     page(name: "pageLinkBridge", content: "pageLinkBridge")
     page(name: "pageBridgeLinked", content: "pageBridgeLinked")
@@ -55,11 +64,6 @@ preferences {
     page(name: "pageSelectLights", content: "pageSelectLights")
     page(name: "pageSelectGroups", content: "pageSelectGroups")
     page(name: "pageSelectScenes", content: "pageSelectScenes")
-}
-
-/** Namespace to search/use for child device driver creation */
-def getChildNamespace() {
-    return "RMoRobert"
 }
 
 def installed() {
@@ -79,12 +83,20 @@ def updated() {
 def initialize() {
     log.debug("Initializing...")
     unschedule()
-    unsubscribe()    
+    if (settings["useSSDP"] == true || settings["useSSDP"] == null) {
+        log.debug("Subscribing to ssdp...")
+        subscribe(location, "ssdpTerm.urn:schemas-upnp-org:device:basic:1", ssdpHandler)
+    }
+    else {
+        unsubscribe() // remove or modify if ever subscribe to more than SSDP
+    }
+
     int disableTime = 1800
     if (enableDebug) {
         log.debug "Debug logging will be automatically disabled in ${disableTime} seconds"
         runIn(disableTime, debugOff)
     }
+
     def pollInt = settings["pollInterval"]?.toInteger()
     // If change polling options in UI, may need to modify some of these cases:
     switch (pollInt ?: 0) {
@@ -115,21 +127,45 @@ def debugOff() {
 }
 
 def pageFirstPage() {
-    return (state.bridgeLinked ? pageManageBridge() : pageAddBridge())
+    if (app.getInstallationState() == "INCOMPLETE") {
+        return pageIncomplete()
+    } else {
+        return (state.bridgeLinked ? pageManageBridge() : pageAddBridge())
+    }
+}
+
+def pageIncomplete() {
+    dynamicPage(name: "pageIncomplete", uninstall: true, install: true) {
+        section() {
+            paragraph("Please press \"Done\" to install CoCoHue.<br>Then, re-open to set up your Hue Bridge.")
+        }
+    }
 }
 
 def pageAddBridge() {
     dynamicPage(name: "pageAddBridge", uninstall: true, install: false, nextPage: pageLinkBridge) {
-        state.authRefreshInterval = 4
+        state.authRefreshInterval = 5
         state.authTryCount = 0
         section("Add Hue Bridge") {
-            input(name: "bridgeIP", type: "string", title: "Hue Bridge IP address:", required: false, defaultValue: null, submitOnChange: true)            
-            if (settings["bridgeIP"] && state.bridgeLinked) {
-                input(name: "boolForceCreateBridge", type: "bool", title: "Force recreation of Bride child device (WARNING: will un-link any " +
-                      "existing Bridge child device from this child app if one still exists)", submitOnChange: true)
-            }
-            if (settings["bridgeIP"] && !state.bridgeLinked || settings["boolForceCreateBridge"]) {
-                paragraph("<strong>Press the button on your Hue Bridge,</strong> then click/tap the \"Next\" button to continue.")
+            input(name: "useSSDP", type: "bool", title: "Discover Hue Bridges automatically", defaultValue: true, submitOnChange: true)
+            if (settings["useSSDP"] == true || settings["useSSDP"] == null) {
+                sendHubCommand(new hubitat.device.HubAction("lan discovery ssdpTerm.urn:schemas-upnp-org:device:basic:1", hubitat.device.Protocol.LAN))
+                paragraph("Please wait while Hue Bridges are discovered...")
+                if (state.discoveredBridges) {
+                    input(name: "discoveredBridges", type: "enum", title: "Discovered bridges:", options: state.discoveredBridges,
+                          multiple: false)
+                    paragraph("Select Bridge above to add, then click/tap \"Next\" to continue.")
+                }
+            } else { 
+                unsubscribe()  // remove or modify if ever subscribe to more than SSDP (above)
+                input(name: "bridgeIP", type: "string", title: "Hue Bridge IP address:", required: false, defaultValue: null, submitOnChange: true)            
+                if (settings["bridgeIP"] && state.bridgeLinked) {
+                    input(name: "boolForceCreateBridge", type: "bool", title: "Force recreation of Bride child device (WARNING: will un-link any " +
+                        "existing Bridge child device from this child app if one still exists)", submitOnChange: true)
+                }
+                if (settings["bridgeIP"] && !state.bridgeLinked || settings["boolForceCreateBridge"]) {
+                    paragraph("<strong>Press the button on your Hue Bridge,</strong> then click/tap \"Next\" to continue.")
+                }
             }
         }
     }
@@ -287,7 +323,6 @@ def pageSelectLights() {
         }
     }    
 }
-
 
 def pageSelectGroups() {
     dynamicPage(name: "pageSelectGroups", refreshInterval: refreshInt, uninstall: true, install: false, nextPage: pageManageBridge) {
@@ -459,7 +494,7 @@ def createNewSelectedBulbDevices() {
                 def devDriver = driverMap[b.type.toLowerCase()] ?: driverMap["DEFAULT"]
                 def devDNI = "CCH/${state.bridgeID}/Light/${it}"
                 def devProps = [name: (settings["boolAppendBulb"] ? b.name + " (Hue Bulb)" : b.name)]
-                addChildDevice(getChildNamespace(), devDriver, devDNI, null, devProps)
+                addChildDevice(childNamespace, devDriver, devDNI, null, devProps)
 
             } catch (Exception ex) {
                 log.error("Unable to create new device for $it: $ex")
@@ -488,7 +523,7 @@ def createNewSelectedGroupDevices() {
                 logDebug("Creating new device for Hue group ${it} (${g.name})")
                 def devDNI = "CCH/${state.bridgeID}/Group/${it}"
                 def devProps = [name: (settings["boolAppendGroup"] ? g.name + " (Hue Group)" : g.name)]
-                addChildDevice(getChildNamespace(), driverName, devDNI, null, devProps)
+                addChildDevice(childNamespace, driverName, devDNI, null, devProps)
 
             } catch (Exception ex) {
                 log.error("Unable to create new group device for $it: $ex")
@@ -520,7 +555,7 @@ def createNewSelectedSceneDevices() {
                          " (state.sceneFullNames?.get(it) ?: sc.name)")
                 def devDNI = "CCH/${state.bridgeID}/Scene/${it}"
                 def devProps = [name: (state.sceneFullNames?.get(it) ?: sc.name)]
-                def dev = addChildDevice(getChildNamespace(), driverName, devDNI, null, devProps)
+                def dev = addChildDevice(childNamespace, driverName, devDNI, null, devProps)
             } catch (Exception ex) {
                 log.error("Unable to create new scene device for $it: $ex")
             }
@@ -604,7 +639,7 @@ private parseBridgeInfoResponse(hubitat.device.HubResponse resp) {
             state.bridgeID = serial.reverse().take(6).reverse().toUpperCase() // last 6 of MAC
             def bridgeDevice
             try {
-                bridgeDevice = addChildDevice(getChildNamespace(), "CoCoHue Bridge", "CCH/${state.bridgeID}", null,
+                bridgeDevice = addChildDevice(childNamespace, "CoCoHue Bridge", "CCH/${state.bridgeID}", null,
                                               [label: "CoCoHue Bridge (${state.bridgeID})", name: "CoCoHue Bridge"])
                 state.bridgeLinked = true
             } catch (Exception e) {
@@ -617,6 +652,31 @@ private parseBridgeInfoResponse(hubitat.device.HubResponse resp) {
     } else {
         log.error("No Hue Bridge found at IP address")
     }
+}
+
+/** Handles response from SSDP (sent to discover Bridge) */
+private ssdpHandler(evt) {
+    log.debug "In discoverBridgeHandler! $evt.name"
+    def parsedMap = parseLanMessage(evt?.description)
+    if (parsedMap) {
+        def ip = convertHexToIP(parsedMap?.networkAddress)
+        if (ip) {
+            if (!state.discoveredBridges) state.discoveredBridges = []
+            state.discoveredBridges.add([ip:ip, name: "Hue Bridge ${parsedMap.mac}"])        
+        }
+    } else {
+        log.warn("In ssdpHandler but unable to parse LAN message from event: $evt?.description")
+    }
+
+    log.warn parsedMap
+    // TODO: Unsubscribe when found or "Done"?
+}
+
+private String convertHexToIP(hex) {
+	[hubitat.helper.HexUtils.hexStringToInt(hex[0..1]),
+     hubitat.helper.HexUtils.hexStringToInt(hex[2..3]),
+     hubitat.helper.HexUtils.hexStringToInt(hex[4..5]),
+     hubitat.helper.HexUtils.hexStringToInt(hex[6..7])].join(".")
 }
 
 /** Returns map containing Bridge username, IP, and full HTTP post/port, intended to be
