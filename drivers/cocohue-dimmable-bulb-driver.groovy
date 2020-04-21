@@ -273,7 +273,7 @@ def sendBridgeCommand(Map customMap = null, boolean createHubEvents=true) {
     logDebug("-- Command sent to Bridge!" --)
 }
 
-def doSendEvent(eventName, eventValue, eventUnit) {
+def doSendEvent(eventName, eventValue, eventUnit=null) {
     logDebug("Creating event for $eventName...")
     def descriptionText = "${device.displayName} ${eventName} is ${eventValue}${eventUnit ?: ''}"
     logDesc(descriptionText)

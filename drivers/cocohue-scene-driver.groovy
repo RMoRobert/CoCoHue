@@ -158,7 +158,7 @@ def push(btnNum) {
     doSendEvent("pushed", "1", null)
 }
 
-def doSendEvent(eventName, eventValue, eventUnit) {
+def doSendEvent(eventName, eventValue, eventUnit=null) {
     logDebug("Creating event for $eventName...")
     def descriptionText = "${device.displayName} ${eventName} is ${eventValue}${eventUnit ?: ''}"
     logDesc(descriptionText)
