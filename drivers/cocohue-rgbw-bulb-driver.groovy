@@ -15,9 +15,9 @@
  * =======================================================================================
  *
  *  Last modified: 2020-04-20
+ *  Version: 2.0.0-beta.1
  * 
  *  Changelog:
-
  *  v2.0    - Added startLevelChange rate option; improved HTTP error handling; experimental xy support
  *  v1.9    - Parse xy as ct (previously did rgb but without parsing actual color)
  *  v1.8c   - Added back color/CT events for manual commands not from bridge without polling
