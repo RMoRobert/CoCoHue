@@ -67,7 +67,6 @@ preferences {
     page(name: "pageIncomplete", content: "pageIncomplete")
     page(name: "pageAddBridge", content: "pageAddBridge")
     page(name: "pageLinkBridge", content: "pageLinkBridge")
-    page(name: "pageBridgeLinked", content: "pageBridgeLinked")
     page(name: "pageManageBridge", content: "pageManageBridge")
     page(name: "pageSelectLights", content: "pageSelectLights")
     page(name: "pageSelectGroups", content: "pageSelectGroups")
@@ -176,11 +175,13 @@ def pageAddBridge() {
         subscribe(location, "ssdpTerm.urn:schemas-upnp-org:device:basic:1", ssdpHandler)
         sendHubCommand(new hubitat.device.HubAction("lan discovery ssdpTerm.urn:schemas-upnp-org:device:basic:1", hubitat.device.Protocol.LAN))
     }
+    String nextPageName = ((settings["useSSDP"] != false && settings["selectedDiscoveredBridge"]) || settings['bridgeIP']) ?
+                          "pageLinkBridge" : "pageAddBridge"
     dynamicPage(name: "pageAddBridge", uninstall: true, install: false,
-                refreshInterval: (selectedDiscoveredBridge ? null : state.authRefreshInterval), nextPage: "pageLinkBridge") {
+                refreshInterval: (selectedDiscoveredBridge ? null : state.authRefreshInterval), nextPage: nextPageName) {
         section("Add Hue Bridge") {
             input(name: "useSSDP", type: "bool", title: "Discover Hue Bridges automatically", defaultValue: true, submitOnChange: true)
-            if (settings["useSSDP"] == true || settings["useSSDP"] == null) {
+            if (settings["useSSDP"] != false) {
                 if (!(state.discoveredBridges)) {
                     paragraph("Please wait while Hue Bridges are discovered...")
                 }
@@ -279,27 +280,6 @@ def pageLinkBridge() {
         }
     }
 }
-
-def pageBridgeLinked() {
-    dynamicPage(name: "pageBridgeLinked", uninstall: true, install: false, nextPage: "pageFirstPage") {
-        state.authRefreshInterval = 4
-        state.authTryCount = 0
-        if (state["bridgeAuthorized"] && state["bridgeLinked"]) {
-            section("Bridge Linked") {
-                paragraph("""\
-                          Your Hue Bridge has been successfully linked to Hubitat! Press "Next" to
-                          begin adding lights, groups, or scenes.
-                          """.stripIndent())
-            }
-        }
-        else {
-            section("Bridge Not Linked") {
-                paragraph("There was a problem authorizing or linking your Hue Bridge. Please start over and try again.")
-            }
-        }
-    }
-}
-
 def pageManageBridge() {
     if (settings["newBulbs"]) {
         logDebug("New bulbs selected. Creating...")
