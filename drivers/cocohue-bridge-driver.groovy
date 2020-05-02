@@ -1,7 +1,7 @@
 /**
  * =============================  CoCoHue Bridge (Driver) ===============================
  *
- *  Copyright 2019 Robert Morris
+ *  Copyright 2019-2020 Robert Morris
  * 
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  *  in compliance with the License. You may obtain a copy of the License at:
@@ -14,12 +14,12 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2020-04-20
+ *  Last modified: 2020-05-02
  *  Version: 2.0.0-beta.1
  *
  *  Changelog:
  * 
- *  v2.0    - Added specific HTTP timeout; added Actuator capability
+ *  v2.0    - Added Actuator capability; Bridge and HTTP error handling improvements; added specific HTTP timeout
  *  v1.5    - Additional methods to support scenes and improved group behavior
  *  v1.0    - Initial Release
  */ 
@@ -65,7 +65,7 @@ def initialize() {
 
 // Probably won't happen but...
 def parse(String description) {
-    logDebug("Running parse for: '${description}'")
+    log.warn("Ignoring parse() for: '${description}'")
 }
 
 def refresh() {
@@ -83,11 +83,49 @@ def refresh() {
         contentType: 'application/json',
         timeout: 15
         ]
-    asynchttpGet("parseLightStates", lightParams)    
-    asynchttpGet("parseGroupStates", groupParams)
+    try {
+        asynchttpGet("parseLightStates", lightParams, lightParams)
+        asynchttpGet("parseGroupStates", groupParams)
+    } catch (Exception ex) {
+        log.error "Error in refresh: $ex"
+    }
 }
 
-def configure() {}
+/** Performs basic check on data returned from HTTP response to determine if should be
+  * parsed as likely Hue Bridge data or not; returns true (if OK) or logs errors/warnings and
+  * returns false if not
+  * @params resp The async HTTP response object to examine
+  */
+private Boolean checkIfValidResponse(resp) {
+    logDebug("Checking if valid HTTP response/data from Bridge...")
+    Boolean isOK = true
+    if (!(resp?.headers?.'Content-Type')?.contains('json')) {
+        isOK = false
+        if (!(resp?.headers)) log.error "Error: HTTP ${resp.status} when attempting to communicate with Bridge"
+        else log.error "Invalid content-type response from bridge: ${resp.headers.'Content-Type'} (HTTP ${resp.status})"
+        parent.sendBridgeDiscoveryCommandIfSSDPEnabled(true) // maybe IP changed, so attempt rediscovery 
+    }
+    else if (resp.status < 400 && resp.json) {
+        if (resp.json[0]?.error) {
+            // Bridge (not HTTP) error (bad username, bad command formatting, etc.):
+            isOK = false
+            log.warn "Error from Hue Bridge: ${resp.json[0].error}"
+        }
+    }
+    else {
+        isOK = false
+        if (resp?.status < 400) {
+            log.warn("HTTP status code ${resp.status} from Bridge")
+        }
+        else if (resp?.status >= 400) {
+            log.error("HTTP status code ${resp.status} from Bridge")
+            parent.sendBridgeDiscoveryCommandIfSSDPEnabled(true) // maybe IP changed, so attempt rediscovery 
+        }
+    }
+    if (device.currentValue("status") != (isOK ? "Online" : "Offline")) doSendEvent("status", (isOK ? "Online" : "Offline"))
+    return isOK
+}
+
 
 // ------------ BULBS ------------
 
@@ -108,14 +146,20 @@ def getAllBulbs() {
     asynchttpGet("parseGetAllBulbsResponse", params)
 }
 
-private parseGetAllBulbsResponse(resp, data) {
+private void parseGetAllBulbsResponse(resp, data) {
     logDebug("Parsing in parseGetAllBulbsResponse") 
-    def body = resp?.json
-    def bulbs = [:]
-    body?.each { key, val ->
-        bulbs[key] = [name: val.name, type: val.type]
+    if (checkIfValidResponse(resp)) {
+        try {
+            Map bulbs = [:]
+            res.json..each { key, val ->
+                bulbs[key] = [name: val.name, type: val.type]
+            }
+            state.allBulbs = bulbs
+        }
+        catch (Exception ex) {
+            log.error "Error parsing all bulbs response: $ex"
+        }
     }
-    state.allBulbs = bulbs
 }
 
 
@@ -129,31 +173,27 @@ def getAllBulbsCache() {
 /** Clears cache of bulb IDs/names/types; useful for parent app to call if trying to ensure
  * not working with old data
  */
-def clearBulbsCache() {
+void clearBulbsCache() {
     logDebug("Running clearBulbsCache...")
-    state.allBulbs = [:]
+    state.remove('allBulbs')
 }
 
 /** Callback method that handles updating attributes on child light
  *  devices when Bridge refreshed
  */
-def parseLightStates(resp, data) { 
+private void parseLightStates(resp, data=null) { 
     logDebug("Parsing light states from Bridge...")
-    def lightStates
-    try {
-        lightStates = resp.json
-    } catch (ex) {
-        log.error("Error requesting light data: ${resp.errorMessage ?: ex}")
-        if (device.currentValue("status") != "Offline") doSendEvent("status", "Offline")        
-        return        
-    }
-    if (device.currentValue("status") != "Online")  {
-        def ret = doSendEvent("status", "Online")
-    }
-    lightStates.each { id, val ->
-        def device = parent.getChildDevice("${device.deviceNetworkId}/Light/${id}")
-        if (device) {
-            device.createEventsFromMap(val.state, true)
+    if (checkIfValidResponse(resp)) {
+        try {
+        resp.json.each { id, val ->
+            def device = parent.getChildDevice("${device.deviceNetworkId}/Light/${id}")
+            if (device) {
+                device.createEventsFromMap(val.state, true)
+            }
+        }            
+        if (device.currentValue("status") != "Online") doSendEvent("status", "Online")
+        } catch (Exception ex) {
+            log.error "Error parsing light states: ${ex}"           
         }
     }
 }
@@ -177,15 +217,22 @@ def getAllGroups() {
     asynchttpGet("parseGetAllGroupsResponse", params)
 }
 
-private parseGetAllGroupsResponse(resp, data) {
-    logDebug("Parsing in parseGetAllGroupsResponse") 
-    def body = resp?.json
-    def groups = [:]
-    body?.each { key, val ->
-        groups[key] = [name: val.name, type: val.type]
+private void parseGetAllGroupsResponse(resp, data) {
+    logDebug("Parsing in parseGetAllGroupsResponse")
+    if (checkIfValidResponse(resp)) {
+        try {
+            Map groups = [:]
+            resp.json.each { key, val ->
+                groups[key] = [name: val.name, type: val.type]
+            }
+            state.allGroups = bulbs
+        }
+        catch (Exception ex) {
+            log.error "Error parsing all groups response: $ex"
+        }
     }
-    state.allGroups = groups
 }
+
 
 
 /** Intended to be called from parent Bridge Child app to retrive previously
@@ -198,31 +245,29 @@ def getAllGroupsCache() {
 /** Clears cache of group IDs/names; useful for parent app to call if trying to ensure
  * not working with old data
  */
-def clearGroupsCache() {
+void clearGroupsCache() {
     logDebug("Running clearGroupsCache...")
-    state.allGroups = [:]
+    state.remove('allGroups')
 }
 
 /** Callback method that handles updating attributes on child group
  *  devices when Bridge refreshed
  */
-def parseGroupStates(resp, data) {
-    logDebug("Parsing group states from Bridge...")
-    def groupStates
-    try {
-        groupStates = resp.json
-    } catch (ex) {
-        log.error("Error requesting light data: ${resp.errorMessage ?: ex}")
-        if (device.currentValue("status") != "Offline") doSendEvent("status", "Offline")
-        return        
-    }
-    if (device.currentValue("status") != "Online") doSendEvent("status", "Online")
-    groupStates.each { id, val ->
-        def device = parent.getChildDevice("${device.deviceNetworkId}/Group/${id}")
-        if (device) {
-            device.createEventsFromMap(val.action, true)
-            device.createEventsFromMap(val.state, true)
-            device.setMemberBulbIDs(val.lights)
+private void parseGroupStates(resp, data) {
+    logDebug("Parsing group states from Bridge...")    
+    if (checkIfValidResponse(resp)) {
+        try {
+            resp.json.each.each { id, val ->
+                def device = parent.getChildDevice("${device.deviceNetworkId}/Group/${id}")
+                if (device) {
+                    device.createEventsFromMap(val.action, true)
+                    device.createEventsFromMap(val.state, true)
+                    device.setMemberBulbIDs(val.lights)
+                }
+            }
+        }
+        catch (Exception ex) {
+            log.error "Error parsing group states: ${ex}"   
         }
     }
 }
@@ -247,15 +292,21 @@ def getAllScenes() {
     asynchttpGet("parseGetAllScenesResponse", params)
 }
 
-private parseGetAllScenesResponse(resp, data) {
-    logDebug("Parsing in parseGetAllScenesResponse") 
-    def body = resp?.json
-    def scenes = [:]
-    body?.each { key, val ->
-        scenes[key] = ["name": val.name]
-        if (val.group) scenes[key] << ["group": val.group]
+private void parseGetAllScenesResponse(resp, data) {
+    logDebug("Parsing all scenes response...")    
+    if (checkIfValidResponse(resp)) {
+        try {
+            Map scenes = [:]
+            resp.json.each { key, val ->
+                scenes[key] = ["name": val.name]
+                if (val.group) scenes[key] << ["group": val.group]
+            }
+            state.allScenes = scenes
+        }
+        catch (Exception ex) {
+            log.error "Error parsing all scenes response: ${ex}"   
+        }
     }
-    state.allScenes = scenes
 }
 
 
@@ -269,23 +320,23 @@ def getAllScenesCache() {
 /** Clears cache of scene IDs/names; useful for parent app to call if trying to ensure
  * not working with old data
  */
-def clearScenesCache() {
+void clearScenesCache() {
     logDebug("Running clearScenesCache...")
-    state.allScenes = [:]
+    state.remove('allScenes')
 }
 
-def doSendEvent(eventName, eventValue) {
-    logDebug("Creating event for $eventName...")
+private doSendEvent(eventName, eventValue) {
+    //logDebug("Creating event for $eventName...")
     def descriptionText = "${device.displayName} ${eventName} is ${eventValue}"
     logDesc(descriptionText)
     def event = sendEvent(name: eventName, value: eventValue, descriptionText: descriptionText) 
     return event
 }
 
-def logDebug(str) {
+void logDebug(str) {
     if (settings.enableDebug) log.debug(str)
 }
 
-def logDesc(str) {
+void logDesc(str) {
     if (settings.enableDesc) log.info(str)
 }

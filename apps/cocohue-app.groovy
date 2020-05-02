@@ -1,6 +1,8 @@
 /**
  * ===========================  CoCoHue - Hue Bridge Integration =========================
  *
+ *  Copyright 2019-2020 Robert Morris
+ *
  *  DESCRIPTION:
  *  Community-developed Hue Bridge integration app for Hubitat, including support for lights,
  *  groups, and scenes.
@@ -20,11 +22,11 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2020-04-28 
+ *  Last modified: 2020-05-02
  *  Version: 2.0.0-beta.1
  * 
  *  Changelog:
- * // TODO: Handle SSDP with IP changes; reduce no. of child->parent calls?
+ * // TODO:  reduce no. of child->parent calls?
  *  v2.0   - New non-parent/child structure and name change; Bridge discovery; Bridge linking improvements (fewer pages);
  *           added documentation links
  *           Additiononal device features; child devices now (optionally) deleted when app uninstalled
@@ -73,12 +75,12 @@ preferences {
     page(name: "pageSelectScenes", content: "pageSelectScenes")
 }
 
-def installed() {
+void installed() {
     log.info("Installed with settings: ${settings}")
     initialize()
 }
 
-def uninstalled() {
+void uninstalled() {
     log.info("Uninstalling")
     if (!(settings['deleteDevicesOnUninstall'] == false)) {
         logDebug("Deleting child devices of this CoCoHue instance...")
@@ -90,18 +92,20 @@ def uninstalled() {
     }
 }
 
-def updated() {
+void updated() {
     log.info("Updated with settings: ${settings}")
     initialize()
 }
 
-def initialize() {
+void initialize() {
     log.debug("Initializing...")
     unschedule()
     state.remove('discoveredBridges')
     if (settings["useSSDP"] == true || settings["useSSDP"] == null) {
         log.debug("Subscribing to ssdp...")
         subscribe(location, "ssdpTerm.urn:schemas-upnp-org:device:basic:1", ssdpHandler)
+        subscribe(location, "systemStart", hubRestartHandler)
+        if (state.bridgeAuthorized) sendBridgeDiscoveryCommand()
     }
     else {
         unsubscribe() // remove or modify if ever subscribe to more than SSDP
@@ -137,7 +141,31 @@ def initialize() {
     }
 }
 
-def debugOff() {
+void sendBridgeDiscoveryCommand() {
+    sendHubCommand(new hubitat.device.HubAction("lan discovery ssdpTerm.urn:schemas-upnp-org:device:basic:1",
+                   hubitat.device.Protocol.LAN))
+    state.lastDiscoCommand = now()
+}
+
+/** Sends SSDP discovery command, optionally checking if was done in last few minutes and ignoring if so;
+    intended to be called by child devices (e.g., Bridge) if notice problems suggesting Bridge IP may have
+    changed
+*/
+void sendBridgeDiscoveryCommandIfSSDPEnabled(Boolean checkIfRecent=true) {
+    logDebug("sendBridgeDiscoveryCommandIfSSDPEnabled($checkIfRecent)")
+    if (settings["useSSDP"] == true || settings["useSSDP"] == null) {
+        // If not in the last 5 minutes:
+        if (!state.lastDiscoCommand && (now() -  state.lastDiscoCommand >= 300000)) {
+            sendBridgeDiscoveryCommand()
+        }
+    }
+}
+
+void hubRestartHandler(evt) {
+    sendBridgeDiscoveryCommandIfSSDPEnabled()
+}
+
+void debugOff() {
     log.warn("Disabling debug logging")
     app.updateSetting("enableDebug", [value:"false", type:"bool"])
 }
@@ -173,7 +201,7 @@ def pageAddBridge() {
     if (settings["useSSDP"] == true || settings["useSSDP"] == null && state.discoTryCount < 5) {
         logDebug("Subscribing to and sending SSDP discovery...")
         subscribe(location, "ssdpTerm.urn:schemas-upnp-org:device:basic:1", ssdpHandler)
-        sendHubCommand(new hubitat.device.HubAction("lan discovery ssdpTerm.urn:schemas-upnp-org:device:basic:1", hubitat.device.Protocol.LAN))
+        sendBridgeDiscoveryCommand()
     }
     String nextPageName = ((settings["useSSDP"] != false && settings["selectedDiscoveredBridge"]) || settings['bridgeIP']) ?
                           "pageLinkBridge" : "pageAddBridge"
@@ -235,9 +263,10 @@ def pageLinkBridge() {
             }
         }
     }
+    String nextPageName = (state.authTryCount >= authMaxTries) || (state.bridgeLinked && state.bridgeAuthorized) ?
+                            "pageFirstPage" : "pageLinkBridge"
     dynamicPage(name: "pageLinkBridge", refreshInterval: state.authRefreshInterval, uninstall: true, install: false,
-                nextPage: ((state.authTryCount >= authMaxTries) || (state.bridgeLinked && state.bridgeAuthorized) ?
-                            "pageFirstPage" : "pageLinkBridge")) {  
+                nextPage: nextPageName) {  
         section("Linking Hue Bridge") {
             if (!(state["bridgeAuthorized"])) {
                 log.debug("Attempting Hue Bridge authorization; attempt number ${state.authTryCount+1}")
@@ -293,6 +322,15 @@ def pageManageBridge() {
         logDebug("New scenes selected. Creating...")
         createNewSelectedSceneDevices()
     }
+    // General cleanup in case left over from discovery:
+    state.remove('authTryCount')
+    state.remove('discoTryCount')
+    // Is this too much cleanup? See if causes issues or re-pulling of info...
+    def bridge = getChildDevice("CCH/${state.bridgeID}")
+    bridge.clearBulbsCache()
+    bridge.clearGroupsCache()
+    bridge.clearScenesCache()
+
     dynamicPage(name: "pageManageBridge", uninstall: true, install: true) {  
         section("Manage Hue Bridge Devices:") {
             href(name: "hrefSelectLights", title: "Select Lights",
@@ -319,20 +357,19 @@ def pageManageBridge() {
     }
 }
 
-def pageSelectLights() {   
-    dynamicPage(name: "pageSelectLights", refreshInterval: refreshInt, uninstall: true, install: false, nextPage: "pageManageBridge") {
+def pageSelectLights() {
+    def bridge = getChildDevice("CCH/${state.bridgeID}")
+    bridge.getAllBulbs()
+    def arrNewBulbs = []
+    def bulbCache = bridge.getAllBulbsCache()
+    log.warn "pageSelectLights refreshInterval: ${bulbCache ? 0 : 6}"
+    dynamicPage(name: "pageSelectLights", refreshInterval: bulbCache ? 0 : 6, uninstall: true, install: false, nextPage: "pageManageBridge") {
         state.addedBulbs = [:]  // To be populated with lights user has added, matched by Hue ID
-        def bridge = getChildDevice("CCH/${state.bridgeID}")
         if (!bridge) {
             log.error "No Bridge device found"
             return
         }
-        bridge.getAllBulbs()
-        def refreshInt = 10
-        def arrNewBulbs = []
-        def bulbCache = bridge.getAllBulbsCache()
         if (bulbCache) {
-            refreshInt = 0
             bulbCache.each {
                 def bulbChild = getChildDevice("CCH/${state.bridgeID}/Light/${it.key}")
                 if (bulbChild) {
@@ -349,8 +386,7 @@ def pageSelectLights() {
             }
             state.addedBulbs = state.addedBulbs.sort { it.value }
         }
-        if (!bulbCache) {            
-            refreshInt = 10
+        if (!bulbCache) {
             section("Discovering bulbs/lights. Please wait...") {            
                 paragraph("Press \"Refresh\" if you see this message for an extended period of time")
                 input(name: "btnBulbRefresh", type: "button", title: "Refresh", submitOnChange: true)
@@ -365,7 +401,9 @@ def pageSelectLights() {
             section("Previously added lights") {
                 if (state.addedBulbs) {
                     state.addedBulbs.each {
-                        paragraph(it.value)
+                        paragraph(it.value, /*width: 6*/)
+                        //input(name: "btnRemove_Light_ID", type: "button", title: "Remove", width: 3)
+                        //input(name: "btnRename_Light_ID", type: "button", title: "Rename", width: 3)
                     }
                 }
                 else {
@@ -381,21 +419,20 @@ def pageSelectLights() {
     }
 }
 
-def pageSelectGroups() {
-    dynamicPage(name: "pageSelectGroups", refreshInterval: refreshInt, uninstall: true, install: false, nextPage: "pageManageBridge") {
+def pageSelectGroups() {        
+    def bridge = getChildDevice("CCH/${state.bridgeID}")
+    bridge.getAllGroups()
+    def arrNewGroups = []
+    def groupCache = bridge.getAllGroupsCache()
+    log.warn "pageSelectGroups refreshInterval: ${groupCache ? 0 : 6}"
+    dynamicPage(name: "pageSelectGroups", refreshInterval: groupCache ? 0 : 6, uninstall: true, install: false, nextPage: "pageManageBridge") {
         state.addedGroups = [:]  // To be populated with groups user has added, matched by Hue ID
-        def bridge = getChildDevice("CCH/${state.bridgeID}")
+
         if (!bridge) {
             log.error "No Bridge device found"
             return
         }
-        bridge.getAllGroups()
-        def refreshInt = 10
-        def arrNewGroups = []
-        def groupCache = bridge.getAllGroupsCache()
-
         if (groupCache) {
-            refreshInt = 0
             groupCache.each {
                 def groupChild = getChildDevice("CCH/${state.bridgeID}/Group/${it.key}")
                 if (groupChild) {
@@ -413,8 +450,7 @@ def pageSelectGroups() {
             state.addedGroups = state.addedGroups.sort { it.value }
         }
 
-        if (!groupCache) {            
-            refreshInt = 10
+        if (!groupCache) { 
             section("Discovering groups. Please wait...") {            
                 paragraph("Press \"Refresh\" if you see this message for an extended period of time")
                 input(name: "btnGroupRefresh", type: "button", title: "Refresh", submitOnChange: true)
@@ -446,24 +482,22 @@ def pageSelectGroups() {
 }
 
 def pageSelectScenes() {
-    dynamicPage(name: "pageSelectScenes", uninstall: true, install: false, nextPage: "pageManageBridge") {  
+    def bridge = getChildDevice("CCH/${state.bridgeID}")
+    bridge.getAllScenes()
+    def arrNewScenes = []
+    def sceneCache = bridge.getAllScenesCache()
+
+    def groupCache = bridge.getAllGroupsCache()
+    def grps = [:]
+    groupCache?.each { grps << [(it.key) : (it.value.name)] }
+    log.warn "pageSelectScenes refreshInterval: ${sceneCache ? 0 : 7}"
+    dynamicPage(name: "pageSelectScenes", refreshInterval: sceneCache ? 0 : 7, uninstall: true, install: false, nextPage: "pageManageBridge") {  
         state.addedScenes = [:]  // To be populated with scenes user has added, matched by Hue ID
-        def bridge = getChildDevice("CCH/${state.bridgeID}")
         if (!bridge) {
             log.error "No Bridge device found"
             return
         }
-        bridge.getAllScenes()
-        def refreshInt = 10
-        def arrNewScenes = []
-        def sceneCache = bridge.getAllScenesCache()
-
-        def groupCache = bridge.getAllGroupsCache()
-        def grps = [:]
-        groupCache?.each { grps << [(it.key) : (it.value.name)] }
-
         if (sceneCache) {
-            refreshInt = 0
             state.sceneFullNames = [:]
             sceneCache.each { sc ->
                 def sceneChild = getChildDevice("CCH/${state.bridgeID}/Scene/${sc.key}")
@@ -496,8 +530,7 @@ def pageSelectScenes() {
             state.addedScenes = state.addedScenes.sort { it.value }
         }
 
-        if (!sceneCache) {            
-            refreshInt = 10
+        if (!sceneCache) {
             section("Discovering scenes. Please wait...") {            
                 paragraph("Press \"Refresh\" if you see this message for an extended period of time")
                 input(name: "btnSceneRefresh", type: "button", title: "Refresh", submitOnChange: true)
@@ -587,7 +620,6 @@ void createNewSelectedGroupDevices() {
     app.removeSetting("newGroups")
 }
 
-
 /** Creates new Hubitat devices for new user-selected scenes on scene-selection
  * page (intended to be called after navigating away/using "Done" from that page)
  */
@@ -611,7 +643,7 @@ def createNewSelectedSceneDevices() {
         } else {
             log.error("Unable to create new scene for scene $it: ID not found on Hue Bridge")
         }
-    }  
+    }
     bridge.clearScenesCache()
     //bridge.getAllScenes()
     app.removeSetting("newScenes")
@@ -686,9 +718,9 @@ void sendBridgeInfoRequest(Boolean createBridge=true, String protocol="http", St
 private parseBridgeInfoResponse(resp, data) {
     log.debug("Parsing response from Bridge information request")
     def body = resp.xml
-    String friendlyBridgeName
     if (body?.device?.modelName?.text().contains("Philips hue bridge")) {
-        String serial = body?.device?.serialNumber?.text()
+        String friendlyBridgeName
+        String serial = body?.device?.serialNumber?.text().toUpperCase()
         if (serial) {
             log.debug("Hue Bridge serial parsed as ${serial}; getting additional device info...")
             friendlyBridgeName = body?.device?.friendlyName
@@ -696,8 +728,8 @@ private parseBridgeInfoResponse(resp, data) {
             def bridgeDevice           
             if (data?.createBridge) {
                 log.debug("Creating CoCoHue Bridge device for Brige with MAC $serial")
-                state.bridgeID = serial.drop(6).toUpperCase() // last (12-6=) 6 of MAC
-                state.bridgeMAC = serial.toUpperCase() // full MAC
+                state.bridgeID = serial.drop(6) // last (12-6=) 6 of MAC
+                state.bridgeMAC = serial // full MAC
                 try {
                     bridgeDevice = addChildDevice(childNamespace, "CoCoHue Bridge", "CCH/${state.bridgeID}", null,
                                    [label: """CoCoHue Bridge ${state.bridgeID}${friendlyBridgeName ? " ($friendlyBridgeName)" : ""}""", name: "CoCoHue Bridge"])
@@ -710,11 +742,18 @@ private parseBridgeInfoResponse(resp, data) {
                 }
                 if (!state.bridgeLinked) log.error("Unable to create Bridge device. Make sure driver installed and no Bridge device for this MAC already exists.")
             }
-            else { // createBridge = false, so must be discovery; add to list instead
-                logDebug("Adding Bridge with MAC $serial ($friendlyBridgeName) to list of discovered Bridges")
-                if (!state.discoveredBridges) state.discoveredBridges = []
-                if (!(state.discoveredBridges.any { it.containsKey(data?.ip) } )) {
-                    state.discoveredBridges.add([(data.ip): """${(body?.device?.friendlyName) ?: "Hue Bridge"} - ${serial.toUpperCase()}"""])
+            else { // createBridge = false, so either in discovery (so add to list instead) or received as part of regular app operation (check if IP address changed if used Bridge discovery)
+                if (!state.bridgeLinked) { // so in discovery
+                    logDebug("Adding Bridge with MAC $serial ($friendlyBridgeName) to list of discovered Bridges")
+                    if (!state.discoveredBridges) state.discoveredBridges = []
+                    if (!(state.discoveredBridges.any { it.containsKey(data?.ip) } )) {
+                        state.discoveredBridges.add([(data.ip): """${(body?.device?.friendlyName) ?: "Hue Bridge"} - ${serial.toUpperCase()}"""])
+                    }
+                }
+                else { // Bridge already added, so likely added with discovery; check if IP changed
+                    if (serial == state.bridgeMAC && serial != null) { // found a match for this Bridge, so update IP:
+                        if (data.ip && settings['useSSDP']) state.ipAddress = data.ip   
+                    }
                 }
             }
         } else {
@@ -725,7 +764,6 @@ private parseBridgeInfoResponse(resp, data) {
         else logDebug("No Hue Bridge found at IP address")
     }
 }
-
 
 /** Handles response from SSDP (sent to discover Bridge) */
 void ssdpHandler(evt) {
@@ -850,7 +888,7 @@ def appButtonHandler(btn) {
             // Just want to resubmit page, so nothing
             break        
         case "btnDiscoBridgeRefresh":
-            sendHubCommand(new hubitat.device.HubAction("lan discovery ssdpTerm.urn:schemas-upnp-org:device:basic:1", hubitat.device.Protocol.LAN))
+            sendBridgeDiscoveryCommand()
             break
         default:
             log.warn "Unhandled app button press: $btn"
