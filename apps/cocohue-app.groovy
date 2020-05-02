@@ -105,7 +105,9 @@ void initialize() {
         log.debug("Subscribing to ssdp...")
         subscribe(location, "ssdpTerm.urn:schemas-upnp-org:device:basic:1", ssdpHandler)
         subscribe(location, "systemStart", hubRestartHandler)
-        if (state.bridgeAuthorized) sendBridgeDiscoveryCommand()
+        schedule("${Math.round(Math.random() * 60)} ${Math.round(Math.random() * 60)} 6 ? * * *",
+                  periodicSendDiscovery)
+        if (state.bridgeAuthorized) sendBridgeDiscoveryCommand() // do discovery if user clicks 'Done'
     }
     else {
         unsubscribe() // remove or modify if ever subscribe to more than SSDP
@@ -163,6 +165,11 @@ void sendBridgeDiscoveryCommandIfSSDPEnabled(Boolean checkIfRecent=true) {
 
 void hubRestartHandler(evt) {
     sendBridgeDiscoveryCommandIfSSDPEnabled()
+}
+
+// Scheduled job handler; if using SSDP, schedules to run once a day just in case
+void periodicSendDiscovery(evt) {
+    sendBridgeDiscoveryCommandIfSSDPEnabled(true)
 }
 
 void debugOff() {
