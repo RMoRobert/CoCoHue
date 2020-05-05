@@ -14,7 +14,7 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2020-05-04
+ *  Last modified: 2020-05-05
  *  Version: 2.0.0-preview.1
  *
  *  Changelog:
@@ -84,7 +84,7 @@ def refresh() {
         timeout: 15
         ]
     try {
-        asynchttpGet("parseLightStates", lightParams, lightParams)
+        asynchttpGet("parseLightStates", lightParams)
         asynchttpGet("parseGroupStates", groupParams)
     } catch (Exception ex) {
         log.error "Error in refresh: $ex"
@@ -181,7 +181,7 @@ void clearBulbsCache() {
 /** Callback method that handles updating attributes on child light
  *  devices when Bridge refreshed
  */
-private void parseLightStates(resp, data=null) { 
+private void parseLightStates(resp, data) { 
     logDebug("Parsing light states from Bridge...")
     if (checkIfValidResponse(resp)) {
         try {
@@ -257,7 +257,7 @@ private void parseGroupStates(resp, data) {
     logDebug("Parsing group states from Bridge...")    
     if (checkIfValidResponse(resp)) {
         try {
-            resp.json.each.each { id, val ->
+            resp.json.each { id, val ->
                 def device = parent.getChildDevice("${device.deviceNetworkId}/Group/${id}")
                 if (device) {
                     device.createEventsFromMap(val.action, true)
