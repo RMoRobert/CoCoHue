@@ -799,8 +799,9 @@ private String convertHexToIP(hex) {
      hubitat.helper.HexUtils.hexStringToInt(hex[6..7])].join(".")
 }
 
-/** Returns map containing Bridge username, IP, and full HTTP post/port, intended to be
- *  called by child devices so they can send commands to the Hue Bridge API using info
+/**
+ * Returns map containing Bridge username, IP, and full HTTP post/port, intended to be
+ * called by child devices so they can send commands to the Hue Bridge API using info
  */
 Map getBridgeData(String protocol="http", Integer port=80) {
     logDebug("Running getBridgeData()...")
@@ -810,8 +811,9 @@ Map getBridgeData(String protocol="http", Integer port=80) {
     return map
 }
 
-/** Calls refresh() method on Bridge child, intended to be called at user-specified
- *  polling interval
+/**
+ * Calls refresh() method on Bridge child, intended to be called at user-specified
+ * polling interval
  */
 private void refreshBridge() {
     def bridge = getChildDevice("CCH/${state.bridgeID}")
@@ -821,6 +823,22 @@ private void refreshBridge() {
     }
     logDebug("Polling Bridge...")
     bridge.refresh()
+}
+
+/**
+ * Sets "status" attribute on Bridge child device (intended to be called from child light/group scene devices with
+ * successful or unsuccessful commands to Bridge as needed
+ * @param setToOnline Sets status to "Online" if true, else to "Offline"
+ */
+void setBridgeStatus(setToOnline=true) {
+    def bridge = getChildDevice("CCH/${state.bridgeID}")
+    if (!bridge) {
+            log.error "No Bridge device found; could not set Bridge status"
+            return
+    }
+    String value = setToOnline ? 'Online' : 'Offline'
+    logDebug("  Setting Bridge status to ${value}...")
+    if (bridge.currentValue("status") != value) bridge.doSendEvent("status", value)
 }
 
 /**
@@ -838,12 +856,12 @@ private void refreshBridge() {
  }
 
  /**
- *  Intended to be called by bulb child device when state is manipulated in a way that would affect
- *  group and user has enabled this option. Updates group device states if this bulb ID is found as a
- *  member of that group (so doesn't need to wait for next poll to update)
- *  @param states Map of states in Hue Bridge format (e.g., ["on": true])
- *  @param id Hue bulb ID to search all groups for (will update group if bulb found in group)
- */
+  *  Intended to be called by bulb child device when state is manipulated in a way that would affect
+  *  group and user has enabled this option. Updates group device states if this bulb ID is found as a
+  *  member of that group (so doesn't need to wait for next poll to update)
+  *  @param states Map of states in Hue Bridge format (e.g., ["on": true])
+  *  @param id Hue bulb ID to search all groups for (will update group if bulb found in group)
+  */
  void updateGroupStatesFromBulb(Map states, id) {
     logDebug("Searching for group devices containing bulb $id to update group state after bulb state change...")
     //TODO: There is a better, Groovier way to do this search...
