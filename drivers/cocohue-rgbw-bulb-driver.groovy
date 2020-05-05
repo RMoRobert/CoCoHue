@@ -512,7 +512,7 @@ void parseSendCommandResponse(resp, data) {
         logDebug("  Bridge response valid; creating events from data map")          
         createEventsFromMap(data)
         if ((data.containsKey("on") || data.containsKey("bri")) && settings["updateGroups"]) {
-            parent.updateGroupStatesFromBulb(cmd, getHueDeviceNumber())
+            parent.updateGroupStatesFromBulb(data, getHueDeviceNumber())
         }
     }
     else {
@@ -645,7 +645,7 @@ def setGenericTempName(temp){
 /**
  * Scales Hubitat's 1-100 brightness levels to Hue Bridge's 1-254
  */
-private scaleBriToBridge(hubitatLevel) {
+private Integer scaleBriToBridge(hubitatLevel) {
     def scaledLevel =  hubitatLevel == 1 ? 1 : hubitatLevel.toBigDecimal() / 100 * 254
     return Math.round(scaledLevel)
 }
@@ -653,20 +653,20 @@ private scaleBriToBridge(hubitatLevel) {
 /**
  * Scales Hue Bridge's 1-254 brightness levels to Hubitat's 1-100
  */
-private scaleBriFromBridge(bridgeLevel) {
+private Integer scaleBriFromBridge(bridgeLevel) {
     def scaledLevel = bridgeLevel.toBigDecimal() / 254 * 100
     if (scaledLevel < 1) scaledLevel = 1
     return Math.round(scaledLevel)
 }
 
-private scaleHueToBridge(hubitatLevel) {
+private Integer scaleHueToBridge(hubitatLevel) {
     def scaledLevel = Math.round(hubitatLevel.toBigDecimal() / (hiRezHue ? 360 : 100) * 65535)
     if (scaledLevel < 0) scaledLevel = 0
     else if (scaledLevel > 65535) scaledLevel = 65535
     return scaledLevel
 }
 
-private scaleHueFromBridge(bridgeLevel) {
+private Integer scaleHueFromBridge(bridgeLevel) {
     def scaledLevel = Math.round(bridgeLevel.toBigDecimal() / 65535 * (hiRezHue ? 360 : 100))
     if (scaledLevel < 0) scaledLevel = 0
     else if (scaledLevel > 360) scaledLevel = 360
@@ -674,7 +674,7 @@ private scaleHueFromBridge(bridgeLevel) {
     return scaledLevel
 }
 
-private scaleSatToBridge(hubitatLevel) {
+private Integer scaleSatToBridge(hubitatLevel) {
     def scaledLevel = Math.round(hubitatLevel.toBigDecimal() / 100 * 254)
     if (scaledLevel < 0) scaledLevel = 0
     else if (scaledLevel > 254) scaledLevel = 254
@@ -682,7 +682,7 @@ private scaleSatToBridge(hubitatLevel) {
     return scaleHueFromBridge()
 }
 
-private scaleSatFromBridge(bridgeLevel) {
+private Integer scaleSatFromBridge(bridgeLevel) {
     def scaledLevel = Math.round(bridgeLevel.toBigDecimal() / 254 * 100)
     if (scaledLevel < 0) scaledLevel = 0
     else if (scaledLevel > 100) scaledLevel = 100

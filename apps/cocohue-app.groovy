@@ -337,6 +337,10 @@ def pageManageBridge() {
     bridge.clearBulbsCache()
     bridge.clearGroupsCache()
     bridge.clearScenesCache()
+    state.remove('sceneFullNames')
+    state.remove('addedBulbs')
+    state.remove('addedGroups')
+    state.remove('addedScenes')
 
     dynamicPage(name: "pageManageBridge", uninstall: true, install: true) {  
         section("Manage Hue Bridge Devices:") {
@@ -431,7 +435,6 @@ def pageSelectGroups() {
     bridge.getAllGroups()
     def arrNewGroups = []
     def groupCache = bridge.getAllGroupsCache()
-    log.warn "pageSelectGroups refreshInterval: ${groupCache ? 0 : 6}"
     dynamicPage(name: "pageSelectGroups", refreshInterval: groupCache ? 0 : 6, uninstall: true, install: false, nextPage: "pageManageBridge") {
         state.addedGroups = [:]  // To be populated with groups user has added, matched by Hue ID
 
@@ -497,7 +500,6 @@ def pageSelectScenes() {
     def groupCache = bridge.getAllGroupsCache()
     def grps = [:]
     groupCache?.each { grps << [(it.key) : (it.value.name)] }
-    log.warn "pageSelectScenes refreshInterval: ${sceneCache ? 0 : 7}"
     dynamicPage(name: "pageSelectScenes", refreshInterval: sceneCache ? 0 : 7, uninstall: true, install: false, nextPage: "pageManageBridge") {  
         state.addedScenes = [:]  // To be populated with scenes user has added, matched by Hue ID
         if (!bridge) {
@@ -560,7 +562,7 @@ def pageSelectScenes() {
             }
             section("Rediscover Scenes") {
                 paragraph("If you added new scenes to the Hue Bridge and do not see them above, if room/zone names are " +
-                          "missing from scenes (if assigned to one), or if you changed the \"Include scenes...\" setting above, " +
+                          "missing from scenes (if assigned to one), or if you changed the \"Allow adding scenes not associated with rooms/zones...\" setting, " +
                           "click/tap the button below to retrieve new information from the Bridge.")
                 input(name: "btnSceneRefresh", type: "button", title: "Refresh Scene List", submitOnChange: true)
             }

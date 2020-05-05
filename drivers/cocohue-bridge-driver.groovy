@@ -14,8 +14,8 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2020-05-02
- *  Version: 2.0.0-beta.1
+ *  Last modified: 2020-05-04
+ *  Version: 2.0.0-preview.1
  *
  *  Changelog:
  * 
@@ -151,7 +151,7 @@ private void parseGetAllBulbsResponse(resp, data) {
     if (checkIfValidResponse(resp)) {
         try {
             Map bulbs = [:]
-            res.json..each { key, val ->
+            resp.json.each { key, val ->
                 bulbs[key] = [name: val.name, type: val.type]
             }
             state.allBulbs = bulbs
@@ -225,7 +225,7 @@ private void parseGetAllGroupsResponse(resp, data) {
             resp.json.each { key, val ->
                 groups[key] = [name: val.name, type: val.type]
             }
-            state.allGroups = bulbs
+            state.allGroups = groups
         }
         catch (Exception ex) {
             log.error "Error parsing all groups response: $ex"
