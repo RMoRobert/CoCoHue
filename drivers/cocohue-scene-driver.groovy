@@ -122,7 +122,7 @@ def off() {
                 body: cmd,
                 timeout: 15
             ]
-            asynchttpPut("parseSendCommandResponse", params, [attribute: 'switch', value: 'on'])
+            asynchttpPut("parseSendCommandResponse", params, [attribute: 'switch', value: 'off'])
             logDebug("Command sent to Bridge: $cmd")
         }
     } else if (state.type == "LightScene") {
@@ -163,7 +163,7 @@ def off() {
   * @param data Map with keys 'attribute' and 'value' containing event data to send if successful (e.g., [attribute: 'switch', value: 'off'])
   */
 void parseSendCommandResponse(resp, data) {
-    logDebug("Response from Bridge: ${resp.status}; data = $data")
+    logDebug("Response from Bridge: ${resp.status}; data from app = $data")
     if (checkIfValidResponse(resp) && data?.attribute != null && data?.value != null) {
         logDebug("  Bridge response valid; running creating events")          
         doSendEvent(data.attribute, data.value)
