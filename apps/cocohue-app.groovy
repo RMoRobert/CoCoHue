@@ -22,8 +22,8 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2020-05-02
- *  Version: 2.0.0-beta.1
+ *  Last modified: 2020-05-05
+ *  Version: 2.0.0-preview.1
  * 
  *  Changelog:
  * // TODO:  reduce no. of child->parent calls?
