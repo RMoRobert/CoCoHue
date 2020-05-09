@@ -8,7 +8,7 @@
  *  groups, and scenes.
  
  *  TO INSTALL:
- *  See documentation on Hubitat Community forum.
+ *  See documentation on Hubitat Community forum or README.MD file in GitHub repo
  *
  *  Copyright 2019-2020 Robert Morris
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
@@ -22,7 +22,7 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2020-05-06
+ *  Last modified: 2020-05-09
  *  Version: 2.0.0-preview.2
  * 
  *  Changelog:

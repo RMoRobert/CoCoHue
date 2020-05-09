@@ -3,4 +3,3 @@ apps/.DS_Store
 drivers/.DS_Store
 .DS_Store
 dev/*
-apps/test-app.groovy
