@@ -22,8 +22,8 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2020-05-09
- *  Version: 2.0.0-preview.2
+ *  Last modified: 2020-05-10
+ *  Version: 2.0.0-preview.3
  * 
  *  Changelog:
  *  v2.0   - New non-parent/child structure and name change; Bridge discovery; Bridge linking improvements (fewer pages);
@@ -157,7 +157,8 @@ void sendBridgeDiscoveryCommandIfSSDPEnabled(Boolean checkIfRecent=true) {
     logDebug("sendBridgeDiscoveryCommandIfSSDPEnabled($checkIfRecent)")
     if (settings["useSSDP"] == true || settings["useSSDP"] == null) {
         // If not in the last 5 minutes:
-        if (!state.lastDiscoCommand && (now() -  state.lastDiscoCommand >= 300000)) {
+        // TODO: Gradually increase this interval if clear been offline for a while?
+        if (state.lastDiscoCommand && (now() -  state.lastDiscoCommand >= 300000)) {
             sendBridgeDiscoveryCommand()
         }
     }
