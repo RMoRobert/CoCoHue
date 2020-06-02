@@ -158,7 +158,7 @@ void sendBridgeDiscoveryCommandIfSSDPEnabled(Boolean checkIfRecent=true) {
     if (settings["useSSDP"] == true || settings["useSSDP"] == null) {
         // If not in the last 5 minutes:
         // TODO: Gradually increase this interval if clear been offline for a while?
-        if (state.lastDiscoCommand && (now() -  state.lastDiscoCommand >= 300000)) {
+        if (!(state.lastDiscoCommand) || (now() -  state.lastDiscoCommand >= 300000)) {
             sendBridgeDiscoveryCommand()
         }
     }
