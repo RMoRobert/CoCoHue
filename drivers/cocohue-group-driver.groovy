@@ -14,8 +14,8 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2020-05-09
- *  Version: 2.0.0-preview.2
+ *  Last modified: 2020-06-02
+ *  Version: 2.0.0-preview.3
  * 
  *  Changelog:
  * 
@@ -516,7 +516,7 @@ void parseSendCommandResponse(resp, data) {
         logDebug("  Bridge response valid; creating events from data map")          
         createEventsFromMap(data)
         if ((data.containsKey("on") || data.containsKey("bri")) && settings["updateBulbs"]) {
-            parent.updateMemberBulbStatesFromGroup(data, state.memberBulbs)
+            parent.updateMemberBulbStatesFromGroup(data, state.memberBulbs, device.getDeviceNetworkId().endsWith('/0'))
         }
     }
     else {
@@ -583,7 +583,7 @@ def configure() {
 }
 
 // Hubiat-provided color/name mappings
-def setGenericName(hue){
+void setGenericName(hue){
     def colorName
     hue = hue.toInteger()
     if (!hiRezHue) hue = (hue * 3.6)
@@ -622,7 +622,7 @@ def setGenericName(hue){
 }
 
 // Hubitat-provided ct/name mappings
-def setGenericTempName(temp){
+void setGenericTempName(temp){
     if (!temp) return
     def genericName
     def value = temp.toInteger()
@@ -694,21 +694,31 @@ private Integer scaleSatFromBridge(bridgeLevel) {
  *  bulb states (e.g., on, off, level, etc.) when group state changed so this info propogates faster than
  *  polling (or if polling disabled)
  */ 
-def setMemberBulbIDs(List ids) {
+void setMemberBulbIDs(List ids) {
     state.memberBulbs = ids
 }
 
 /**
  *  Returns Hue IDs of member bulbs (see setMemberBulbIDs for use case; exposed for use by bridge child app)
  */
-def getMemberBulbIDs() {
+List getMemberBulbIDs() {
     return state.memberBulbs
 }
 
-def logDebug(str) {
+/**
+ * Sets all group attribute values to something, intended to be called when device initially created to avoid
+ * missing attribute values (may cause problems with GH integration, etc. otherwise). Default values are
+ * approximately warm white and off.
+ */
+private void setDefaultAttributeValues() {
+    Map defaultValues = [any_on: false, bri: 254, hue: 8593, sat: 121, ct: 343 ]
+
+}
+
+void logDebug(str) {
     if (settings.enableDebug) log.debug(str)
 }
 
-def logDesc(str) {
+void logDesc(str) {
     if (settings.enableDesc) log.info(str)
 }

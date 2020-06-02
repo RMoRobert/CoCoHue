@@ -12,6 +12,9 @@ integration. It provides several advantages, including:
 
 For discussion and more information, visit the <a href="https://community.hubitat.com/t/release-cocohue-hue-bridge-integration-including-scenes/27978">Hubitat Community forum thread</a>.
 
+<b>NOTE</b>: This repository hosts the test/developmenet version of CoCoHue. Most users will want to install the production version
+from <a href="https://github.com/HubitatCommunity/CoCoHue">https://github.com/HubitatCommunity/CoCoHue</a> instead.
+
 ## To Install (Manual Method)
 1. Back up your hub and save a local copy before proceeding.
 
@@ -63,7 +66,7 @@ updated. (Both are optional; the former direction is on by default and the latte
 stock integration, CoCoHue considers a group when any (not all) members are on. This is consistent with Hue app
 behavior and makes prestaging options make more sense when using both. It also means both bulbs and groups should get
 updated without polling when either is mannipulated, though it is recommended to configure some polling interval
-regardless.
+regardless. Additionally, an "All Hue Lights" group is available to add if desired.
 
 3. Color loop effect: to fit in with Hubitat's "Light Effects" capability, Hue's only effect, `colorloop`, is implemented using
 this capability and the command it uses, "Set Effect." Color loop is effect `1`. It can be activated by calling `setEffect(1)`.
