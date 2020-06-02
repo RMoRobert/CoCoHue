@@ -82,6 +82,7 @@ def installed(){
     log.debug "Installed..."
     def le = new groovy.json.JsonBuilder(lightEffects)
     sendEvent(name: "lightEffects", value: le)
+    setDefaultAttributeValues()
     initialize()
 }
 
@@ -711,7 +712,9 @@ List getMemberBulbIDs() {
  * approximately warm white and off.
  */
 private void setDefaultAttributeValues() {
-    Map defaultValues = [any_on: false, bri: 254, hue: 8593, sat: 121, ct: 343 ]
+    logDebug("Setting group device states to sensibile default values...")
+    Map defaultValues = [any_on: false, bri: 254, hue: 8593, sat: 121, ct: 370 ]
+    createEventsFromMap(defaultValues)
 
 }
 
