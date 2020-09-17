@@ -40,6 +40,10 @@
  *
  */ 
  
+
+ // TODO: Hue/Hubitat name matching? Increase timeout gradually for missing Bridge?
+
+
 definition(
     name: "CoCoHue (Parent App)",
     namespace: "RMoRobert",

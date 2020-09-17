@@ -14,8 +14,8 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2020-06-02
- *  Version: 2.0.0-preview.3
+ *  Last modified: 2020-09-16
+ *  Version: 2.0.0-preview.5
  *
  *  Changelog:
  * 
@@ -98,18 +98,6 @@ def refresh() {
   */
 private Boolean checkIfValidResponse(resp) {
     logDebug("Checking if valid HTTP response/data from Bridge...")
-/*
-    // TODO: TEST THESE UNDER DIFFERENT CONDITIONS. REMOVE BEFORE PRODUUCTION.
-    log.trace "00 hasError = ${resp?.hasError()}"
-    try { if (resp?.hasError()) log.trace "01 getErrorData = ${resp?.getErrorData()}" } catch (ex) { log.trace "getErrorData failed 01" }
-    try { if (resp?.hasError()) log.trace "02 getErrorJson = ${resp?.getErrorJson()}" } catch (ex) { log.trace "getErrorJson failed 02" }
-    try { if (resp?.hasError()) log.trace "03 getErrorXml = ${resp?.getErrorXml()}" } catch (ex) { log.trace "getErrorXml failed 03" }
-    try { log.trace "04 getJson = ${resp?.getJson()}" } catch (ex) { log.trace "getJson failed 04" }
-    try { log.trace "05 getXml = ${resp?.getXml()}" } catch (ex) { log.trace "getXml failed 05" }
-    try { log.trace "06 getData = ${resp?.getData()}" } catch (ex) { log.trace "getData failed 06" }
-    try { log.trace "07 getHeaders = ${resp?.getHeaders()}" } catch (ex) { log.trace "getHeaders failed 07" }
-*/
-
     Boolean isOK = true
     if (resp?.hasError()) {
         log.warn "Error in Bridge response. HTTP ${resp.status}."
@@ -135,6 +123,7 @@ private Boolean checkIfValidResponse(resp) {
         if (resp?.status >= 400) parent.sendBridgeDiscoveryCommandIfSSDPEnabled(true) // maybe IP changed, so attempt rediscovery 
     }
     if (device.currentValue("status") != (isOK ? "Online" : "Offline")) doSendEvent("status", (isOK ? "Online" : "Offline"))
+    logDebug("Reponse ${isOK ? 'valid' : 'invalid'}")
     return isOK
 }
 
@@ -167,6 +156,7 @@ private void parseGetAllBulbsResponse(resp, data) {
                 bulbs[key] = [name: val.name, type: val.type]
             }
             state.allBulbs = bulbs
+            logDebug("  All bulbs received from Bridge: $bulbs")
         }
         catch (Exception ex) {
             log.error "Error parsing all bulbs response: $ex"
@@ -202,7 +192,7 @@ private void parseLightStates(resp, data) {
             if (device) {
                 device.createEventsFromMap(val.state, true)
             }
-        }            
+        }
         if (device.currentValue("status") != "Online") doSendEvent("status", "Online")
         } catch (Exception ex) {
             log.error "Error parsing light states: ${ex}"           
@@ -237,8 +227,9 @@ private void parseGetAllGroupsResponse(resp, data) {
             resp.json.each { key, val ->
                 groups[key] = [name: val.name, type: val.type]
             }
-            if (groups) groups[0] = [name: "All Hue Lights", type:  "LightGroup"] // add "all Hue lights" group, ID 0
+            groups[0] = [name: "All Hue Lights", type:  "LightGroup"] // add "all Hue lights" group, ID 0
             state.allGroups = groups
+            logDebug("  All groups received from Bridge: $groups")
         }
         catch (Exception ex) {
             log.error "Error parsing all groups response: $ex"
@@ -319,6 +310,7 @@ private void parseGetAllScenesResponse(resp, data) {
                 if (val.group) scenes[key] << ["group": val.group]
             }
             state.allScenes = scenes
+            logDebug("  All scenes received from Bridge: $scenes")
         }
         catch (Exception ex) {
             log.error "Error parsing all scenes response: ${ex}"   
