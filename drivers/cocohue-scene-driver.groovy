@@ -20,8 +20,9 @@
  *  Changelog:
  * 
  *  v2.0    - Improved HTTP error handling; attribute events now generated only after hearing back from Bridge;
-              Bridge online/offline status improvements; bug fix for off() with light- or group-device-less scenes
-              Added options for scene "switch" attribute (on/off) behavior
+ *            Bridge online/offline status improvements; bug fix for off() with light- or group-device-less scenes
+ *            Added options for scene "switch" attribute (on/off) behavior
+ *            Added options for optional Bridge refresh on scene on/off or push (activation) commands 
  *  v1.9    - Added off() functionality
  *  v1.7    - Added configure() per Capability requirement
  *  v1.5b   - Initial public release
@@ -40,12 +41,17 @@ metadata {
    }
        
    preferences {
-      input(name: "onBehavior", type: "enum", title: "When this scene is activated...",
+      input(name: "onPropagation", type: "enum", title: "Scene \"on\"/\"off\" behavior: when this scene is activated...",
          options: [["none": "Do not manipulate other scene device states"],
                    ["groupScenesOff": "Mark other scenes for this group as off (if GroupScene)"],
                    ["allScenesOff": "Mark all other CoCoHue scenes as off"],
                    ["autoOff": "Automatically mark as off in 5 seconds"]],
          defaultValue: "groupScenesOff")
+      input(name: "onRefresh", type: "enum", title: "Bridge refresh on activation: when this scene is activated or receives \"off\" command...",
+         options: [["none": "Do not refresh Bridge"],
+                   ["1000": "Refresh Bridge device in 1s"],
+                   ["5000": "Refrehs Bridge device in 5s"]],
+         defaultValue: "none")
       input(name: "enableDebug", type: "bool", title: "Enable debug logging", defaultValue: true)
       input(name: "enableDesc", type: "bool", title: "Enable descriptionText logging", defaultValue: true)
     }
@@ -109,6 +115,9 @@ def on() {
       timeout: 15
       ]
    asynchttpPut("parseSendCommandResponse", params, [attribute: 'switch', value: 'on'])
+   if (settings["onRefresh"] == "1000" || settings["onRefresh"] == "5000") {
+      parent.runInMillis(settings["onRefresh"] as Integer, "refreshBridge")
+   }
    logDebug("Command sent to Bridge: $cmd")
 }
 
@@ -163,8 +172,10 @@ def off() {
                asynchttpPut("parseSendCommandResponse", params)
                logDebug("Command sent to Bridge: $cmd")
          }
+      }      
+      if (settings["onRefresh"] == "1000" || settings["onRefresh"] == "5000") {
+         parent.runInMillis(settings["onRefresh"] as Integer, "refreshBridge")
       }
-
    }
    else {
       log.warn "No off() action available for scene $device.displayName"
@@ -183,17 +194,17 @@ void parseSendCommandResponse(resp, data) {
       logDebug("  Bridge response valid; running creating events")
       doSendEvent(data.attribute, data.value)   
       if (data?.attribute == "switch" && data?.value == "on") {
-         if (settings["onBehavior"] == "groupScenesOff") {
+         if (settings["onPropagation"] == "groupScenesOff") {
             parent.updateSceneStateToOffForGroup(state.group ?: "0", device.deviceNetworkId)
          }
-         else if (settings["onBehavior"] == "allScenesOff") {
+         else if (settings["onPropagation"] == "allScenesOff") {
             parent.updateSceneStateToOffForGroup("0", device.deviceNetworkId)
          }
-         else if (settings["onBehavior"] == "autoOff") {
+         else if (settings["onPropagation"] == "autoOff") {
             runIn(5, autoOffHandler)
          }
          else {
-            logDebug("No scene onBehavior configured; leaving other scene states as-is")
+            logDebug("No scene onPropagation configured; leaving other scene states as-is")
          }
       }
       else {
@@ -240,7 +251,7 @@ private Boolean checkIfValidResponse(resp) {
 
 def push(btnNum) {
    on()
-   doSendEvent("pushed", "1", null, true)
+   doSendEvent("pushed", 1, null, true)
 }
 
 def doSendEvent(eventName, eventValue, eventUnit=null, forceStateChange=false) {
