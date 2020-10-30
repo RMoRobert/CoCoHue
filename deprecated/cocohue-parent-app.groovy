@@ -39,10 +39,6 @@
  *  v2.0 - Deprecated parent app, but you can continue using if it was previously set up this way (see comments or docs for how)
  *
  */ 
- 
-
- // TODO: Hue/Hubitat name matching? Increase timeout gradually for missing Bridge?
-
 
 definition(
     name: "CoCoHue (Parent App)",
