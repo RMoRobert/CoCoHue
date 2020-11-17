@@ -365,7 +365,7 @@ def createEventsFromMap(Map bridgeCommandMap = state.nextCmd, Boolean isFromBrid
                eventUnit = null                
                if (device.currentValue(eventName) != eventValue) {
                   doSendEvent(eventName, eventValue, eventUnit)                  
-                  if (eventValue == "off" && settings["updateScenes"]) {
+                  if (eventValue == "off" && settings["updateScenes"] != false) {
                      parent.updateSceneStateToOffForGroup(getHueDeviceNumber())
                   }
                }
@@ -526,7 +526,7 @@ void parseSendCommandResponse(resp, data) {
       if ((data.containsKey("on") || data.containsKey("bri")) && settings["updateBulbs"]) {
          parent.updateMemberBulbStatesFromGroup(data, state.memberBulbs, device.getDeviceNetworkId().endsWith('/0'))
       }
-      if (data["on"] == false && settings["updateScenes"]) {
+      if (data["on"] == false && settings["updateScenes"] != false) {
          parent.updateSceneStateToOffForGroup(getHueDeviceNumber())
       }
    }
