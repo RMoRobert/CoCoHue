@@ -14,11 +14,12 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2020-10-29
- *  Version: 2.0.0
+ *  Last modified: 2020-11-17
+ *  Version: 2.0.1
  * 
  *  Changelog:
  * 
+ * v2.0.1   - Reduced info logging when state didn't change
  *  v2.0    - Improved HTTP error handling; attribute events now generated only after hearing back from Bridge;
  *            Bridge online/offline status improvements; bug fix for off() with light- or group-device-less scenes
  *            Added options for scene "switch" attribute (on/off) behavior
@@ -192,8 +193,8 @@ void parseSendCommandResponse(resp, data) {
    logDebug("Response from Bridge: ${resp.status}; data from app = $data")
    if (checkIfValidResponse(resp) && data?.attribute != null && data?.value != null) {
       logDebug("  Bridge response valid; running creating events")
-      doSendEvent(data.attribute, data.value)   
-      if (data?.attribute == "switch" && data?.value == "on") {
+      if (device.currentValue(data.attribute) != data.value) doSendEvent(data.attribute, data.value)   
+      if (data.attribute == "switch" && data.value == "on") {
          if (settings["onPropagation"] == "groupScenesOff") {
             parent.updateSceneStateToOffForGroup(state.group ?: "0", device.deviceNetworkId)
          }
