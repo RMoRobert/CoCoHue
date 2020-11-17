@@ -14,11 +14,11 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2020-10-29
- *  Version: 2.0.0
+ *  Last modified: 2020-11-16
+ *  Version: 2.0.1
  * 
  *  Changelog:
- * 
+ * *v2.0.1  - (Beta) GroupScenes for this group will now also be marked as off (if option enabled) when Bridge reports all group bulbs as off instead of only when off() sent
  *  v2.0    - Added startLevelChange rate option; improved HTTP error handling; attribute events now generated
  *            only after hearing back from Bridge; Bridge online/offline status improvements
  *  v1.9    - Parse xy as ct (previously did rgb but without parsing actual color)
@@ -340,20 +340,21 @@ def addToNextBridgeCommand(Map cmdToAdd, boolean clearFirst=false) {
  * @param isFromBridge Set to true if this is data read from Hue Bridge rather than intended to be sent
  *  to Bridge; if true, will ignore differences for prestaged attributes if switch state is off
  */
-def createEventsFromMap(Map bridgeCommandMap = state.nextCmd, boolean isFromBridge = false) {
+def createEventsFromMap(Map bridgeCommandMap = state.nextCmd, Boolean isFromBridge = false) {
    if (!bridgeCommandMap) {
       logDebug("createEventsFromMap called but map command empty; exiting")
       return
    }
-   def bridgeMap = bridgeCommandMap
+   Map bridgeMap = bridgeCommandMap
    logDebug("Preparing to create events from map${isFromBridge ? ' from Bridge' : ''}: ${bridgeMap}")
-   def eventName, eventValue, eventUnit, descriptionText
-   def colorMode = bridgeMap["colormode"]
+   String eventName, eventUnit, descriptionText
+   def eventValue // could be string or number
+   String colorMode = bridgeMap["colormode"]
    if (isFromBridge && bridgeMap["colormode"] == "xy") {
       colorMode == "ct"
       logDebug("In XY mode but parsing as CT")
    }
-   boolean isOn = bridgeMap["any_on"]
+   Boolean isOn = bridgeMap["any_on"]
    bridgeMap.each {
       switch (it.key) {
          case "on":
@@ -362,7 +363,12 @@ def createEventsFromMap(Map bridgeCommandMap = state.nextCmd, boolean isFromBrid
                eventName = "switch"
                eventValue = it.value ? "on" : "off"
                eventUnit = null                
-               if (device.currentValue(eventName) != eventValue) doSendEvent(eventName, eventValue, eventUnit)
+               if (device.currentValue(eventName) != eventValue) {
+                  doSendEvent(eventName, eventValue, eventUnit)                  
+                  if (eventValue == "off" && settings["updateScenes"]) {
+                     parent.updateSceneStateToOffForGroup(getHueDeviceNumber())
+                  }
+               }
                break
          case "bri":
                eventName = "level"
@@ -622,7 +628,7 @@ void setGenericName(hue){
 }
 
 // Hubitat-provided ct/name mappings
-void setGenericTempName(temp){
+void setGenericTempName(temp) {
    if (!temp) return
    def genericName
    def value = temp.toInteger()
