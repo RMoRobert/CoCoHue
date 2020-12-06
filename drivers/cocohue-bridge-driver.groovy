@@ -23,8 +23,10 @@
  *  v1.0    - Initial Release
  */ 
 
+ // TODO: Parse sensor states on refresh, or consider separate interval for each
+
 metadata {
-   definition (name: "CoCoHue Bridge", namespace: "RMoRobert", author: "Robert Morris", importUrl: "https://raw.githubusercontent.com/RMoRobert/CoCoHue/master/drivers/cocohue-bridge-driver.groovy") {
+   definition (name: "CoCoHue Bridge", namespace: "RMoRobert", author: "Robert Morris", importUrl: "https://raw.githubusercontent.com/HubitatCommunity/RMoRobert/master/drivers/cocohue-bridge-driver.groovy") {
       capability "Actuator"
       capability "Refresh"
       attribute "status", "string"
@@ -78,9 +80,16 @@ void refresh() {
       contentType: 'application/json',
       timeout: 15
       ]
+   Map sensorParams = [
+      uri: data.fullHost,
+      path: "/api/${data.username}/sensors",
+      contentType: 'application/json',
+      timeout: 15
+      ]
    try {
       asynchttpGet("parseLightStates", lightParams)
       asynchttpGet("parseGroupStates", groupParams)
+      asynchttpGet("parseSensorStates", sensorParams)
    } catch (Exception ex) {
       log.error "Error in refresh: $ex"
    }
@@ -313,7 +322,6 @@ private void parseGetAllScenesResponse(resp, data) {
    }
 }
 
-
 /** Intended to be called from parent Bridge Child app to retrive previously
  *  requested list of scenes
  */
@@ -327,6 +335,104 @@ Map getAllScenesCache() {
 void clearScenesCache() {
    logDebug("Running clearScenesCache...")
    state.remove('allScenes')
+}
+
+
+// ------------ SENSORS ------------
+
+/** Requests list of all sensors from Hue Bridge; updates
+ *  allSensors in state when finished. (Filters down to only Hue
+ *  Motion sensors.) Intended to be called during sensor discovery in app.
+ */
+void getAllSensors() {
+   logDebug("Getting sensor list from Bridge...")
+   Map<String,String> data = parent.getBridgeData()
+   Map params = [
+      uri: data.fullHost,
+      path: "/api/${data.username}/sensors",
+      contentType: "application/json",
+      timeout: 15
+      ]
+   asynchttpGet("parseGetAllSensorsResponse", params)
+}
+
+private void parseGetAllSensorsResponse(resp, data) {
+   logDebug("Parsing all sensors response...")    
+   if (checkIfValidResponse(resp)) {
+      try {
+         Map allSensors = [:]
+         resp.json.each { key, val ->
+            if (val.type == "ZLLPresence" || val.type == "ZLLLightLevel" || val.type == "ZLLTemperature") {
+               String mac = val?.uniqueid?.substring(0,23)
+               if (mac != null) {
+                  if (!(allSensors[mac])) allSensors[mac] = [:]
+                  if (allSensors[mac]?.ids) allSensors[mac].ids.add(key)
+                  else allSensors[mac].ids = [key]
+               }
+               if (allSensors[mac].name) {
+                  // The ZLLPresence endpoint appears to be the one carrying the user-defined name
+                  if (val.type == "ZLLPresence") allSensors[mac].name = val.name
+               }
+               else {
+                  //...but get the other names if none has been set, just in case
+                  allSensors[mac].name = val.name
+               }
+            }
+         }
+         Map hueMotionSensors = [:]
+         allSensors.each { key, value ->
+            // Hue  Motion sensors should have all three types, so just further filtering:
+            if (value.ids?.size >= 3) hueMotionSensors << [(key): value]
+         }
+         state.allSensors = hueMotionSensors
+         logDebug("  All sensors received from Bridge: $hueMotionSensors")
+      }
+      catch (Exception ex) {
+         log.error "Error parsing all sensors response: ${ex}"   
+      }
+   }
+}
+
+/** Callback method that handles updating attributes on child sensor
+ *  devices when Bridge refreshed
+ */
+private void parseSensorStates(resp, data) {
+   logDebug("Parsing sensor states from Bridge...")
+   if (checkIfValidResponse(resp)) {
+      try {
+         Map allSensors = [:]
+         resp.json.each { key, val ->
+            if (val.type == "ZLLPresence" || val.type == "ZLLLightLevel" || val.type == "ZLLTemperature") {
+               String mac = val?.uniqueid?.substring(0,23)
+               if (mac != null) {
+                  com.hubitat.app.DeviceWrapper dev = parent.getChildDevice("${device.deviceNetworkId}/Sensor/${mac}")
+                  if (dev != null) {
+                     dev.createEventsFromMap(val.state)
+                  }
+               }
+            }
+         }
+      }
+      catch (Exception ex) {
+         log.error "Error parsing sensor states: ${ex}"   
+      }
+   }
+}
+
+
+/** Intended to be called from parent Bridge Child app to retrive previously
+ *  requested list of sensors
+ */
+Map getAllSensorsCache() {
+   return state.allSensors
+}
+
+/** Clears cache of sensor IDs/names; useful for parent app to call if trying to ensure
+ * not working with old data
+ */
+void clearSensorsCache() {
+   logDebug("Running clearSensorsCache...")
+   state.remove('allSensors')
 }
 
 private void doSendEvent(String eventName, eventValue) {

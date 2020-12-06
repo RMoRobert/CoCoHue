@@ -22,10 +22,11 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2020-11-25
+ *  Last modified: 2020-12-02
  * 
  *  Changelog:
- *  v2.1 -   Reduced group and scene "info" logging if no state change/event; other GroupScenes now also report "off" if received from
+ *  v2.2   - Added support for illumiance/temp/motion readings from Hue Motion sensors from Bridge
+ *  v2.1   - Reduced group and scene "info" logging if no state change/event; other GroupScenes now also report "off" if received from
  *           poll from Bridge instead of (only) command from Hubitat; more static typing
  *  v2.0   - New non-parent/child structure and name change; Bridge discovery; Bridge linking improvements (fewer pages);
  *           added documentation links; likely performance improvements (less dynamic typing); ability to use dicovery but
@@ -68,15 +69,16 @@ definition (
 )
 
 preferences {
-   page(name: "pageFirstPage", content: "pageFirstPage")
-   page(name: "pageIncomplete", content: "pageIncomplete")
-   page(name: "pageAddBridge", content: "pageAddBridge")
-   page(name: "pageReAddBridge", content: "pageReAddBridge")
-   page(name: "pageLinkBridge", content: "pageLinkBridge")
-   page(name: "pageManageBridge", content: "pageManageBridge")
-   page(name: "pageSelectLights", content: "pageSelectLights")
-   page(name: "pageSelectGroups", content: "pageSelectGroups")
-   page(name: "pageSelectScenes", content: "pageSelectScenes")
+   page name: "pageFirstPage"
+   page name: "pageIncomplete"
+   page name: "pageAddBridge"
+   page name: "pageReAddBridge"
+   page name: "pageLinkBridge"
+   page name: "pageManageBridge"
+   page name: "pageSelectLights"
+   page name: "pageSelectGroups"
+   page name: "pageSelectScenes"
+   page name: "pageSelectMotionSensors"
 }
 
 void installed() {
@@ -385,23 +387,29 @@ def pageManageBridge() {
       logDebug("New scenes selected. Creating...")
       createNewSelectedSceneDevices()
    }
+   if (settings["newSensors"]) {
+      logDebug("New sensors selected. Creating...")
+      createNewSelectedSensorDevices()
+   }
    // General cleanup in case left over from discovery:
-   state.remove('authTryCount')
-   state.remove('discoTryCount')
+   state.remove("authTryCount")
+   state.remove("discoTryCount")
    // More cleanup...
    com.hubitat.app.ChildDeviceWrapper bridge = getChildDevice("CCH/${state.bridgeID}")
    if (bridge != null) {
       bridge.clearBulbsCache()
       bridge.clearGroupsCache()
       bridge.clearScenesCache()
+      bridge.clearSensorsCache()
    }
    else {
       log.warn "Bridge device not found!"
    }
-   state.remove('sceneFullNames')
-   state.remove('addedBulbs')
-   state.remove('addedGroups')
-   state.remove('addedScenes')
+   state.remove("sceneFullNames")
+   state.remove("addedBulbs")
+   state.remove("addedGroups")
+   state.remove("addedScenes")
+   state.remove("addedSensors")
 
    dynamicPage(name: "pageManageBridge", uninstall: true, install: true) {  
       section("Manage Hue Bridge Devices:") {
@@ -411,6 +419,8 @@ def pageManageBridge() {
                description: "", page: "pageSelectGroups")
          href(name: "hrefSelectScenes", title: "Select Scenes",
                description: "", page: "pageSelectScenes")
+         href(name: "hrefSelectMotionSensors", title: "Select Motion Sensors",
+               description: "", page: "pageSelectMotionSensors")
       }
       section("Advanced Options", hideable: true, hidden: true) {
          href(name: "hrefReAddBridge", title: "Edit Bridge IP, re-authorize, or re-discover...",
@@ -714,6 +724,84 @@ void createNewSelectedBulbDevices() {
    app.removeSetting("newBulbs")
 }
 
+def pageSelectMotionSensors() {
+   com.hubitat.app.ChildDeviceWrapper bridge = getChildDevice("CCH/${state.bridgeID}")
+   bridge.getAllSensors()
+   List arrNewSensors = []
+   Map sensorCache = bridge.getAllSensorsCache()
+   List<com.hubitat.app.ChildDeviceWrapper> unclaimedSensors = getChildDevices().findAll { it.deviceNetworkId.startsWith("CCH/${state.bridgeID}/Sensor/") }
+   dynamicPage(name: "pageSelectMotionSensors", refreshInterval: sensorCache ? 0 : 6, uninstall: true, install: false, nextPage: "pageManageBridge") {
+      Map addedSensors = [:]  // To be populated with lights user has added, matched by Hue ID
+      if (!bridge) {
+         log.error "No Bridge device found"
+         return
+      }
+      if (sensorCache) {
+         sensorCache.each { cachedSensor ->
+            log.warn "500 = $cachedSensor"
+            com.hubitat.app.ChildDeviceWrapper sensorChild = unclaimedSensors.find { s -> s.deviceNetworkId == "CCH/${state.bridgeID}/Sensor/${cachedSensor.key}" }
+            if (sensorChild) {
+               addedSensors.put(cachedSensor.key, [hubitatName: sensorChild.name, hubitatId: sensorChild.id, hueName: cachedSensor.value?.name])
+               unclaimedSensors.removeElement(sensorChild)
+            } else {
+               Map newSensor = [:]
+               newSensor << [(cachedSensor.key): (cachedSensor.value.name)]
+               arrNewSensors << newSensor
+            }
+         }
+         arrNewSensors = arrNewSensors.sort { a, b ->
+            // Sort by sensor name (default would be hue ID)
+            a.entrySet().iterator().next()?.value <=> b.entrySet().iterator().next()?.value
+         }
+         addedSensors = addedSensors.sort { it.value.hubitatName }
+      }
+      if (!sensorCache) {
+         section("Discovering sensors. Please wait...") {            
+            paragraph("Press \"Refresh\" if you see this message for an extended period of time")
+            input(name: "btnSensorRefresh", type: "button", title: "Refresh", submitOnChange: true)
+         }
+      }
+      else {
+         section("Manage Sensors") {
+            paragraph "NOTE: Like all Hue devices on Hubitat, motion sensor changes are not \"pushed\" from Hue to Hubitat as they happen. Their states on Hubitat are updated only when the Bridge is polled, per your CoCoHue configuration options (or a manual \"Refresh\" on the Bridge device). It is not recommended to rely on Hue motion sensors for time-sensitve motion-based automations on Hubitat when used via the Hue Bridge (but note that it is possible to directly pair them with Hubitat)."
+            input(name: "newSensors", type: "enum", title: "Select Hue motion sensors to add:",
+                  multiple: true, options: arrNewSensors)
+            paragraph ""
+            paragraph("Previously added sensors${addedSensors ? ' <span style=\"font-style: italic\">(Hue Bridge device name in parentheses)</span>' : ''}:")
+            if (addedSensors) {
+               StringBuilder sensorText = new StringBuilder()
+               sensorText << "<ul>"
+               addedSensors.each {
+                  sensorText << "<li><a href=\"/device/edit/${it.value.hubitatId}\" target=\"_blank\">${it.value.hubitatName}</a>"
+                  sensorText << " <span style=\"font-style: italic\">(${it.value.hueName ?: 'not found on Hue'})</span></li>"
+                  //input(name: "btnRemove_Sensor_ID", type: "button", title: "Remove", width: 3)
+               }
+               sensorText << "</ul>"
+               paragraph(sensorText.toString())
+            }
+            else {
+               paragraph "<span style=\"font-style: italic\">No added sensors found</span>"
+            }
+            if (unclaimedSensors) {                  
+               paragraph "Hubitat sensor devices not found on Hue:"
+               StringBuilder sensorText = new StringBuilder()
+               sensorText << "<ul>"
+               unclaimedSensors.each {                  
+                  sensorText << "<li><a href=\"/device/edit/${it.id}\" target=\"_blank\">${it.displayName}</a></li>"
+               }
+               sensorText << "</ul>"
+               paragraph(sensorText.toString())
+            }
+         }
+         section("Rediscover Sensors") {
+               paragraph("If you added new sensors to the Hue Bridge and do not see them above, click/tap the button " +
+                        "below to retrieve new information from the Bridge.")
+               input(name: "btnSensorRefresh", type: "button", title: "Refresh Sensor List", submitOnChange: true)
+         }
+      }
+   }
+}
+
 /** Creates new Hubitat devices for new user-selected groups on groups-selection
  * page (intended to be called after navigating away/using "Done" from that page)
  */
@@ -748,7 +836,7 @@ void createNewSelectedGroupDevices() {
 /** Creates new Hubitat devices for new user-selected scenes on scene-selection
  * page (intended to be called after navigating away/using "Done" from that page)
  */
-def createNewSelectedSceneDevices() {
+void createNewSelectedSceneDevices() {
    String driverName = "CoCoHue Scene"
    com.hubitat.app.ChildDeviceWrapper bridge = getChildDevice("CCH/${state.bridgeID}")
    if (!bridge) log.error("Unable to find bridge device")
@@ -773,6 +861,40 @@ def createNewSelectedSceneDevices() {
    //bridge.getAllScenes()
    app.removeSetting("newScenes")
    state.remove("sceneFullNames")
+}
+
+/** Creates new Hubitat devices for new user-selected sensors on sensor-selection
+ * page (intended to be called after navigating away/using "Done" from that page)
+ */
+void createNewSelectedSensorDevices() {
+   String driverName = "CoCoHue Motion Sensor"
+   com.hubitat.app.ChildDeviceWrapper bridge = getChildDevice("CCH/${state.bridgeID}")
+   if (bridge == null) log.error("Unable to find bridge device")
+   Map sensorCache = bridge?.getAllSensorsCache()
+   log.warn "Cache = $sensorCache"
+   settings["newSensors"].each {
+      def s = sensorCache.get(it)
+      log.warn "s = $s"
+      if (s) {
+         try {
+            log.warn "it = $it"
+            logDebug("Creating new device for Hue sensor ${it} (${s.name})")
+            String devDNI = "CCH/${state.bridgeID}/Sensor/${it}"
+            Map devProps = [name: s.name]
+            addChildDevice(childNamespace, driverName, devDNI, devProps)
+
+         }
+         catch (Exception ex) {
+            log.error("Unable to create new sensor device for $it: $ex")
+         }
+      } else {
+         log.error("Unable to create new device for sensor $it: MAC not found in Hue Bridge cache")
+      }
+   }    
+   bridge.clearSensorsCache()
+   bridge.getAllSensors()
+   bridge.refresh()
+   app.removeSetting("newSensors")
 }
 
 /** Sends request for username creation to Bridge API. Intended to be called after user
