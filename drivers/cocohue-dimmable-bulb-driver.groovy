@@ -14,9 +14,10 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2020-11-29
+ *  Last modified: 2020-12-11
  *
  *  Changelog:
+ *  v3.0    - Fix so events no created until Bridge response received (as was done for other drivers in 2.0)
  *  v2.1.1  - Improved rounding for level (brightness) to/from Bridge
  *  v2.1    - Minor code cleanup and more static typing
  *  v2.0    - Added startLevelChange rate option; improved HTTP error handling; attribute events now generated
@@ -51,12 +52,12 @@ metadata {
    }
 }
 
-void installed(){
+void installed() {
    log.debug "Installed..."
    initialize()
 }
 
-void updated(){
+void updated() {
    log.debug "Updated..."
    initialize()
 }
@@ -258,7 +259,6 @@ void sendBridgeCommand(Map customMap = null, boolean createHubEvents=true) {
       log.debug("Commands not sent to Bridge because command map empty")
       return
    }
-   if (createHubEvents) createEventsFromMap(cmd)
    Map<String,String> data = parent.getBridgeData()
    Map params = [
       uri: data.fullHost,

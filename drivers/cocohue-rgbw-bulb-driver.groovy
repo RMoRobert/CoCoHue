@@ -77,14 +77,14 @@ metadata {
    }
 }
 
-void installed(){
+void installed() {
    log.debug "Installed..."
    def le = new groovy.json.JsonBuilder(lightEffects)
    sendEvent(name: "lightEffects", value: le)
    initialize()
 }
 
-void updated(){
+void updated() {
    log.debug "Updated..."
    initialize()
 }
@@ -579,11 +579,11 @@ void refresh() {
 }
 
 // Hubiat-provided color/name mappings
-void setGenericName(hue){
+void setGenericName(hue) {
    String colorName
    hue = hue.toInteger()
    if (!hiRezHue) hue = (hue * 3.6)
-   switch (hue.toInteger()){
+   switch (hue.toInteger()) {
       case 0..15: colorName = "Red"
          break
       case 16..45: colorName = "Orange"
@@ -618,7 +618,7 @@ void setGenericName(hue){
 }
 
 // Hubitat-provided ct/name mappings
-void setGenericTempName(temp){
+void setGenericTempName(temp) {
    if (!temp) return
    String genericName
    Integer value = temp.toInteger()

@@ -14,10 +14,10 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2020-12-04
+ *  Last modified: 2020-12-10
  * 
  *  Changelog:
- *  v2.2    - Initial release
+ *  v3.0    - Initial release
  */
  
 metadata {
@@ -27,20 +27,21 @@ metadata {
       capability "MotionSensor"
       capability "IlluminanceMeasurement"
       capability "TemperatureMeasurement"
+      capability "Battery"
    }
-       
+
    preferences {
       input(name: "enableDebug", type: "bool", title: "Enable debug logging", defaultValue: true)
       input(name: "enableDesc", type: "bool", title: "Enable descriptionText logging", defaultValue: true)
    }
 }
 
-void installed(){
+void installed() {
    log.debug "Installed..."
    initialize()
 }
 
-void updated(){
+void updated() {
    log.debug "Updated..."
    initialize()
 }
@@ -73,7 +74,7 @@ void parse(String description) {
  * where -XX or -XX-YYYY indicate additional endpoints/sensors on same device), which should be last part
  * of DNI
  */
-String  getHueDeviceMAC() {   
+String  getHueDeviceMAC() {
    return device.deviceNetworkId.split("/")[3]
 }
 
@@ -83,7 +84,7 @@ String  getHueDeviceMAC() {
  * to parse/update sensor state on Hubitat based on data received from Bridge
  * @param bridgeCmd Map of sensor states from Bridge (for lights, this could be either a command to or response from)
  */
-void createEventsFromMap(Map bridgeCmd){
+void createEventsFromMap(Map bridgeCmd) {
    if (!bridgeCmd) {
       logDebug("createEventsFromMap called but map empty; exiting")
       return
@@ -110,6 +111,12 @@ void createEventsFromMap(Map bridgeCmd){
             if (location.temperatureScale == "C") eventValue = ((it.value as BigDecimal)/100.0).setScale(1, java.math.RoundingMode.HALF_UP)
             else eventValue = celsiusToFahrenheit((it.value as BigDecimal)/100.0).setScale(1, java.math.RoundingMode.HALF_UP)
             eventUnit = "°${location.temperatureScale}"
+            if (device.currentValue(eventName) != eventValue) doSendEvent(eventName, eventValue, eventUnit)
+            break
+         case "battery":
+            eventName = "battery"
+            eventValue = (it != null) ? (it as Integer) : 0
+            eventUnit = "%"
             if (device.currentValue(eventName) != eventValue) doSendEvent(eventName, eventValue, eventUnit)
             break
          default:

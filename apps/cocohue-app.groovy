@@ -22,9 +22,10 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2020-12-02
+ *  Last modified: 2020-12-11
  * 
  *  Changelog:
+ *  v3.0   - Added support for Hue motion sensors (also temp/illuminance) and Hue Labs activators
  *  v2.2   - Added support for illumiance/temp/motion readings from Hue Motion sensors from Bridge
  *  v2.1   - Reduced group and scene "info" logging if no state change/event; other GroupScenes now also report "off" if received from
  *           poll from Bridge instead of (only) command from Hubitat; more static typing
@@ -45,7 +46,7 @@ import groovy.transform.Field
 @Field static final String childNamespace = "RMoRobert" // namespace of child device drivers
 @Field static final Map driverMap = [
    "extended color light":     "CoCoHue RGBW Bulb",
-   "color light":              "CoCoHue RGBW Bulb",  // eventually should make RGB            
+   "color light":              "CoCoHue RGBW Bulb",  // eventually should make this one RGB
    "color temperature light":  "CoCoHue CT Bulb",
    "dimmable light":           "CoCoHue Dimmable Bulb",
    "on/off light":             "CoCoHue On/Off Plug",
@@ -79,6 +80,7 @@ preferences {
    page name: "pageSelectGroups"
    page name: "pageSelectScenes"
    page name: "pageSelectMotionSensors"
+   page name: "pageSelectLabsActivators"
 }
 
 void installed() {
@@ -127,7 +129,7 @@ void initialize() {
       unschedule("periodicSendDiscovery")
    }
 
-   int disableTime = 1800
+   Integer disableTime = 1800
    if (enableDebug) {
       log.debug "Debug logging will be automatically disabled in ${disableTime} seconds"
       runIn(disableTime, debugOff)
@@ -391,6 +393,10 @@ def pageManageBridge() {
       logDebug("New sensors selected. Creating...")
       createNewSelectedSensorDevices()
    }
+   if (settings["newLabsDevs"]) {
+      logDebug("New Labs devices selected. Creating...")
+      createNewSelectedLabsDevices()
+   }
    // General cleanup in case left over from discovery:
    state.remove("authTryCount")
    state.remove("discoTryCount")
@@ -410,6 +416,7 @@ def pageManageBridge() {
    state.remove("addedGroups")
    state.remove("addedScenes")
    state.remove("addedSensors")
+   state.remove("addedLabsDevs")
 
    dynamicPage(name: "pageManageBridge", uninstall: true, install: true) {  
       section("Manage Hue Bridge Devices:") {
@@ -421,6 +428,8 @@ def pageManageBridge() {
                description: "", page: "pageSelectScenes")
          href(name: "hrefSelectMotionSensors", title: "Select Motion Sensors",
                description: "", page: "pageSelectMotionSensors")
+         href(name: "hrefSelectLabsActivators", title: "Select Hue Labs Activators",
+               description: "", page: "pageSelectLabsActivators")
       }
       section("Advanced Options", hideable: true, hidden: true) {
          href(name: "hrefReAddBridge", title: "Edit Bridge IP, re-authorize, or re-discover...",
@@ -437,7 +446,7 @@ def pageManageBridge() {
             options: [0:"Disabled", 10:"10 seconds", 15:"15 seconds", 20:"20 seconds", 30:"30 seconds", 45:"45 seconds", 60:"1 minute (recommended)",
                         300:"5 minutes", 3600:"1 hour"], defaultValue:60)
          input(name: "boolCustomLabel", type: "bool", title: "Customize the name of this CoCoHue app instance", defaultValue: false, submitOnChange: true)
-         if (settings['boolCustomLabel']) label(title: "Custom name for this app", required: false)
+         if (settings["boolCustomLabel"]) label(title: "Custom name for this app", required: false)
          input(name: "enableDebug", type: "bool", title: "Enable debug logging", defaultValue: true)
       }
    }
@@ -520,7 +529,7 @@ def pageSelectLights() {
    }
 }
 
-def pageSelectGroups() {        
+def pageSelectGroups() {
    com.hubitat.app.ChildDeviceWrapper bridge = getChildDevice("CCH/${state.bridgeID}")
    bridge.getAllGroups()
    List arrNewGroups = []
@@ -695,35 +704,6 @@ def pageSelectScenes() {
    }
 }
 
-/** Creates new Hubitat devices for new user-selected bulbs on lights-selection
- * page (intended to be called after navigating away/using "Done" from that page)
- */
-void createNewSelectedBulbDevices() {
-   com.hubitat.app.ChildDeviceWrapper bridge = getChildDevice("CCH/${state.bridgeID}")
-   if (bridge == null) log.error("Unable to find bridge device")
-   Map bulbCache = bridge?.getAllBulbsCache()
-   settings["newBulbs"].each {
-      Map b = bulbCache.get(it)
-      if (b) {
-         try {
-            logDebug("Creating new device for Hue light ${it} (${b.name})")
-            String devDriver = driverMap[b.type.toLowerCase()] ?: driverMap["DEFAULT"]
-            String devDNI = "CCH/${state.bridgeID}/Light/${it}"
-            Map devProps = [name: (settings["boolAppendBulb"] ? b.name + " (Hue Bulb)" : b.name)]
-            addChildDevice(childNamespace, devDriver, devDNI, devProps)
-
-         } catch (Exception ex) {
-            log.error("Unable to create new device for $it: $ex")
-         }
-      } else {
-         log.error("Unable to create new device for bulb $it: ID not found on Hue Bridge")
-      }
-   }
-   bridge.clearBulbsCache()
-   bridge.getAllBulbs()
-   app.removeSetting("newBulbs")
-}
-
 def pageSelectMotionSensors() {
    com.hubitat.app.ChildDeviceWrapper bridge = getChildDevice("CCH/${state.bridgeID}")
    bridge.getAllSensors()
@@ -802,13 +782,119 @@ def pageSelectMotionSensors() {
    }
 }
 
+def pageSelectLabsActivators() {
+   com.hubitat.app.ChildDeviceWrapper bridge = getChildDevice("CCH/${state.bridgeID}")
+   bridge.getAllLabsDevices()
+   List arrNewLabsDevs = []
+   Map labsCache = bridge.getAllLabsSensorsCache()
+   List<com.hubitat.app.ChildDeviceWrapper> unclaimedLabsDevs = getChildDevices().findAll { it.deviceNetworkId.startsWith("CCH/${state.bridgeID}/SensorRL/") }
+   dynamicPage(name: "pageSelectLabsActivators", refreshInterval: labsCache ? 0 : 6, uninstall: true, install: false, nextPage: "pageManageBridge") {
+      Map addedLabsDevs = [:]  // To be populated with lights user has added, matched by Hue ID
+      if (!bridge) {
+         log.error "No Bridge device found"
+         return
+      }
+      if (labsCache) {
+         labsCache.each { cachedLabDev ->
+            com.hubitat.app.ChildDeviceWrapper labsChild = unclaimedLabsDevs.find { d -> d.deviceNetworkId == "CCH/${state.bridgeID}/SensorRL/${cachedLabDev.key}" }
+            if (labsChild) {
+               addedLabsDevs.put(cachedLabDev.key, [hubitatName: labsChild.name, hubitatId: labsChild.id, hueName: cachedLabDev.value?.name])
+               unclaimedLabsDevs.removeElement(labsChild)
+            } else {
+               Map newLabsDev = [:]
+               newLabsDev << [(cachedLabDev.key): (cachedLabDev.value.name)]
+               arrNewLabsDevs << newLabsDev
+            }
+         }
+         arrNewLabsDevs = arrNewLabsDevs.sort { a, b ->
+            // Sort by device name (default would be Hue ID)
+            a.entrySet().iterator().next()?.value <=> b.entrySet().iterator().next()?.value
+         }
+         addedLabsDevs = addedLabsDevs.sort { it.value.hubitatName }
+      }
+      if (!labsCache) {
+         section("Discovering Hue Labs activators. Please wait...") {            
+            paragraph("Press \"Refresh\" if you see this message for an extended period of time")
+            input(name: "btnLabsRefresh", type: "button", title: "Refresh", submitOnChange: true)
+         }
+      }
+      else {
+         section("Manage Hue Labs Formula Activators") {
+            input(name: "newLabsDevs", type: "enum", title: "Select Hue Labs formula acvivators to add:",
+                  multiple: true, options: arrNewLabsDevs)
+            input(name: "boolAppendLabs", type: "bool", title: "Append \"(Hue Labs Formula)\" to Hubitat device name")
+            paragraph ""
+            paragraph("Previously added devices${addedLabsDevs ? ' <span style=\"font-style: italic\">(Hue Labs formula name on Bridge in parentheses)</span>' : ''}:")
+            if (addedLabsDevs) {
+               StringBuilder labDevsText = new StringBuilder()
+               labDevsText << "<ul>"
+               addedLabsDevs.each {
+                  labDevsText << "<li><a href=\"/device/edit/${it.value.hubitatId}\" target=\"_blank\">${it.value.hubitatName}</a>"
+                  labDevsText << " <span style=\"font-style: italic\">(${it.value.hueName ?: 'not found on Hue'})</span></li>"
+                  //input(name: "btnRemove_LabsDev_ID", type: "button", title: "Remove", width: 3)
+               }
+               labDevsText << "</ul>"
+               paragraph(labDevsText.toString())
+            }
+            else {
+               paragraph "<span style=\"font-style: italic\">No added Hue Labs devices found</span>"
+            }
+            if (unclaimedLabsDevs) {                  
+               paragraph "Hubitat devices not found on Hue:"
+               StringBuilder labDevsText = new StringBuilder()
+               labDevsText << "<ul>"
+               unclaimedLabsDevs.each {                  
+                  labDevsText << "<li><a href=\"/device/edit/${it.id}\" target=\"_blank\">${it.displayName}</a></li>"
+               }
+               labDevsText << "</ul>"
+               paragraph(labDevsText.toString())
+            }
+         }
+         section("Rediscover Labs Devices") {
+               paragraph("If you added new Labs formulas to the Hue Bridge and do not see them above, click/tap the button " +
+                        "below to retrieve new information from the Bridge.")
+               input(name: "btnLabsRefresh", type: "button", title: "Refresh Labs Formula List", submitOnChange: true)
+         }
+      }
+   }
+}
+
+/** Creates new Hubitat devices for new user-selected bulbs on lights-selection
+ * page (intended to be called after navigating away/using "Done" from that page)
+ */
+void createNewSelectedBulbDevices() {
+   com.hubitat.app.ChildDeviceWrapper bridge = getChildDevice("CCH/${state.bridgeID}")
+   if (bridge == null) log.error("Unable to find Bridge device")
+   Map bulbCache = bridge?.getAllBulbsCache()
+   settings["newBulbs"].each {
+      Map b = bulbCache.get(it)
+      if (b) {
+         try {
+            logDebug("Creating new device for Hue light ${it} (${b.name})")
+            String devDriver = driverMap[b.type.toLowerCase()] ?: driverMap["DEFAULT"]
+            String devDNI = "CCH/${state.bridgeID}/Light/${it}"
+            Map devProps = [name: (settings["boolAppendBulb"] ? b.name + " (Hue Bulb)" : b.name)]
+            addChildDevice(childNamespace, devDriver, devDNI, devProps)
+
+         } catch (Exception ex) {
+            log.error("Unable to create new device for $it: $ex")
+         }
+      } else {
+         log.error("Unable to create new device for bulb $it: ID not found on Hue Bridge")
+      }
+   }
+   bridge.clearBulbsCache()
+   bridge.getAllBulbs()
+   app.removeSetting("newBulbs")
+}
+
 /** Creates new Hubitat devices for new user-selected groups on groups-selection
  * page (intended to be called after navigating away/using "Done" from that page)
  */
 void createNewSelectedGroupDevices() {
    String driverName = "CoCoHue Group"
    com.hubitat.app.ChildDeviceWrapper bridge = getChildDevice("CCH/${state.bridgeID}")
-   if (bridge == null) log.error("Unable to find bridge device")
+   if (bridge == null) log.error("Unable to find Bridge device")
    Map groupCache = bridge?.getAllGroupsCache()
    settings["newGroups"].each {
       def g = groupCache.get(it)
@@ -839,7 +925,7 @@ void createNewSelectedGroupDevices() {
 void createNewSelectedSceneDevices() {
    String driverName = "CoCoHue Scene"
    com.hubitat.app.ChildDeviceWrapper bridge = getChildDevice("CCH/${state.bridgeID}")
-   if (!bridge) log.error("Unable to find bridge device")
+   if (!bridge) log.error("Unable to find Bridge device")
    Map sceneCache = bridge?.getAllScenesCache()
    settings["newScenes"].each {
       Map sc = sceneCache.get(it)
@@ -869,7 +955,7 @@ void createNewSelectedSceneDevices() {
 void createNewSelectedSensorDevices() {
    String driverName = "CoCoHue Motion Sensor"
    com.hubitat.app.ChildDeviceWrapper bridge = getChildDevice("CCH/${state.bridgeID}")
-   if (bridge == null) log.error("Unable to find bridge device")
+   if (bridge == null) log.error("Unable to find Bridge device")
    Map sensorCache = bridge?.getAllSensorsCache()
    log.warn "Cache = $sensorCache"
    settings["newSensors"].each {
@@ -895,6 +981,34 @@ void createNewSelectedSensorDevices() {
    bridge.getAllSensors()
    bridge.refresh()
    app.removeSetting("newSensors")
+}
+
+/** Creates new Hubitat devices for new user-selected Labs devices on Labs device-selection
+ * page (intended to be called after navigating away/using "Done" from that page)
+ */
+void createNewSelectedLabsDevices() {
+   com.hubitat.app.ChildDeviceWrapper bridge = getChildDevice("CCH/${state.bridgeID}")
+   if (bridge == null) log.error("Unable to find Bridge device")
+   Map labsCache = bridge?.getAllLabsSensorsCache()
+   settings["newLabsDevs"].each {
+      Map d = labsCache.get(it)
+      if (d) {
+         try {
+            logDebug("Creating new device for Hue Labs sensor device ${it} (${d.name})")
+            String devDriver = "CoCoHue Generic Status Device"
+            String devDNI = "CCH/${state.bridgeID}/SensorRL/${it}"
+            Map devProps = [name: (settings["boolAppendLabs"] ? d.name + " (Hue Labs Formula)" : d.name)]
+            com.hubitat.app.ChildDeviceWrapper dev = addChildDevice(childNamespace, devDriver, devDNI, devProps)
+            dev?.updateDataValue("type", "CLIPGenericStatus")
+         } catch (Exception ex) {
+            log.error("Unable to create new device for $it: $ex")
+         }
+      } else {
+         log.error("Unable to create new device for Labs device $it: ID not found on Hue Bridge")
+      }
+   }
+   bridge.clearLabsSensorsCache()
+   app.removeSetting("newLabsDevs")
 }
 
 /** Sends request for username creation to Bridge API. Intended to be called after user
@@ -1212,6 +1326,8 @@ void appButtonHandler(btn) {
       case "btnBulbRefresh":
       case "btnGroupRefresh":
       case "btnSceneRefresh":
+      case "btnSesnsorRefresh":
+      case "btnLabsRefresh":
          // Just want to resubmit page, so nothing
          break        
       case "btnDiscoBridgeRefresh":

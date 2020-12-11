@@ -8,7 +8,10 @@ integration. It provides several advantages, including:
 1. Access to Hue bulb "effects" (color loop, select/alert, etc.)
 2. Improved group support ("Change Level" capability--`startLevelChange` and stopLevelChange` commands implemented)
 3. Scene support: create switch/button devices that can be used to activate Hue Bridge scenes
-4. It's open source! Customize the code to suit your requirements if so desired
+4. Support for Hue sensors (motion/temperature/lux--but note that these are updated only on poll, per Bridge API design, so I would
+not rely on these for real-time data, at least for potentially time-sensitive attributes like motion)
+5. Ability to activate Hue Labs "formulas"/effects (virtual activator device required to be configured on Hue Labs website)
+6. It's open source! Customize the code to suit your requirements if so desired
 
 For discussion and more information, visit the <a href="https://community.hubitat.com/t/release-cocohue-hue-bridge-integration-including-scenes/27978">Hubitat Community forum thread</a>.
 
@@ -24,15 +27,17 @@ from <a href="https://github.com/HubitatCommunity/CoCoHue">https://github.com/Hu
     install the (child) app as above: https://raw.githubusercontent.com/RMoRobert/CoCoHue/master/apps/cocohue-app.groovy. Finally, uncomment the
     line `parent: "RMoRobert:CoCoHue (Parent App)"` (should be around line 50-55) in the "child" app by removing the two slashes, `//`, in front of it.
 
-3. Install all necessary drivers from the "drivers" folder in this repository into the "Drivers Code" section of Hubitat. (There aren't very many, so I'd recommend just installing them all, but technically all you need is the Bridge driver plus the driver for any device types you plan to use.)
+3. Install all necessary drivers from the "drivers" folder in this repository into the "Drivers Code" section of Hubitat. (I'd recommend
+just installing them all, but technically all you need is the Bridge driver plus the driver for any device types you plan to use.)
     * Install the Bridge driver code: https://raw.githubusercontent.com/RMoRobert/CoCoHue/master/drivers/cocohue-bridge-driver.groovy
-    * Install the bulb, group, scene, and plug drivers:
+    * Install the bulb, group, scene, plug, and gereric status (for Hue Lab effects) drivers:
       * https://raw.githubusercontent.com/RMoRobert/CoCoHue/master/drivers/cocohue-rgbw-bulb-driver.groovy
       * https://raw.githubusercontent.com/RMoRobert/CoCoHue/master/drivers/cocohue-ct-bulb-driver.groovy
       * https://raw.githubusercontent.com/RMoRobert/CoCoHue/master/drivers/cocohue-dimmable-bulb-driver.groovy
       * https://raw.githubusercontent.com/RMoRobert/CoCoHue/master/drivers/cocohue-plug-driver.groovy
       * https://raw.githubusercontent.com/RMoRobert/CoCoHue/master/drivers/cocohue-group-driver.groovy
       * https://raw.githubusercontent.com/RMoRobert/CoCoHue/master/drivers/cocohue-scene-driver.groovy
+      * https://raw.githubusercontent.com/RMoRobert/CoCoHue/master/drivers/cocohue-generic-status-driver.groovy
       
 4. Install an instance of app: go to **Apps > Add User App**, choose **CoCoHue**, and follow the prompts.
 
@@ -42,7 +47,8 @@ CoCoHue is also available on <a href="https://community.hubitat.com/t/beta-hubit
 Manager</a>, a community app designed to make installing and updating community apps and drivers easier.
 
 (NOTE: If upgrading, existing 1.x users will still need to pay attention to the notice above; this will apply to the initial
-upgrade and every subsequent app upgrade HPM installs.)
+upgrade and every subsequent app upgrade HPM installs. The first install/upgrade must also be done manually, not with HPM, to
+ensure app names are not incorrectly matched.)
 
 ## Feature Documentation
 CoCoHue is designed to be a drop-in replacement for Hubitat's existing Hue integration. If any devices behave differently, this
