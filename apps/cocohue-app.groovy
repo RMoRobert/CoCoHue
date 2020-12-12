@@ -407,6 +407,7 @@ def pageManageBridge() {
       bridge.clearGroupsCache()
       bridge.clearScenesCache()
       bridge.clearSensorsCache()
+      bridge.clearLabsSensorsCache()
    }
    else {
       log.warn "Bridge device not found!"
@@ -837,7 +838,7 @@ def pageSelectLabsActivators() {
                paragraph(labDevsText.toString())
             }
             else {
-               paragraph "<span style=\"font-style: italic\">No added Hue Labs devices found</span>"
+               paragraph "<span style=\"font-style: italic\">No added Hue Labs Forumla devices found</span>"
             }
             if (unclaimedLabsDevs) {                  
                paragraph "Hubitat devices not found on Hue:"

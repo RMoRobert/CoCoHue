@@ -37,7 +37,7 @@ metadata {
       capability "PushableButton"
       capability "Configuration"
 
-      command "push", [[name:"NUMBER", type: "NUMBER", description: "Button number (button 1 is the only number used by this device)" ]]
+      command "push", [[name:"NUMBER", type: "NUMBER", description: "Button number (must be 1; will activate scene)" ]]
    }
 
    preferences {

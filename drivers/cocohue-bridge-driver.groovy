@@ -30,8 +30,6 @@ metadata {
       capability "Actuator"
       capability "Refresh"
       attribute "status", "string"
-
-      command "getAllLabsDevices"
    }
    
    preferences() {
@@ -447,7 +445,6 @@ private void parseGetAllLabsDevicesResponse(resp, data) {
          Map activatorSensors = resp.json.sensors.findAll { key, val ->
             val["type"]  == "CLIPGenericStatus" && val["modelid"] == "HUELABSVTOGGLE"
          }
-         log.warn "activatorSensors = $activatorSensors"
          activatorSensors.each { key, val ->
             resp.json.resourcelinks.each { rlId, rlVal ->
                if (rlVal.links?.any { it == "/sensors/${key}" }) {

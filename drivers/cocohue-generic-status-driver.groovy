@@ -26,6 +26,8 @@ metadata {
       capability "Refresh"
       capability "Switch"
       capability "PushableButton"
+      
+      command "push", [[name:"NUMBER", type: "NUMBER", description: "Button number (must be 1; will activate device)" ]]
    }
        
    preferences {
@@ -211,14 +213,16 @@ private Boolean checkIfValidResponse(resp) {
    return isOK
 }
 
-void doSendEvent(String eventName, eventValue, String eventUnit=null) {
+void doSendEvent(String eventName, eventValue, String eventUnit=null, Boolean forceStateChange=false) {
    logDebug("Creating event for $eventName...")
    String descriptionText = "${device.displayName} ${eventName} is ${eventValue}${eventUnit ?: ''}"
    logDesc(descriptionText)
    if (eventUnit) {
-      sendEvent(name: eventName, value: eventValue, descriptionText: descriptionText, unit: eventUnit) 
+      if (forceStateChange) sendEvent(name: eventName, value: eventValue, descriptionText: descriptionText, unit: eventUnit, isStateChange: true) 
+      else sendEvent(name: eventName, value: eventValue, descriptionText: descriptionText, unit: eventUnit) 
    } else {
-      sendEvent(name: eventName, value: eventValue, descriptionText: descriptionText) 
+      if (forceStateChange) sendEvent(name: eventName, value: eventValue, descriptionText: descriptionText) 
+      else sendEvent(name: eventName, value: eventValue, descriptionText: descriptionText, isStateChange: true) 
    }
 }
 
