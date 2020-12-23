@@ -3,7 +3,6 @@
    "minimumHEVersion": "2.1.9",
    "author": "Robert Morris",
    "dateReleased": "2020-12-22",
-   "betaLocation": "https://raw.githubusercontent.com/RMoRobert/CoCoHue/packageManifestBeta.json",
    "communityLink": "https://community.hubitat.com/t/release-cocohue-hue-bridge-integration-including-scenes/27978",
    "licenseFile": "",
    "releaseNotes": "Version 3.0: Experimental support for Hue motion sensors (with motion, lux, and temperature) and Hue Labs activators. HTTP error handling improvements. Fixes for CT, dimmable, and on/off drivers to match RGBW and group drivers in generating events only when Bridge heard back from.\n\nNOTE: Users upgrading from v1.x should follow instructions forum or on GitHub (parent app deprecatred but still available) and perform initial upgrade manually, not with HPM.",
