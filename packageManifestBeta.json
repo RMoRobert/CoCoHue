@@ -55,7 +55,7 @@
          "id": "47b893dd-db0c-41b4-a5db-eb3bb892082c",
          "name": "CoCoHue Group",
          "namespace": "RMoRobert",
-         "location": "https://raw.githubusercontent.com/RMoRobert/CoCoHue/master/beta/drivers/cocohue-group-driver.groovy",
+         "location": "https://raw.githubusercontent.com/RMoRobert/CoCoHue/master/beta/cocohue-group-driver.groovy",
          "version": "2.9.90",
          "required": true
       },
