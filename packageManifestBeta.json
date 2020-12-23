@@ -61,7 +61,7 @@
       },
       {
          "id": "e65c8727-8483-45d0-925b-4c7eabc66acc",
-         "name": "CoCoHue Motion Sensor (Lux/Temperature Only)",
+         "name": "CoCoHue Motion Sensor",
          "namespace": "RMoRobert",
          "location": "https://raw.githubusercontent.com/RMoRobert/CoCoHue/master/beta/cocohue-motion-sensor-driver.groovy",
          "version": "2.9.90",
