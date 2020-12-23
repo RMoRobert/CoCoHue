@@ -45,7 +45,7 @@
          "required": true
       },
       {
-         "id": "xxx",
+         "id": "cdf7cbc1-2ac6-4038-bdbe-4ab77f64585e",
          "name": "CoCoHue Generic Status Device",
          "namespace": "RMoRobert",
          "location": "https://raw.githubusercontent.com/RMoRobert/CoCoHue/master/beta/cocohue-generic-status-driver.groovy",
