@@ -14,10 +14,10 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2020-12-11
+ *  Last modified: 2020-12-22
  * 
  *  Changelog:
- *  v3.0    - Fix so events no created until Bridge response received (as was done for other drivers in 2.0)
+ *  v3.0    - Fix so events no created until Bridge response received (as was done for other drivers in 2.0); improved HTTP error handling
  *  v2.1    - Minor code cleanup; more static typing
  *  v2.0    - Improved HTTP error handling; attribute events now generated
  *            only after hearing back from Bridge; Bridge online/offline status improvements
@@ -234,7 +234,7 @@ private Boolean checkIfValidResponse(resp) {
    Boolean isOK = true
    if (resp?.json == null) {
       isOK = false
-      if (resp?.headers == null) log.error "Error: HTTP ${resp.status} when attempting to communicate with Bridge"
+      if (resp?.headers == null) log.error "Error: HTTP ${resp?.status} when attempting to communicate with Bridge"
       else log.error "No JSON data found in response. ${resp.headers.'Content-Type'} (HTTP ${resp.status})"
       parent.sendBridgeDiscoveryCommandIfSSDPEnabled(true) // maybe IP changed, so attempt rediscovery 
       parent.setBridgeStatus(false)

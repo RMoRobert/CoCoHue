@@ -14,10 +14,10 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2020-12-10
+ *  Last modified: 2020-12-22
  * 
  *  Changelog:
- *  v3.0    - Added functionality to driver to use for CLIPGenericStatus "Sensors" for Hue Labs effects 
+ *  v3.0    - Improved HTTP error handling 
  *  v2.1    - Reduced info logging when not state change; code cleanup and more static typing
  *  v2.0    - Improved HTTP error handling; attribute events now generated only after hearing back from Bridge;
  *            Bridge online/offline status improvements; bug fix for off() with light- or group-device-less scenes
@@ -223,7 +223,7 @@ private Boolean checkIfValidResponse(resp) {
    Boolean isOK = true
    if (resp?.json == null) {
       isOK = false
-      if (resp?.headers == null) log.error "Error: HTTP ${resp.status} when attempting to communicate with Bridge"
+      if (resp?.headers == null) log.error "Error: HTTP ${resp?.status} when attempting to communicate with Bridge"
       else log.error "No JSON data found in response. ${resp.headers.'Content-Type'} (HTTP ${resp.status})"
       parent.sendBridgeDiscoveryCommandIfSSDPEnabled(true) // maybe IP changed, so attempt rediscovery 
       parent.setBridgeStatus(false)

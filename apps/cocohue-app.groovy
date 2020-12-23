@@ -22,7 +22,7 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2020-12-11
+ *  Last modified: 2020-12-22
  * 
  *  Changelog:
  *  v3.0   - Added support for Hue motion sensors (also temp/illuminance) and Hue Labs activators
@@ -719,7 +719,7 @@ def pageSelectMotionSensors() {
       }
       if (sensorCache) {
          sensorCache.each { cachedSensor ->
-            log.warn "500 = $cachedSensor"
+            //log.warn "* cached sensor = $cachedSensor"
             com.hubitat.app.ChildDeviceWrapper sensorChild = unclaimedSensors.find { s -> s.deviceNetworkId == "CCH/${state.bridgeID}/Sensor/${cachedSensor.key}" }
             if (sensorChild) {
                addedSensors.put(cachedSensor.key, [hubitatName: sensorChild.name, hubitatId: sensorChild.id, hueName: cachedSensor.value?.name])
@@ -958,13 +958,11 @@ void createNewSelectedSensorDevices() {
    com.hubitat.app.ChildDeviceWrapper bridge = getChildDevice("CCH/${state.bridgeID}")
    if (bridge == null) log.error("Unable to find Bridge device")
    Map sensorCache = bridge?.getAllSensorsCache()
-   log.warn "Cache = $sensorCache"
+   //log.warn "* sensorCache = $sensorCache"
    settings["newSensors"].each {
       def s = sensorCache.get(it)
-      log.warn "s = $s"
       if (s) {
          try {
-            log.warn "it = $it"
             logDebug("Creating new device for Hue sensor ${it} (${s.name})")
             String devDNI = "CCH/${state.bridgeID}/Sensor/${it}"
             Map devProps = [name: s.name]
@@ -1244,7 +1242,7 @@ void setBridgeStatus(setToOnline=true) {
       List<com.hubitat.app.ChildDeviceWrapper> devList = getChildDevices().findAll { it.getDeviceNetworkId().startsWith("CCH/${state.bridgeID}/Light/") }
       // Update other gropus even though they aren't "bulbs":
       devList += getChildDevices().findAll { it.getDeviceNetworkId().startsWith("CCH/${state.bridgeID}/Group/") && !(it.getDeviceNetworkId() == "CCH/${state.bridgeID}/Group/0") }
-      log.warn devList
+      //logDebug("Updating states for: $devList")
       devList.each { it.createEventsFromMap(states, false) }
    }    
  }

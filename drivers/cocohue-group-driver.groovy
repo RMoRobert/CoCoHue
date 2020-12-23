@@ -14,9 +14,10 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2020-11-29
+ *  Last modified: 2020-12-22
  *
  *  Changelog:
+ *  v3.0    - Improved HTTP error handling
  *  v2.1.1  - Improved rounding for level (brightness) to/from Bridge
  *  v2.1    - Added optional rate to setColor per Hubitat (used by Hubitat Groups and Scenes); more static typing;
  *            GroupScenes for this group will now also be marked as off (if option enabled) when Bridge reports all group bulbs as off instead of only when off() sent
@@ -551,7 +552,7 @@ private Boolean checkIfValidResponse(resp) {
    Boolean isOK = true
    if (resp?.json == null) {
       isOK = false
-      if (resp?.headers == null) log.error "Error: HTTP ${resp.status} when attempting to communicate with Bridge"
+      if (resp?.headers == null) log.error "Error: HTTP ${resp?.status} when attempting to communicate with Bridge"
       else log.error "No JSON data found in response. ${resp.headers.'Content-Type'} (HTTP ${resp.status})"
       parent.sendBridgeDiscoveryCommandIfSSDPEnabled(true) // maybe IP changed, so attempt rediscovery 
       parent.setBridgeStatus(false)

@@ -14,7 +14,7 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2020-12-11
+ *  Last modified: 2020-12-22
  * 
  *  Changelog:
  *  v3.0    - Initial release
@@ -187,7 +187,7 @@ private Boolean checkIfValidResponse(resp) {
    Boolean isOK = true
    if (resp?.json == null) {
       isOK = false
-      if (resp?.headers == null) log.error "Error: HTTP ${resp.status} when attempting to communicate with Bridge"
+      if (resp?.headers == null) log.error "Error: HTTP ${resp?.status} when attempting to communicate with Bridge"
       else log.error "No JSON data found in response. ${resp.headers.'Content-Type'} (HTTP ${resp.status})"
       parent.sendBridgeDiscoveryCommandIfSSDPEnabled(true) // maybe IP changed, so attempt rediscovery 
       parent.setBridgeStatus(false)
