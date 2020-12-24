@@ -1,5 +1,5 @@
 /*
- * =============================  CoCoHue Motion Sensor - Lux/Temp Only (Driver) ===============================
+ * =============================  CoCoHue Motion Sensor (Driver) ===============================
  *
  *  Copyright 2020 Robert Morris
  * 

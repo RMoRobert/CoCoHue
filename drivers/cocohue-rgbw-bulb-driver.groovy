@@ -204,7 +204,7 @@ void setColorTemperature(value) {
 }
 
 void setColor(value) {
-   logDebug("Setting color...")
+   logDebug("setColor($value)")
    if (value.hue == null || value.hue == "NaN" || value.saturation == null || value.saturation == "NaN") {
       logDebug("Exiting setColor because no hue and/or saturation set")
       return
@@ -218,7 +218,7 @@ void setColor(value) {
    if (newBri) state.remove("lastLevel")
    Integer scaledRate
    if (value.rate != null) {
-      scaledRate = value.rate
+      scaledRate = (value.rate * 10).toInteger()
    }
    else {
       scaledRate = ((transitionTime != null ? transitionTime.toBigDecimal() : 1000) / 100).toInteger()
