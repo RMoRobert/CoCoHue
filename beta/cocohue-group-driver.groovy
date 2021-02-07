@@ -1,7 +1,7 @@
 /*
  * =============================  CoCoHue Group (Driver) ===============================
  *
- *  Copyright 2019-2020 Robert Morris
+ *  Copyright 2019-2021 Robert Morris
  * 
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  *  in compliance with the License. You may obtain a copy of the License at:
@@ -14,7 +14,7 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2020-12-22 - Version 3.0 Preview 1
+ *  Last modified: 2021-02-07 - Version 3.0 Preview 2
  *
  *  Changelog:
  *  v3.0    - Improved HTTP error handling
@@ -403,7 +403,7 @@ void createEventsFromMap(Map bridgeCommandMap = state.nextCmd, Boolean isFromBri
                break
          case "ct":
                eventName = "colorTemperature"
-               eventValue = Math.round(1000000/it.value)
+               eventValue = it.value != 0 ? Math.round(1000000/it.value) : 0
                eventUnit = "K"
                if (device.currentValue(eventName) != eventValue) {
                   if (!isOn && isFromBridge && colorStaging && (state.nextCmd?.get("hue") || state.nextCmd?.get("sat") || state.nextCmd?.get("ct"))) {

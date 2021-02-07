@@ -1,7 +1,7 @@
 /*
  * =============================  CoCoHue RGBW Bulb (Driver) ===============================
  *
- *  Copyright 2019-2020 Robert Morris
+ *  Copyright 2019-2021 Robert Morris
  * 
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  *  in compliance with the License. You may obtain a copy of the License at:
@@ -14,7 +14,7 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2020-12-22 - Version 3.0 Preview 1
+ *  Last modified: 2021-02-07 - Version 3.0 Preview 2
  *
  *  Changelog:
  *  v3.0    - Improved HTTP error handling
@@ -204,7 +204,7 @@ void setColorTemperature(value) {
 }
 
 void setColor(value) {
-   logDebug("Setting color...")
+   logDebug("setColor($value)")
    if (value.hue == null || value.hue == "NaN" || value.saturation == null || value.saturation == "NaN") {
       logDebug("Exiting setColor because no hue and/or saturation set")
       return
@@ -218,7 +218,7 @@ void setColor(value) {
    if (newBri) state.remove("lastLevel")
    Integer scaledRate
    if (value.rate != null) {
-      scaledRate = value.rate
+      scaledRate = (value.rate * 10).toInteger()
    }
    else {
       scaledRate = ((transitionTime != null ? transitionTime.toBigDecimal() : 1000) / 100).toInteger()

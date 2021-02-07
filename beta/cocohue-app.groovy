@@ -1,7 +1,7 @@
 /**
  * ===========================  CoCoHue - Hue Bridge Integration =========================
  *
- *  Copyright 2019-2020 Robert Morris
+ *  Copyright 2019-2021 Robert Morris
  *
  *  DESCRIPTION:
  *  Community-developed Hue Bridge integration app for Hubitat, including support for lights,
@@ -22,10 +22,11 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2020-12-22 - Version 3.0 Preview 1
+ *  Last modified: 2021-02-07 - Version 3.0 Preview 2
  * 
  *  Changelog:
- *  v3.0   - Added support for Hue motion sensors (also temp/illuminance) and Hue Labs activators
+ *  v3.0   - Added support for Hue motion sensors (also temp/illuminance) and Hue Labs activators; added custom port options and
+ *           other changes to enhance compatibility with DeCONZ and similar third-party APIs
  *  v2.2   - Added support for illumiance/temp/motion readings from Hue Motion sensors from Bridge
  *  v2.1   - Reduced group and scene "info" logging if no state change/event; other GroupScenes now also report "off" if received from
  *           poll from Bridge instead of (only) command from Hubitat; more static typing
@@ -267,7 +268,8 @@ def pageAddBridge() {
             paragraph "<script>\$('button[name=\"_action_next\"]').show()</script>"
          } else { 
                unsubscribe() // remove or modify if ever subscribe to more than SSDP above
-               input(name: "bridgeIP", type: "string", title: "Hue Bridge IP address:", required: false, defaultValue: null, submitOnChange: true)            
+               input(name: "bridgeIP", type: "string", title: "Hue Bridge IP address:", required: false, defaultValue: null, submitOnChange: true)
+               input(name: "customPort", type: "number", title: "Custom port? (Blank for default)")
                if (settings['bridgeIP'] && !state.bridgeLinked || !state.bridgeAuthorized) {
                   paragraph("<strong>Press the button on your Hue Bridge,</strong> then press \"Next\" to continue.")
                }
@@ -329,7 +331,8 @@ def pageLinkBridge() {
       section("Linking Hue Bridge") {
          if (!(state["bridgeAuthorized"])) {
                log.debug("Attempting Hue Bridge authorization; attempt number ${state.authTryCount+1}")
-               sendUsernameRequest()
+               if (settings["useSSDP"]) sendUsernameRequest()
+               else sendUsernameRequest("http", settings["customPort"] as Integer ?: 80)
                state.authTryCount += 1
                paragraph("Waiting for Bridge to authorize. This page will automatically refresh.")
                if (state.authTryCount > 5 && state.authTryCount < authMaxTries) {
@@ -350,7 +353,8 @@ def pageLinkBridge() {
                if (!state.bridgeLinked) {
                   log.debug("Bridge authorized. Requesting information from Bridge and creating Hue Bridge device on Hubitat...")
                   paragraph("Bridge authorized. Requesting information from Bridge and creating Hue Bridge device on Hubitat...")
-                  sendBridgeInfoRequest(true)
+                  if (settings["useSSDP"]) sendBridgeInfoRequest(true)
+                  else sendBridgeInfoRequest(true, null, settings["bridgeIP"] ?: state.ipAddress, settings["customPort"] as Integer ?: 80)
                }
                else {
                   logDebug("Bridge already linked; skipping Bridge device creation")
@@ -1013,24 +1017,29 @@ void createNewSelectedLabsDevices() {
 /** Sends request for username creation to Bridge API. Intended to be called after user
  *  presses link button on Bridge
  */
-void sendUsernameRequest() {
-    logDebug("sendUsernameRequest()... (IP = ${state.ipAddress})")
-    String locationNameNormalized = location.name?.replaceAll("\\P{InBasic_Latin}", "_")
-    String userDesc = locationNameNormalized ? "Hubitat CoCoHue#${locationNameNormalized}" : "Hubitat CoCoHue"
-    String host = "${state.ipAddress}:80"
-    sendHubCommand(new hubitat.device.HubAction([
-      method: "POST",
+void sendUsernameRequest(String protocol="http", Integer port=null) {
+   logDebug("sendUsernameRequest()... (IP = ${state.ipAddress})")
+   String locationNameNormalized = location.name?.replaceAll("\\P{InBasic_Latin}", "_")
+   String userDesc = locationNameNormalized ? "Hubitat CoCoHue#${locationNameNormalized}" : "Hubitat CoCoHue"
+   String ip = state.ipAddress
+   Map params = [
+      uri:  ip ? """${protocol}://${ip}${port ? ":$port" : ''}""" : getBridgeData().fullHost,
+      requestContentType: "application/json",
+      contentType: "application/json",
       path: "/api",
-      headers: [HOST: host],
-      body: [devicetype: userDesc]
-      ], null, [callback: "parseUsernameResponse"])
-    )
+      body: [devicetype: userDesc],
+      contentType: 'text/xml',
+      timeout: 15
+   ]
+   log.warn params = params
+   asynchttpPost("parseUsernameResponse", params, null)
 }
+
 
 /** Callback for sendUsernameRequest. Saves username in app state if Bridge is
  * successfully authorized, or logs error if unable to do so.
  */
-void parseUsernameResponse(hubitat.device.HubResponse resp) {
+void parseUsernameResponse(resp, data) {
    def body = resp.json
    logDebug("Attempting to request Hue Bridge username; result = ${body}")    
    if (body.success != null) {
@@ -1057,17 +1066,17 @@ void parseUsernameResponse(hubitat.device.HubResponse resp) {
  *  of discovered Bridge devices (when createBridge == false). protocol, ip, and port are optional
  *  and will default to getBridgeData() values if not specified
  */
-void sendBridgeInfoRequest(Boolean createBridge=true, String protocol="http", String ip = null, Integer port=80,
+void sendBridgeInfoRequest(Boolean createBridge=true, String protocol="http", String ip = null, Integer port=null,
                            String ssdpPath="/description.xml") {
    log.debug("Sending request for Bridge information")
-   String fullHost = ip ? "${protocol}://${ip}:${port}" : getBridgeData().fullHost
+   String fullHost = ip ? """${protocol ?: "http"}://${ip}${port ? ":$port" : ''}""" : getBridgeData().fullHost
    Map params = [
       uri: fullHost,
       path: ssdpPath,
       contentType: 'text/xml',
       timeout: 15
    ]
-   asynchttpGet("parseBridgeInfoResponse", params, [createBridge: createBridge, protocol: protocol,
+   asynchttpGet("parseBridgeInfoResponse", params, [createBridge: createBridge, protocol: protocol ?: "http",
                                                     port: port, ip: (ip ?: state.ipAddress)])
 }
 
@@ -1092,7 +1101,7 @@ private void parseBridgeInfoResponse(resp, data) {
          logDebug("  Hue Bridge serial parsed as ${serial}; getting additional device info...")
          friendlyBridgeName = body?.device?.friendlyName
          if (friendlyBridgeName) friendlyBridgeName = friendlyBridgeName.substring(0,friendlyBridgeName.lastIndexOf(' ('-1)) // strip out parenthetical IP address
-         com.hubitat.app.ChildDeviceWrapper bridgeDevice           
+         com.hubitat.app.ChildDeviceWrapper bridgeDevice
          if (data?.createBridge) {
             log.debug("    Creating CoCoHue Bridge device for Brige with MAC $serial")
             state.bridgeID = serial.drop(6) // last (12-6=) 6 of MAC
@@ -1163,7 +1172,7 @@ void ssdpHandler(evt) {
       String ssdpPath = parsedMap.ssdpPath
       if (ip) {
          logDebug("Device at $ip responded to SSDP; sending info request to see if is Hue Bridge")
-         sendBridgeInfoRequest(false, "http", ip, 80, ssdpPath ?: "/description.xml")
+         sendBridgeInfoRequest(false, "http", ip, null, ssdpPath ?: "/description.xml")
       }
       else {
          logDebug("In ssdpHandler but unable to obtain IP address from device response: $parsedMap")
@@ -1186,10 +1195,11 @@ private String convertHexToIP(hex) {
  * Returns map containing Bridge username, IP, and full HTTP post/port, intended to be
  * called by child devices so they can send commands to the Hue Bridge API using info
  */
-Map<String,String> getBridgeData(String protocol="http", Integer port=80) {
+Map<String,String> getBridgeData(String protocol="http", Integer port=null) {
    logDebug("Running getBridgeData()...")
    if (!state.ipAddress && settings['bridgeIP'] && !(settings['useSSDP'])) state.ipAddress = settings['bridgeIP'] // seamless upgrade from v1.x
    if (!state["username"] || !state.ipAddress) log.error "Missing username or IP address from Bridge"
+   port = port ?: ((!(settings["useSSDP"]) && settings["customPort"]) ? settings["customPort"] as Integer : 80)
    Map map = [username: state.username, ip: "${state.ipAddress}", fullHost: "${protocol}://${state.ipAddress}:${port}"]
    return map
 }

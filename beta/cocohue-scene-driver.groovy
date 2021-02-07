@@ -14,7 +14,7 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2020-12-22 - Version 3.0 Preview 1
+ *  Last modified: 2021-02-07 - Version 3.0 Preview 2
  * 
  *  Changelog:
  *  v3.0    - Improved HTTP error handling 
