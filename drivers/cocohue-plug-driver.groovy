@@ -27,7 +27,7 @@
  */
  
 metadata {
-   definition (name: "CoCoHue On/Off Plug", namespace: "RMoRobert", author: "Robert Morris", importUrl: "https://raw.githubusercontent.com/RMoRobert/CoCoHue/master/drivers/cocohue-plug-driver.groovy") {
+   definition (name: "CoCoHue On/Off Plug", namespace: "RMoRobert", author: "Robert Morris", importUrl: "https://raw.githubusercontent.com/HubitatCommunity/CoCoHue/master/drivers/cocohue-plug-driver.groovy") {
       capability "Actuator"
       capability "Refresh"
       capability "Switch"

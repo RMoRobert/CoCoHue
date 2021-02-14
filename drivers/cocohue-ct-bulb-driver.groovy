@@ -26,7 +26,7 @@
  */ 
 
 metadata {
-   definition (name: "CoCoHue CT Bulb", namespace: "RMoRobert", author: "Robert Morris", importUrl: "https://raw.githubusercontent.com/RMoRobert/CoCoHue/master/drivers/cocohue-ct-bulb-driver.groovy") {
+   definition (name: "CoCoHue CT Bulb", namespace: "RMoRobert", author: "Robert Morris", importUrl: "https://raw.githubusercontent.com/HubitatCommunity/CoCoHue/master/drivers/cocohue-ct-bulb-driver.groovy") {
       capability "Actuator"
       capability "Color Temperature"
       capability "Refresh"

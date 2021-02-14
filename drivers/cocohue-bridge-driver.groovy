@@ -26,7 +26,7 @@
  */ 
 
 metadata {
-   definition (name: "CoCoHue Bridge", namespace: "RMoRobert", author: "Robert Morris", importUrl: "https://raw.githubusercontent.com/HubitatCommunity/RMoRobert/master/drivers/cocohue-bridge-driver.groovy") {
+   definition (name: "CoCoHue Bridge", namespace: "RMoRobert", author: "Robert Morris", importUrl: "https://raw.githubusercontent.com/HubitatCommunity/CoCoHue/master/drivers/cocohue-bridge-driver.groovy") {
       capability "Actuator"
       capability "Refresh"
       attribute "status", "string"

@@ -21,7 +21,7 @@
  */
  
 metadata {
-   definition (name: "CoCoHue Generic Status Device", namespace: "RMoRobert", author: "Robert Morris", importUrl: "https://raw.githubusercontent.com/RMoRobert/CoCoHue/master/drivers/cocohue-generic-status-driver.groovy") {
+   definition (name: "CoCoHue Generic Status Device", namespace: "RMoRobert", author: "Robert Morris", importUrl: "https://raw.githubusercontent.com/HubitatCommunity/CoCoHue/master/drivers/cocohue-generic-status-driver.groovy") {
       capability "Actuator"
       capability "Refresh"
       capability "Switch"

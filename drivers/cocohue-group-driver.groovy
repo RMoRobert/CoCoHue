@@ -44,7 +44,7 @@ import groovy.transform.Field
 @Field static Map lightEffects = [0: "None", 1:"Color Loop"]
 
 metadata {
-   definition (name: "CoCoHue Group", namespace: "RMoRobert", author: "Robert Morris", importUrl: "https://raw.githubusercontent.com/RMoRobert/CoCoHue/master/drivers/cocohue-group-driver.groovy") {
+   definition (name: "CoCoHue Group", namespace: "RMoRobert", author: "Robert Morris", importUrl: "https://raw.githubusercontent.com/HubitatCommunity/CoCoHue/master/drivers/cocohue-group-driver.groovy") {
       capability "Actuator"
       capability "Color Control"
       capability "Color Temperature"
