@@ -1,7 +1,7 @@
 /*
  * =============================  CoCoHue On/Off Plug/Light (Driver) ===============================
  *
- *  Copyright 2019-2020 Robert Morris
+ *  Copyright 2019-2021 Robert Morris
  * 
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  *  in compliance with the License. You may obtain a copy of the License at:
@@ -14,7 +14,7 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2020-12-22
+ *  Last modified: 2021-02-13
  * 
  *  Changelog:
  *  v3.0    - Initial release
@@ -85,16 +85,16 @@ String getHueDeviceNumber() {
    return device.deviceNetworkId.split("/")[3]
 }
 
-void on() {    
-   logDebug("Turning on...")
+void on() {
+   logDebug("on()")
    sendBridgeCommand(["status": 1])
    if (settings["onRefresh"] == "1000" || settings["onRefresh"] == "5000") {
       parent.runInMillis(settings["onRefresh"] as Integer, "refreshBridge")
    }
 }
 
-void off() {    
-   logDebug("Turning off...")
+void off() {
+   logDebug("off()")
    sendBridgeCommand(["status": 0])
    if (settings["onRefresh"] == "1000" || settings["onRefresh"] == "5000") {
       parent.runInMillis(settings["onRefresh"] as Integer, "refreshBridge")
@@ -102,6 +102,7 @@ void off() {
 }
 
 void push(btnNum) {
+   logDebug("push($btnNum)")
    on()
    doSendEvent("pushed", 1, null, true)
 }
@@ -214,7 +215,7 @@ private Boolean checkIfValidResponse(resp) {
 }
 
 void doSendEvent(String eventName, eventValue, String eventUnit=null, Boolean forceStateChange=false) {
-   logDebug("Creating event for $eventName...")
+   //logDebug("doSendEvent($eventName, $eventValue, $eventUnit)")
    String descriptionText = "${device.displayName} ${eventName} is ${eventValue}${eventUnit ?: ''}"
    logDesc(descriptionText)
    if (eventUnit) {
@@ -238,9 +239,9 @@ private void setDefaultAttributeValues() {
 }
 
 void logDebug(str) {
-   if (settings.enableDebug) log.debug(str)
+   if (settings.enableDebug == true) log.debug(str)
 }
 
 void logDesc(str) {
-   if (settings.enableDesc) log.info(str)
+   if (settings.enableDesc == true) log.info(str)
 }

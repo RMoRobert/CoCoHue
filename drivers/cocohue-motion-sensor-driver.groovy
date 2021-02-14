@@ -1,7 +1,7 @@
 /*
  * =============================  CoCoHue Motion Sensor (Driver) ===============================
  *
- *  Copyright 2020 Robert Morris
+ *  Copyright 2020-2021 Robert Morris
  * 
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  *  in compliance with the License. You may obtain a copy of the License at:
@@ -14,7 +14,7 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2020-12-10
+ *  Last modified: 2021-02-13
  * 
  *  Changelog:
  *  v3.0    - Initial release
@@ -74,7 +74,7 @@ void parse(String description) {
  * where -XX or -XX-YYYY indicate additional endpoints/sensors on same device), which should be last part
  * of DNI
  */
-String  getHueDeviceMAC() {
+String getHueDeviceMAC() {
    return device.deviceNetworkId.split("/")[3]
 }
 
@@ -115,7 +115,7 @@ void createEventsFromMap(Map bridgeCmd) {
             break
          case "battery":
             eventName = "battery"
-            eventValue = (it != null) ? (it as Integer) : 0
+            eventValue = (it.value != null) ? (it.value as Integer) : 0
             eventUnit = "%"
             if (device.currentValue(eventName) != eventValue) doSendEvent(eventName, eventValue, eventUnit)
             break
@@ -127,7 +127,7 @@ void createEventsFromMap(Map bridgeCmd) {
 }
 
 void doSendEvent(String eventName, eventValue, String eventUnit=null) {
-   logDebug("Creating event for $eventName...")
+   //logDebug("doSendEvent($eventName, $eventValue, $eventUnit)")
    String descriptionText = "${device.displayName} ${eventName} is ${eventValue}${eventUnit ?: ''}"
    logDesc(descriptionText)
    if (eventUnit) {
@@ -138,9 +138,9 @@ void doSendEvent(String eventName, eventValue, String eventUnit=null) {
 }
 
 void logDebug(str) {
-   if (settings.enableDebug) log.debug(str)
+   if (settings.enableDebug == true) log.debug(str)
 }
 
 void logDesc(str) {
-   if (settings.enableDesc) log.info(str)
+   if (settings.enableDesc == true) log.info(str)
 }

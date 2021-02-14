@@ -14,7 +14,7 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2020-12-22
+ *  Last modified: 2021-02-07 - Version 3.0 Preview 2
  * 
  *  Changelog:
  *  v3.0    - Improved HTTP error handling 
@@ -255,7 +255,7 @@ void push(btnNum) {
 }
 
 void doSendEvent(String eventName, eventValue, String eventUnit=null, forceStateChange=false) {
-   logDebug("Creating event for $eventName...")
+   //logDebug("doSendEvent($eventName, $eventValue, $eventUnit)")
    String descriptionText = "${device.displayName} ${eventName} is ${eventValue}${eventUnit ?: ''}"
    logDesc(descriptionText)
    // TODO: Map-ify these parameters to make cleaner and less verbose?
@@ -343,9 +343,9 @@ String getGroupID() {
 }
 
 void logDebug(str) {
-   if (settings.enableDebug) log.debug(str)
+   if (settings.enableDebug == true) log.debug(str)
 }
 
 void logDesc(str) {
-   if (settings.enableDesc) log.info(str)
+   if (settings.enableDesc == true) log.info(str)
 }

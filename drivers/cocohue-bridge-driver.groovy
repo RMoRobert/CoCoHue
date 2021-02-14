@@ -1,7 +1,7 @@
 /**
  * =============================  CoCoHue Bridge (Driver) ===============================
  *
- *  Copyright 2019-2020 Robert Morris
+ *  Copyright 2019-2021 Robert Morris
  * 
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  *  in compliance with the License. You may obtain a copy of the License at:
@@ -14,7 +14,7 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2020-12-22
+ *  Last modified: 2021-02-13
  *
  *  Changelog:
  *  v3.0    - Added support for sensors (Hue Motion sensors with motion/temp/lux) and Hue Labs effects (looks for resoucelinks with 1 sensor link)
@@ -66,7 +66,7 @@ void parse(String description) {
 }
 
 void refresh() {
-   logDebug("Refresh...")
+   logDebug("refresh()")
    Map<String,String> data = parent.getBridgeData()
    Map params = [
       uri: data.fullHost,
@@ -499,16 +499,16 @@ void clearLabsSensorsCache() {
 }
 
 private void doSendEvent(String eventName, eventValue) {
-   //logDebug("Creating event for $eventName...")
+   //logDebug("doSendEvent($eventName, $eventValue, $eventUnit)")
    String descriptionText = "${device.displayName} ${eventName} is ${eventValue}"
    logDesc(descriptionText)
    sendEvent(name: eventName, value: eventValue, descriptionText: descriptionText)
 }
 
 void logDebug(str) {
-   if (settings.enableDebug) log.debug(str)
+   if (settings.enableDebug == true) log.debug(str)
 }
 
 void logDesc(str) {
-   if (settings.enableDesc) log.info(str)
+   if (settings.enableDesc == true) log.info(str)
 }
