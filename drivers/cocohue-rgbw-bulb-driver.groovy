@@ -1,7 +1,7 @@
 /*
  * =============================  CoCoHue RGBW Bulb (Driver) ===============================
  *
- *  Copyright 2019-2020 Robert Morris
+ *  Copyright 2019-2021 Robert Morris
  * 
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  *  in compliance with the License. You may obtain a copy of the License at:
@@ -14,9 +14,10 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2020-12-22
+ *  Last modified: 2021-03-14
  *
  *  Changelog:
+ *  v3.1    - Improved error handling and debug logging; added optional setColorTemperature parameters
  *  v3.0    - Improved HTTP error handling
  *  v2.1.1  - Improved rounding for level (brightness) to/from Bridge
  *  v2.1    - Added optional rate to setColor per Hubitat (used by Hubitat Groups and Scenes); more static typing
@@ -37,13 +38,16 @@
  *  v1.0    - Initial Release
  */ 
 
-//import groovy.json.JsonSlurper
 import groovy.transform.Field
+
+// Currently works for all Hue bulbs; can adjust if needed:
+@Field static final minMireds = 153
+@Field static final maxMireds = 500
 
 @Field static Map lightEffects = [0: "None", 1:"Color Loop"]
 
 metadata {
-   definition (name: "CoCoHue RGBW Bulb", namespace: "RMoRobert", author: "Robert Morris", importUrl: "https://raw.githubusercontent.com/RMoRobert/CoCoHue/master/drivers/cocohue-rgbw-bulb-driver.groovy") {
+   definition (name: "CoCoHue RGBW Bulb", namespace: "RMoRobert", author: "Robert Morris", importUrl: "https://raw.githubusercontent.com/HubitatCommunity/CoCoHue/master/drivers/cocohue-rgbw-bulb-driver.groovy") {
       capability "Actuator"
       capability "Color Control"
       capability "Color Temperature"
@@ -67,8 +71,8 @@ metadata {
       input(name: "transitionTime", type: "enum", description: "", title: "Transition time", options:
          [[0:"ASAP"],[400:"400ms"],[500:"500ms"],[1000:"1s"],[1500:"1.5s"],[2000:"2s"],[5000:"5s"]], defaultValue: 400)
       input(name: "hiRezHue", type: "bool", title: "Enable hue in degrees (0-360 instead of 0-100)", defaultValue: false)
-      input(name: "colorStaging", type: "bool", description: "", title: "Enable color pseudo-prestaging", defaultValue: false)
-      input(name: "levelStaging", type: "bool", description: "", title: "Enable level pseudo-prestaging", defaultValue: false)
+      if (colorStaging) input(name: "colorStaging", type: "bool", description: "DEPRECATED. Will be replaced in future version.", title: "Enable color pseudo-prestaging", defaultValue: false)
+      if (levelStaging) input(name: "levelStaging", type: "bool", description: "DEPRECATED. Will be replaced in future version.", title: "Enable level pseudo-prestaging", defaultValue: false)
       input(name: "levelChangeRate", type: "enum", description: "", title: '"Start level change" rate', options:
          [["slow":"Slow"],["medium":"Medium"],["fast":"Fast (default)"]], defaultValue: "fast")
       input(name: "updateGroups", type: "bool", description: "", title: "Update state of groups immediately when bulb state changes",
@@ -118,8 +122,8 @@ String getHueDeviceNumber() {
    return device.deviceNetworkId.split("/")[3]
 }
 
-void on() {    
-   logDebug("Turning on...")
+void on() {
+   logDebug("on()")
    /* TODO: Add setting for "agressive" vs. normal prestaging (?), and for regular pre-staging,
    check if current level is different from lastXYZ value, in which case it was probably
    changed outside of Hubitat and we should not set the pre-staged value(s)--Hue does not
@@ -132,8 +136,8 @@ void on() {
    state.remove("lastLevel")
 }
 
-void off() {    
-   logDebug("Turning off...")
+void off() {
+   logDebug("off()")
    state.remove("lastHue")
    state.remove("lastSat")
    state.remove("lastCT")
@@ -143,7 +147,7 @@ void off() {
 }
 
 void startLevelChange(direction) {
-   logDebug("Running startLevelChange($direction)...")
+   logDebug("startLevelChange($direction)...")
    Map cmd = ["bri": (direction == "up" ? 254 : 1),
             "transitiontime": ((settings["levelChangeRate"] == "fast" || !settings["levelChangeRate"]) ?
                                  30 : (settings["levelChangeRate"] == "slow" ? 60 : 45))]
@@ -151,17 +155,18 @@ void startLevelChange(direction) {
 }
 
 void stopLevelChange() {
-   logDebug("Running stopLevelChange...")
+   logDebug("stopLevelChange()...")
    Map cmd = ["bri_inc": 0]
    sendBridgeCommand(cmd, false) 
 }
 
 void setLevel(value) {
+   logDebug("setLevel($value)")
    setLevel(value, ((transitionTime != null ? transitionTime.toBigDecimal() : 1000)) / 1000)
 }
 
 void setLevel(value, rate) {
-   logDebug("Setting level to ${value}% over ${rate}s...")
+   logDebug("setLevel($value, $rate)")
    state.remove("lastLevel")
    if (value < 0) value = 1
    else if (value > 100) value = 100
@@ -183,19 +188,32 @@ void setLevel(value, rate) {
    }
 }
 
-void setColorTemperature(value) {
-   logDebug("Setting color temperature to $value...")
+void setColorTemperature(Number colorTemperature, Number level = null, Number transitionTime = null) {
+   logDebug("setColorTemperature($colorTemperature, $level, $transitionTime)")
    state.remove("lastHue")
    state.remove("lastSat")
    state.remove("lastCT")
-   Integer newCT = Math.round(1000000/value)
-   if (newCT < 153) value = 153
-   else if (newCT > 500) newCT = 500
-   Integer scaledRate = ((transitionTime != null ? transitionTime.toBigDecimal() : 1000) / 100).toInteger()
-   addToNextBridgeCommand(["ct": newCT, "transitiontime": scaledRate], !(levelStaging || colorStaging))
-   Boolean isOn = device.currentValue("switch") == "on"    
-   if (!colorStaging || isOn) {
-      addToNextBridgeCommand(["on": true])
+   Integer newCT = Math.round(1000000/colorTemperature) as Integer
+   if (newCT < minMireds) value = minMireds
+   else if (newCT > maxMireds) newCT = maxMireds
+   Integer scaledRate = 10 // Default 1s transition time
+   if (transitionTime != null) {
+      scaledRate = (transitionTime * 10) as Integer
+   }
+   else if (settings["transitionTime"] != null) {
+      scaledRate = ((settings["transitionTime"] as Integer) / 100) as Integer
+   }
+   if (level) {
+      addToNextBridgeCommand(["ct": newCT, "transitiontime": scaledRate, "bri": scaleBriToBridge(level)],
+                             !(levelStaging || colorStaging))
+   }
+   else {
+      if (level == null) addToNextBridgeCommand(["ct": newCT, "transitiontime": scaledRate], !(levelStaging || colorStaging))
+      else /* (level == 0) */  addToNextBridgeCommand(["on": false, "ct": newCT, "transitiontime": scaledRate], !(levelStaging || colorStaging)) 
+   }
+   Boolean isOn = device.currentValue("switch") == "on"
+   if (!colorStaging || isOn) { 
+      if (level) addToNextBridgeCommand(["on": true])
       sendBridgeCommand()
    } else {
       state["lastCT"] = device.currentValue("colorTemperature")
@@ -239,7 +257,7 @@ void setColor(value) {
 }
 
 void setHue(value) {
-   logDebug("Setting hue...")
+   logDebug("setHue($value)")
    Integer newHue = scaleHueToBridge(value)
    state.remove("lastHue")
    state.remove("lastCT")
@@ -256,7 +274,7 @@ void setHue(value) {
 }
 
 void setSaturation(value) {
-   logDebug("Setting saturation...")
+   logDebug("setSaturation($value)")
    Integer newSat = scaleSatToBridge(value)
    state.remove("lastSat")
    state.remove("lastCT")
@@ -273,12 +291,13 @@ void setSaturation(value) {
 }
 
 void setEffect(String effect) {
+   logDebug("setEffect($effect)")
    def id = lightEffects.find { it.value == effect }
    if (id != null) setEffect(id.key)
 }
 
 void setEffect(id) {
-   logDebug("Setting effect $id...")
+   logDebug("setEffect($id)")
    state.remove("lastHue")
    // May want to see if it really makes sense to remove these too:
    state.remove("lastSat")
@@ -289,6 +308,7 @@ void setEffect(id) {
 }
 
 void setNextEffect() {
+   logDebug("setNextEffect()")
    Integer currentEffect = state.crntEffectId ?: 0
    currentEffect++
    if (currentEffect > 1) currentEffect = 0
@@ -296,6 +316,7 @@ void setNextEffect() {
 }
 
 void setPreviousEffect() {
+   logDebug("setPreviousEffect()")
    Integer currentEffect = state.crntEffectId ?: 0
    currentEffect--
    if (currentEffect < 0) currentEffect = 1
@@ -303,19 +324,22 @@ void setPreviousEffect() {
 }
 
 void flash() {
-   logDesc("${device.displayName} started 15-cycle flash")
+   logDebug("flash()")
+   if (settings.enableDesc == true) log.info("${device.displayName} started 15-cycle flash")
    Map<String,String> cmd = ["alert": "lselect"]
    sendBridgeCommand(cmd, false) 
 }
 
 void flashOnce() {
-   logDesc("${device.displayName} started 1-cycle flash")
+   logDebug("flashOnce()")
+   if (settings.enableDesc == true) log.info("${device.displayName} started 1-cycle flash")
    Map<String,String> cmd = ["alert": "select"]
    sendBridgeCommand(cmd, false) 
 }
 
 void flashOff() {
-   logDesc("${device.displayName} was sent command to stop flash")
+   logDebug("flashOff()")
+   if (settings.enableDesc == true) log.info("${device.displayName} was sent command to stop flash")
    Map<String,String> cmd = ["alert": "none"]
    sendBridgeCommand(cmd, false) 
 }
@@ -536,38 +560,44 @@ void parseSendCommandResponse(resp, data) {
 private Boolean checkIfValidResponse(resp) {
    logDebug("Checking if valid HTTP response/data from Bridge...")
    Boolean isOK = true
-   if (resp?.json == null) {
-      isOK = false
-      if (resp?.headers == null) log.error "Error: HTTP ${resp?.status} when attempting to communicate with Bridge"
-      else log.error "No JSON data found in response. ${resp.headers.'Content-Type'} (HTTP ${resp.status})"
-      parent.sendBridgeDiscoveryCommandIfSSDPEnabled(true) // maybe IP changed, so attempt rediscovery 
-      parent.setBridgeStatus(false)
-   }
-   else if (resp.status < 400 && resp.json) {
-      if (resp.json[0]?.error) {
-         // Bridge (not HTTP) error (bad username, bad command formatting, etc.):
+   if (resp.status < 400) {
+      if (resp?.json == null) {
          isOK = false
-         log.warn "Error from Hue Bridge: ${resp.json[0].error}"
-         // Not setting Bridge to offline when light/scene/group devices end up here because could
-         // be old/bad ID and don't want to consider Bridge offline just for that (but also won't set
-         // to online because wasn't successful attempt)
+         if (resp?.headers == null) log.error "Error: HTTP ${resp?.status} when attempting to communicate with Bridge"
+         else log.error "No JSON data found in response. ${resp.headers.'Content-Type'} (HTTP ${resp.status})"
+         parent.sendBridgeDiscoveryCommandIfSSDPEnabled(true) // maybe IP changed, so attempt rediscovery 
+         parent.setBridgeStatus(false)
       }
-      // Otherwise: probably OK (not changing anything because isOK = true already)
+      else if (resp.json) {
+         if (resp.json[0]?.error) {
+            // Bridge (not HTTP) error (bad username, bad command formatting, etc.):
+            isOK = false
+            log.warn "Error from Hue Bridge: ${resp.json[0].error}"
+            // Not setting Bridge to offline when light/scene/group devices end up here because could
+            // be old/bad ID and don't want to consider Bridge offline just for that (but also won't set
+            // to online because wasn't successful attempt)
+         }
+         // Otherwise: probably OK (not changing anything because isOK = true already)
+      }
+      else {
+         isOK = false
+         log.warn("HTTP status code ${resp.status} from Bridge")
+         if (resp?.status >= 400) parent.sendBridgeDiscoveryCommandIfSSDPEnabled(true) // maybe IP changed, so attempt rediscovery 
+         parent.setBridgeStatus(false)
+      }
+      if (isOK) parent.setBridgeStatus(true)
    }
    else {
+      log.warn "Error communiating with Hue Bridge: HTTP ${resp?.status}"
       isOK = false
-      log.warn("HTTP status code ${resp.status} from Bridge")
-      if (resp?.status >= 400) parent.sendBridgeDiscoveryCommandIfSSDPEnabled(true) // maybe IP changed, so attempt rediscovery 
-      parent.setBridgeStatus(false)
    }
-   if (isOK) parent.setBridgeStatus(true)
    return isOK
 }
 
 void doSendEvent(String eventName, eventValue, String eventUnit=null) {
-   logDebug("Creating event for $eventName...")
+   //logDebug("doSendEvent($eventName, $eventValue, $eventUnit)")
    String descriptionText = "${device.displayName} ${eventName} is ${eventValue}${eventUnit ?: ''}"
-   logDesc(descriptionText)
+   if (settings.enableDesc == true) log.info(descriptionText)
    if (eventUnit) {
       sendEvent(name: eventName, value: eventValue, descriptionText: descriptionText, unit: eventUnit) 
    } else {
@@ -687,9 +717,5 @@ private Integer scaleSatFromBridge(bridgeLevel) {
 }
 
 void logDebug(str) {
-   if (settings.enableDebug) log.debug(str)
-}
-
-void logDesc(str) {
-   if (settings.enableDesc) log.info(str)
+   if (settings.enableDebug == true) log.debug(str)
 }
