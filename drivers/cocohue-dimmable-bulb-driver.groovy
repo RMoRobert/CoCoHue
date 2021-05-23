@@ -27,7 +27,13 @@
  *  v2.0    - Added startLevelChange rate option; improved HTTP error handling; attribute events now generated
  *            only after hearing back from Bridge; Bridge online/offline status improvements
  *  v1.9    - Initial release (based on CT bulb driver)
- */ 
+ */
+
+import groovy.transform.Field
+
+// Default preference values
+@Field static final BigDecimal defaultLevelTransitionTime = 1000
+ 
 
 metadata {
    definition (name: "CoCoHue Dimmable Bulb", namespace: "RMoRobert", author: "Robert Morris", importUrl: "https://raw.githubusercontent.com/HubitatCommunity/CoCoHue/master/drivers/cocohue-dimmable-bulb-driver.groovy") {
