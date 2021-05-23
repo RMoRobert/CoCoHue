@@ -17,8 +17,9 @@
  *  Last modified: 2021-05-21
  *
  *  Changelog:
- *  v3.5    - Add LevelPreset capability (replaces old level prestaging option); added "reachable" attribte
-              from Bridge to bulb and group drivers (thanks to @jtp10181 for original implementation)
+ *  v3.5    - Add LevelPreset capability (replaces old level prestaging option); added preliminary color
+ *            and CT prestating coommands; added "reachable" attribte from Bridge to bulb and group
+ *            drivers (thanks to @jtp10181 for original implementation)
  *  v3.1.3  - Adjust setLevel(0) to honor rate
  *  v3.1.1  - Fix for setColorTempeature() not turning bulb on in some cases
  *  v3.1    - Improved error handling and debug logging; added optional setColorTemperature parameters
@@ -81,7 +82,6 @@ metadata {
       
       attribute "effect", "string"
       attribute "reachable", "string"
-
    }
 
    preferences {
@@ -161,6 +161,10 @@ void off(Number transitionTime = null) {
       bridgeCmd << ["transitiontime": scaledRate]
    }
    sendBridgeCommand(bridgeCmd)
+}
+
+void refresh() {
+   log.warn "Refresh CoCoHue Bridge device instead of individual device to update (all) bulbs/groups"
 }
 
 void startLevelChange(direction) {
@@ -676,10 +680,6 @@ void doSendEvent(String eventName, eventValue, String eventUnit=null) {
    } else {
       sendEvent(name: eventName, value: eventValue, descriptionText: descriptionText) 
    }
-}
-
-void refresh() {
-   log.warn "Refresh CoCoHue Bridge device instead of individual device to update (all) bulbs/groups"
 }
 
 // Hubiat-provided color/name mappings

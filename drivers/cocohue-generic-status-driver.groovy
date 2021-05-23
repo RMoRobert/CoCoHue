@@ -14,9 +14,10 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2021-03-14
+ *  Last modified: 2021-05-23
  * 
  *  Changelog:
+ *  v3.5    - Minor code cleanup, removal of custom "push" command now that is standard capability command
  *  v3.1    - Improved error handling and debug logging
  *  v3.0    - Initial release
  */
@@ -27,39 +28,37 @@ metadata {
       capability "Refresh"
       capability "Switch"
       capability "PushableButton"
-      
-      command "push", [[name:"NUMBER", type: "NUMBER", description: "Button number (must be 1; will activate device)" ]]
    }
        
    preferences {
-      input(name: "onRefresh", type: "enum", title: "Bridge refresh on activation/deacivation: when this device is activated or deactivated by a Hubitat command...",
+      input name: "onRefresh", type: "enum", title: "Bridge refresh on activation/deacivation: when this device is activated or deactivated by a Hubitat command...",
          options: [["none": "Do not refresh Bridge"],
                    ["1000": "Refresh Bridge device in 1s"],
                    ["5000": "Refrehs Bridge device in 5s"]],
-         defaultValue: "none")
-      input(name: "enableDebug", type: "bool", title: "Enable debug logging", defaultValue: true)
-      input(name: "enableDesc", type: "bool", title: "Enable descriptionText logging", defaultValue: true)
+         defaultValue: "none"
+      input name: "enableDebug", type: "bool", title: "Enable debug logging", defaultValue: true
+      input name: "enableDesc", type: "bool", title: "Enable descriptionText logging", defaultValue: true
    }
 }
 
 void installed() {
-   log.debug "Installed..."
+   log.debug "installed()"
    setDefaultAttributeValues()
    initialize()
 }
 
 void updated() {
-   log.debug "Updated..."
+   log.debug "updated()"
    initialize()
 }
 
 void initialize() {
-   log.debug "Initializing"
+   log.debug "initialize()"
    sendEvent(name: "numberOfButtons", value: 1)
-   Integer disableTime = 1800
+   Integer disableMinutes = 30
    if (enableDebug) {
-      log.debug "Debug logging will be automatically disabled in ${disableTime} seconds"
-      runIn(disableTime, debugOff)
+      log.debug "Debug logging will be automatically disabled in ${disableMinutes} minutes"
+      runIn(disableMinutes*60, debugOff)
    }
 }
 
@@ -68,7 +67,7 @@ void refresh() {
 }
 
 void debugOff() {
-   log.warn("Disabling debug logging")
+   log.warn "Disabling debug logging"
    device.updateSetting("enableDebug", [value:"false", type:"bool"])
 }
 
@@ -87,23 +86,23 @@ String getHueDeviceNumber() {
 }
 
 void on() {
-   logDebug("on()")
+   if (enableDebug) log.debug "on()"
    sendBridgeCommand(["status": 1])
    if (settings["onRefresh"] == "1000" || settings["onRefresh"] == "5000") {
-      parent.runInMillis(settings["onRefresh"] as Integer, "refreshBridge")
+      parent.runInMillis(new Integer(settings["onRefresh"]), "refreshBridge")
    }
 }
 
 void off() {
-   logDebug("off()")
+   if (enableDebug) log.debug "off()"
    sendBridgeCommand(["status": 0])
    if (settings["onRefresh"] == "1000" || settings["onRefresh"] == "5000") {
-      parent.runInMillis(settings["onRefresh"] as Integer, "refreshBridge")
+      parent.runInMillis(new Integer(settings["onRefresh"]), "refreshBridge")
    }
 }
 
 void push(btnNum) {
-   logDebug("push($btnNum)")
+   if (enableDebug) log.debug "push($btnNum)"
    on()
    doSendEvent("pushed", 1, null, true)
 }
@@ -117,12 +116,12 @@ void push(btnNum) {
  */
 void createEventsFromMap(Map stateMap) {
    if (!stateMap) {
-      logDebug("createEventsFromMap called but state map empty; exiting")
+      if (enableDebug) log.debug "createEventsFromMap called but state map empty; exiting"
       return
    }
-   logDebug("Preparing to create events from map: ${stateMap}")
+   if (enableDebug) log.debug "Preparing to create events from map: ${stateMap}"
    String eventName, eventUnit, descriptionText
-   def eventValue // could be String or number
+   String eventValue // should only be string here; could be String or number with lights/groups
    stateMap.each {
       switch (it.key) {
          case "status":
@@ -145,7 +144,7 @@ void createEventsFromMap(Map stateMap) {
  *        affected device attributes (e.g., will send an "on" event for sensor's "switch" if contains "state": 1)
  */
 void sendBridgeCommand(Map bridgeCmds = [:], Boolean createHubEvents=true) {
-   logDebug("Sending command to Bridge: ${bridgeCmds}")
+   if (enableDebug) log.debug "Sending command to Bridge: ${bridgeCmds}"
    if (!bridgeCmds) {
       log.debug("Commands not sent to Bridge because command map empty")
       return
@@ -159,7 +158,7 @@ void sendBridgeCommand(Map bridgeCmds = [:], Boolean createHubEvents=true) {
       timeout: 15
       ]
    asynchttpPut("parseSendCommandResponse", params, createHubEvents ? bridgeCmds : null)
-   logDebug("-- Command sent to Bridge!" --)
+   if (enableDebug) log.debug "-- Command sent to Bridge! --"
 }
 
 /** 
@@ -169,13 +168,13 @@ void sendBridgeCommand(Map bridgeCmds = [:], Boolean createHubEvents=true) {
   * @param data Map of commands sent to Bridge if specified to create events from map
   */
 void parseSendCommandResponse(resp, data) {
-   logDebug("Response from Bridge: ${resp.status}")
+   if (enableDebug) log.debug "Response from Bridge: ${resp.status}"
    if (checkIfValidResponse(resp) && data) {
-      logDebug("  Bridge response valid; creating events from data map")          
+      if (enableDebug) log.debug "  Bridge response valid; creating events from data map"
       createEventsFromMap(data)
    }
    else {
-      logDebug("  Not creating events from map because not specified to do or Bridge response invalid")
+      if (enableDebug) log.debug "  Not creating events from map because not specified to do or Bridge response invalid"
    }
 }
 
@@ -185,7 +184,7 @@ void parseSendCommandResponse(resp, data) {
   * @param resp The async HTTP response object to examine
   */
 private Boolean checkIfValidResponse(resp) {
-   logDebug("Checking if valid HTTP response/data from Bridge...")
+   if (enableDebug) log.debug "Checking if valid HTTP response/data from Bridge..."
    Boolean isOK = true
    if (resp.status < 400) {
       if (resp?.json == null) {
@@ -212,7 +211,7 @@ private Boolean checkIfValidResponse(resp) {
          if (resp?.status >= 400) parent.sendBridgeDiscoveryCommandIfSSDPEnabled(true) // maybe IP changed, so attempt rediscovery 
          parent.setBridgeStatus(false)
       }
-      if (isOK) parent.setBridgeStatus(true)
+      if (isOK == true) parent.setBridgeStatus(true)
    }
    else {
       log.warn "Error communiating with Hue Bridge: HTTP ${resp?.status}"
@@ -222,7 +221,7 @@ private Boolean checkIfValidResponse(resp) {
 }
 
 void doSendEvent(String eventName, eventValue, String eventUnit=null, Boolean forceStateChange=false) {
-   //logDebug("doSendEvent($eventName, $eventValue, $eventUnit)")
+   //if (enableDebug) log.debug "doSendEvent($eventName, $eventValue, $eventUnit)"
    String descriptionText = "${device.displayName} ${eventName} is ${eventValue}${eventUnit ?: ''}"
    if (settings.enableDesc == true) log.info(descriptionText)
    if (eventUnit) {
@@ -240,11 +239,7 @@ void doSendEvent(String eventName, eventValue, String eventUnit=null, Boolean fo
  * approximately warm white and off.
  */
 private void setDefaultAttributeValues() {
-   logDebug("Setting scene device states to sensibile default values...")
+   if (enableDebug) log.debug "Setting scene device states to sensibile default values..."
    event = sendEvent(name: "switch", value: "off", isStateChange: false)
    event = sendEvent(name: "pushed", value: 1, isStateChange: false)
-}
-
-void logDebug(str) {
-   if (settings.enableDebug == true) log.debug(str)
 }
