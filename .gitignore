@@ -3,4 +3,9 @@ apps/.DS_Store
 drivers/.DS_Store
 .DS_Store
 dev/*
-.vscode/settings.json
+.vscode/*
+hubUpload.py
+hubUpload12.sh
+hubUpload16.sh
+hubUpload16.bat
+hubUpload93.sh
