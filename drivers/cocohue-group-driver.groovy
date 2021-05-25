@@ -75,8 +75,8 @@ metadata {
       command "flashOff"
 
       // Not (yet?) standard, but hopefully will be standardized soon (and similar to this--as analagous to LevelPreset as possible):
-      command "presetColorTemperature", [[name:"colorTemperature",type:"NUMBER", description:"Color temperature to prestage", constraints:["NUMBER"]]]
-      command "presetColor", [[name:"color",type:"JSON_OBJECT", description:"Color to prestage (Map with keys: hue, saturation, value; also accepts JSON object for better UI compatibility, subject to change)"]]
+      command "presetColorTemperature", [[name:"Color temperature*",type:"NUMBER", description:"Color temperature to prestage", constraints:["NUMBER"]]]
+      command "presetColor", [[name:"Color Map*", type:"JSON_OBJECT", description:"Color to prestage (Map with keys: hue, saturation, value; also accepts JSON object for better UI compatibility, subject to change)"]]
       attribute "colorTemperaturePreset", "number"
       attribute "huePreset", "number"
       attribute "saturationPreset", "number"

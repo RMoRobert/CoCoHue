@@ -56,7 +56,7 @@ metadata {
       command "flashOff"
 
       // Not (yet?) standard, but hopefully will be standardized soon (and similar to this--as analagous to LevelPreset as possible):
-      command "presetColorTemperature", [[name:"colorTemperature",type:"NUMBER", description:"Color temperature to prestage", constraints:["NUMBER"]]]
+      command "presetColorTemperature", [[name:"Color temperature*",type:"NUMBER", description:"Color temperature to prestage", constraints:["NUMBER"]]]
       attribute "colorTemperaturePreset", "number"
 
       attribute "reachable", "string"

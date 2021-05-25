@@ -1,5 +1,5 @@
 /*
- * =============================  CoCoHue On/Off Plug/Light (Driver) ===============================
+ * =============================  CoCoHue Generic Status Device (Driver) ===============================
  *
  *  Copyright 2019-2021 Robert Morris
  * 
