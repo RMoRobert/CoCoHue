@@ -1021,7 +1021,7 @@ void createNewSelectedLabsDevices() {
  */
 void sendUsernameRequest(String protocol="http", Integer port=null) {
    logDebug("sendUsernameRequest()... (IP = ${state.ipAddress})")
-   String locationNameNormalized = location.name?.replaceAll("\\P{InBasic_Latin}", "_")
+   String locationNameNormalized = location.name?.replaceAll("\\P{InBasic_Latin}", "_").take(13) // Cap at first 13 characters (possible 30-char total limit?)
    String userDesc = locationNameNormalized ? "Hubitat CoCoHue#${locationNameNormalized}" : "Hubitat CoCoHue"
    String ip = state.ipAddress
    Map params = [
