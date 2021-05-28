@@ -52,8 +52,9 @@ import groovy.transform.Field
 @Field static final Map<Integer,String> lightEffects = [0: "None", 1:"Color Loop"]
 @Field static final Integer maxEffectNumber = 1
 
-// Default preference values
-@Field static final BigDecimal defaultLevelTransitionTime = 1000
+// These defaults are specified in Hue (decisecond) durations, used if not specified in preference or command:
+@Field static final Integer defaultLevelTransitionTime = 4
+@Field static final Integer defaultOnTransitionTime = 4
 
 metadata {
    definition (name: "CoCoHue RGBW Bulb", namespace: "RMoRobert", author: "Robert Morris", importUrl: "https://raw.githubusercontent.com/HubitatCommunity/CoCoHue/master/drivers/cocohue-rgbw-bulb-driver.groovy") {
@@ -85,13 +86,24 @@ metadata {
    }
 
    preferences {
-      input name: "transitionTime", type: "enum", description: "", title: "Transition time", options:
-         [[0:"ASAP"],[400:"400ms"],[500:"500ms"],[1000:"1s"],[1500:"1.5s"],[2000:"2s"],[5000:"5s"]], defaultValue: 400
+      input name: "transitionTime", type: "enum", description: "", title: "Level transition time", options:
+         [[0:"ASAP"],[200:"200ms"],[400:"400ms (default)"],[500:"500ms"],[1000:"1s"],[1500:"1.5s"],[2000:"2s"],[5000:"5s"]], defaultValue: 400
+      input name: "levelChangeRate", type: "enum", description: "", title: '"Start level change" rate', options:
+         [["slow":"Slow"],["medium":"Medium"],["fast":"Fast (default)"]], defaultValue: "fast"
+      // Sending "bri" with "on:true" alone seems to have no effect, so might as well not implement this for now...
+      input name: "onTransitionTime", type: "enum", description: "", title: "On transition time", options:
+         [[(-2): "Hue default/do not specify (recommended; default; Hue may ignore other values)"],[0:"ASAP"],[200:"200ms"],[400:"400ms (default)"],[500:"500ms"],[1000:"1s"],[1500:"1.5s"],[2000:"2s"],[5000:"5s"]], defaultValue: 400
+      // Not recommended because of problem described here:  https://developers.meethue.com/forum/t/using-transitiontime-with-on-false-resets-bri-to-1/4585
+      input name: "offTransitionTime", type: "enum", description: "", title: "Off transition time", options:
+         [[(-2): "Hue default/do not specify (recommended; default)"],[(-1): "Use on transition time"],[0:"ASAP"],[200:"200ms"],[400:"400ms (default)"],[500:"500ms"],[1000:"1s"],[1500:"1.5s"],[2000:"2s"],[5000:"5s"]], defaultValue: -1
+      input name: "ctTransitionTime", type: "enum", description: "", title: "Color temperature transition time", options:
+         [[(-2): "Hue default/do not specify (default)"],[(-1): "Use level transition time (default)"],[0:"ASAP"],[200:"200ms"],[400:"400ms (default)"],[500:"500ms"],[1000:"1s"],[1500:"1.5s"],[2000:"2s"],[5000:"5s"]], defaultValue: -1
+      input name: "rgbTransitionTime", type: "enum", description: "", title: "RGB transition time", options:
+         [[(-2): "Hue default/do not specify (default)"],[(-1): "Use level transition time (default)"],[0:"ASAP"],[200:"200ms"],[400:"400ms (default)"],[500:"500ms"],[1000:"1s"],[1500:"1.5s"],[2000:"2s"],[5000:"5s"]], defaultValue: -1
       input name: "hiRezHue", type: "bool", title: "Enable hue in degrees (0-360 instead of 0-100)", defaultValue: false
       if (colorStaging) input name: "colorStaging", type: "bool", description: "DEPRECATED. Please use new prestaging commands instead. May be removed in future.", title: "Enable color pseudo-prestaging", defaultValue: false
       if (levelStaging) input name: "levelStaging", type: "bool", description: "DEPRECATED. Please use new presetLevel() command instead. May be removed in future.", title: "Enable level pseudo-prestaging", defaultValue: false
-      input name: "levelChangeRate", type: "enum", description: "", title: '"Start level change" rate', options:
-         [["slow":"Slow"],["medium":"Medium"],["fast":"Fast (default)"]], defaultValue: "fast"
+
       input name: "updateGroups", type: "bool", description: "", title: "Update state of groups immediately when bulb state changes",
          defaultValue: false
       input name: "enableDebug", type: "bool", title: "Enable debug logging", defaultValue: true
@@ -121,13 +133,13 @@ void initialize() {
 }
 
 void debugOff() {
-   log.warn("Disabling debug logging")
+   log.warn "Disabling debug logging"
    device.updateSetting("enableDebug", [value:"false", type:"bool"])
 }
 
 // Probably won't happen but...
 void parse(String description) {
-   log.warn("Running unimplemented parse for: '${description}'")
+   log.warn "Running unimplemented parse for: '${description}'"
 }
 
 /**
@@ -141,10 +153,13 @@ String getHueDeviceNumber() {
 
 void on(Number transitionTime = null) {
    if (enableDebug == true) log.debug "on()"
-   Map bridgeCmd = ["on": true]
-   if (transitionTime != null) {
-      scaledRate = (transitionTime * 10) as Integer
-      bridgeCmd << ["transitiontime": scaledRate]
+   Map bridgeCmd
+   Integer scaledRate = transitionTime != null ? Math.round(transitionTime * 10).toInteger() : getScaledOnTransitionTime()
+   if (scaledRate == null) {
+      bridgeCmd = ["on": true]
+   }
+   else {
+      bridgeCmd = ["on": true, "transitiontime": scaledRate]
    }
    Map prestagedCmds = getPrestagedCommands()
    if (prestagedCmds) {
@@ -153,13 +168,71 @@ void on(Number transitionTime = null) {
    sendBridgeCommand(bridgeCmd)
 }
 
+Integer getScaledOnTransitionTime() {
+   Integer scaledRate = null
+   if (settings.onTransitionTime == null || settings.onTransitionTime == "-2" || settings.onTransitionTime == -2) {
+      // keep null; will result in not specifiying with command
+   }
+   else {
+      scaledRate = Math.round(settings.onTransitionTime.toFloat() / 100)
+   }
+   return scaledRate
+}
+
+Integer getScaledOffTransitionTime() {
+   Integer scaledRate = null
+   if (settings.offTransitionTime == null || settings.offTransitionTime == "-2" || settings.offTransitionTime == -2) {
+      // keep null; will result in not specifiying with command
+   }
+   else if (settings.offTransitionTime == "-1" || settings.offTransitionTime == -1) {
+      scaledRate = getScaledOnTransitionTime()
+   }
+   else {
+      scaledRate = Math.round(settings.offTransitionTime.toFloat() / 100)
+   }
+   return scaledRate
+}
+
+Integer getScaledCTTransitionTime() {
+   Integer scaledRate = null
+   if (settings.ctTransitionTime == null || settings.ctTransitionTime == "-2" || settings.ctTransitionTime == -2) {
+      // keep null; will result in not specifiying with command
+   }
+   else if (settings.ctTransitionTime == "-1" || settings.ctTransitionTime == -1) {
+      scaledRate = (settings.transitionTime != null) ? Math.round(settings.transitionTime.toFloat() / 100) : defaultTransitionTime
+   }
+   else {
+      scaledRate = Math.round(settings.ctTransitionTime.toFloat() / 100)
+   }
+   return scaledRate
+}
+
+Integer getScaledRGBTransitionTime() {
+   Integer scaledRate = null
+   if (settings.rgbTransitionTime == null || settings.rgbTransitionTime == "-2" || settings.rgbTransitionTime == -2) {
+      // keep null; will result in not specifying with command
+   }
+   else if (settings.rgbTransitionTime == "-1" || settings.rgbTransitionTime == -1) {
+      scaledRate = (settings.transitionTime != null) ? Math.round(settings.transitionTime.toFloat() / 100) : defaultTransitionTime
+   }
+   else {
+      scaledRate = Math.round(settings.rgbTransitionTime.toFloat() / 100)
+   }
+}
+
+
 void off(Number transitionTime = null) {
    if (enableDebug == true) log.debug "off()"
-   Map bridgeCmd = ["on": false]
-   if (transitionTime != null) {
-      scaledRate = (transitionTime * 10) as Integer
-      bridgeCmd << ["transitiontime": scaledRate]
+   Map bridgeCmd
+   Integer scaledRate = transitionTime != null ? Math.round(transitionTime * 10).toInteger() : getScaledOffTransitionTime()
+   if (scaledRate == null) {
+      bridgeCmd = ["on": false]
    }
+   else {
+      bridgeCmd = ["on": false, "transitiontime": scaledRate]
+   }
+   // Shouldn't need to do (on() would clear and should have been turned on in meantime), but some users may want to:
+   //clearPrestagedCommands()
    sendBridgeCommand(bridgeCmd)
 }
 
@@ -183,7 +256,7 @@ void stopLevelChange() {
 
 void setLevel(value) {
    if (enableDebug == true) log.debug "setLevel($value)"
-   setLevel(value, ((transitionTime != null ? transitionTime.toBigDecimal() : defaultLevelTransitionTime)) / 1000)
+   setLevel(value, ((transitionTime != null ? transitionTime.toFloat() : defaultLevelTransitionTime.toFloat())) / 1000)
 }
 
 void setLevel(Number value, Number rate) {
@@ -233,6 +306,7 @@ void presetLevel(Number level) {
 
 void setColorTemperature(Number colorTemperature, Number level = null, Number transitionTime = null) {
    if (enableDebug == true) log.debug "setColorTemperature($colorTemperature, $level, $transitionTime)"
+   Map bridgeCmd
    // For backwards compatibility; will be removed in future version:
    if (colorStaging) {
       log.warn "Color prestaging preference enabled and setColorTemperature() called. This is deprecated and may be removed in the future. Please move to new presetColorTemperature() command."
@@ -242,14 +316,13 @@ void setColorTemperature(Number colorTemperature, Number level = null, Number tr
       }
    }
    Integer newCT = scaleCTToBridge(colorTemperature)
-   Integer scaledRate = defaultLevelTransitionTime/100
-   if (transitionTime != null) {
-      scaledRate = (transitionTime * 10) as Integer
+   Integer scaledRate = transitionTime != null ? Math.round(transitionTime * 10).toInteger() : getScaledCTTransitionTime()
+   if (scaledRate == null) {
+      bridgeCmd = ["on": true, "ct": newCT]
    }
-   else if (settings["transitionTime"] != null) {
-      scaledRate = ((settings["transitionTime"] as Integer) / 100) as Integer
+   else {
+      bridgeCmd = ["on": true, "ct": newCT, "transitiontime": scaledRate]
    }
-   Map bridgeCmd = ["on": true, "ct": newCT, "transitiontime": scaledRate]
    if (level) {
       bridgeCmd << ["bri": scaleBriToBridge(level)]
    }
@@ -290,17 +363,17 @@ void setColor(Map value) {
       if (enableDebug == true) log.debug "Exiting setColor because no hue and/or saturation set"
       return
    }
+   Map bridgeCmd 
    Integer newHue = scaleHueToBridge(value.hue)
    Integer newSat = scaleSatToBridge(value.saturation)
    Integer newBri = (value.level != null && value.level != "NaN") ? scaleBriToBridge(value.level) : null
-   Integer scaledRate
-   if (value.rate != null) {
-      scaledRate = (value.rate * 10).toInteger()
+   Integer scaledRate = value.rate != null ? Math.round(value.rate * 10).toInteger() : getScaledRGBTransitionTime()
+   if (scaledRate == null) {
+      bridgeCmd = ["on": true, "hue": newHue, "sat": newSat]
    }
    else {
-      scaledRate = ((transitionTime != null ? transitionTime.toBigDecimal() : defaultLevelTransitionTime) / 100).toInteger()
+      bridgeCmd = ["on": true, "hue": newHue, "sat": newSat, "transitiontime": scaledRate]
    }
-   Map bridgeCmd = ["on": true, "hue": newHue, "sat": newSat, "transitiontime": scaledRate]
    if (newBri) bridgeCmd << ["bri": newBri]
    Map prestagedCmds = getPrestagedCommands()
    if (prestagedCmds) {
@@ -576,13 +649,17 @@ Map getPrestagedCommands(Boolean unsetPrestagingState=true) {
       cmds << [sat: scaleSatToBridge(device.currentValue("saturationPreset"))]
    }
    if (unsetPrestagingState == true) {
-      state.presetLevel = false
-      state.presetColorTemperature = false
-      state.presetHue = false
-      state.presetSaturation = false
+      clearPrestagedCommands()
    }
    if (enableDebug == true) log.debug "Returning: $cmds"
    return cmds
+}
+
+void clearPrestagedCommands() {
+   state.presetLevel = false
+   state.presetColorTemperature = false
+   state.presetHue = false
+   state.presetSaturation = false
 }
 
 /**
