@@ -14,9 +14,10 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2021-05-23
- * 
+ *  Last modified: 2021-07-24
+ *
  *  Changelog:
+ *  v3.5.1  - Refactor some code into libraries (code still precompiled before upload; should not have any visible changes)
  *  v3.5    - Minor code cleanup
  *  v3.1.6  - Fixed runtime error when using temperature offset; ensure battery and lux reported as integers, temperature as BigDecimal
  *  v3.1.2  - Added optional offset for temperature sensor
@@ -24,8 +25,10 @@
  *  v3.0    - Initial release
  */
  
+#include RMoRobert.CoCoHue_Common_Lib
+ 
 metadata {
-   definition (name: "CoCoHue Motion Sensor", namespace: "RMoRobert", author: "Robert Morris", importUrl: "https://raw.githubusercontent.com/HubitatCommunity/CoCoHue/master/drivers/cocohue-motion-sensor-driver.groovy") {
+   definition(name: "CoCoHue Motion Sensor", namespace: "RMoRobert", author: "Robert Morris", importUrl: "https://raw.githubusercontent.com/HubitatCommunity/CoCoHue/master/drivers/cocohue-motion-sensor-driver.groovy") {
       capability "Sensor"
       capability "Refresh"
       capability "MotionSensor"
@@ -62,11 +65,6 @@ void initialize() {
 
 void refresh() {
    log.warn "Refresh CoCoHue Bridge device instead of individual device to update (all) bulbs/groups/sensors"
-}
-
-void debugOff() {
-   log.warn "Disabling debug logging"
-   device.updateSetting("enableDebug", [value:"false", type:"bool"])
 }
 
 // Probably won't happen but...
@@ -129,16 +127,5 @@ void createEventsFromMap(Map bridgeCmd) {
             break
             //log.warn "Unhandled key/value discarded: $it"
       }
-   }
-}
-
-void doSendEvent(String eventName, eventValue, String eventUnit=null) {
-   //if (enableDebug) log.debug "doSendEvent($eventName, $eventValue, $eventUnit)"
-   String descriptionText = "${device.displayName} ${eventName} is ${eventValue}${eventUnit ?: ''}"
-   if (settings.enableDesc == true) log.info(descriptionText)
-   if (eventUnit) {
-      sendEvent(name: eventName, value: eventValue, descriptionText: descriptionText, unit: eventUnit) 
-   } else {
-      sendEvent(name: eventName, value: eventValue, descriptionText: descriptionText) 
    }
 }

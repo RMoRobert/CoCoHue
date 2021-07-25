@@ -14,9 +14,10 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2021-05-23
+ *  Last modified: 2021-07-24
  * 
  *  Changelog:
+ *  v3.5.1  - Refactor some code into libraries (code still precompiled before upload; should not have any visible changes)
  *  v3.5    - Addded "reachable" attribte from Bridge to bulb and group drivers (thanks to @jtp10181 for original implementation)
  *  v3.1    - Improved error handling and debug logging
  *  v3.0    - Fix so events no created until Bridge response received (as was done for other drivers in 2.0); improved HTTP error handling
@@ -28,8 +29,11 @@
  *  v1.7    - Initial Release  
  */
  
+#include RMoRobert.CoCoHue_Common_Lib
+#include RMoRobert.CoCoHue_Flash_Lib // can comment out if don't need commands; see also definition() below
+
 metadata {
-   definition (name: "CoCoHue On/Off Plug", namespace: "RMoRobert", author: "Robert Morris", importUrl: "https://raw.githubusercontent.com/HubitatCommunity/CoCoHue/master/drivers/cocohue-plug-driver.groovy") {
+   definition(name: "CoCoHue On/Off Plug", namespace: "RMoRobert", author: "Robert Morris", importUrl: "https://raw.githubusercontent.com/HubitatCommunity/CoCoHue/master/drivers/cocohue-plug-driver.groovy") {
       capability "Actuator"
       capability "Refresh"
       capability "Switch"
@@ -69,11 +73,6 @@ void initialize() {
    }
 }
 
-void debugOff() {
-   log.warn("Disabling debug logging")
-   device.updateSetting("enableDebug", [value:"false", type:"bool"])
-}
-
 // Probably won't happen but...
 void parse(String description) {
    log.warn("Running unimplemented parse for: '${description}'")
@@ -102,27 +101,6 @@ void off() {
 
 void refresh() {
    log.warn "Refresh CoCoHue Bridge device instead of individual device to update (all) bulbs/groups"
-}
-
-void flash() {
-   if (enableDebug == true) log.debug "flash()"
-   if (settings.enableDesc == true) log.info("${device.displayName} started 15-cycle flash")
-   Map<String,String> cmd = ["alert": "lselect"]
-   sendBridgeCommand(cmd, false) 
-}
-
-void flashOnce() {
-   if (enableDebug == true) log.debug "flashOnce()"
-   if (settings.enableDesc == true) log.info("${device.displayName} started 1-cycle flash")
-   Map<String,String> cmd = ["alert": "select"]
-   sendBridgeCommand(cmd, false) 
-}
-
-void flashOff() {
-   if (enableDebug == true) log.debug "flashOff()"
-   if (settings.enableDesc == true) log.info("${device.displayName} was sent command to stop flash")
-   Map<String,String> cmd = ["alert": "none"]
-   sendBridgeCommand(cmd, false) 
 }
 
 /**
@@ -212,58 +190,5 @@ void parseSendCommandResponse(resp, data) {
    }
    else {
       if (enableDebug == true) log.debug "  Not creating events from map because not specified to do or Bridge response invalid"
-   }
-}
-
-/** Performs basic check on data returned from HTTP response to determine if should be
-  * parsed as likely Hue Bridge data or not; returns true (if OK) or logs errors/warnings and
-  * returns false if not
-  * @param resp The async HTTP response object to examine
-  */
-private Boolean checkIfValidResponse(resp) {
-   if (enableDebug == true) log.debug "Checking if valid HTTP response/data from Bridge..."
-   Boolean isOK = true
-   if (resp.status < 400) {
-      if (resp?.json == null) {
-         isOK = false
-         if (resp?.headers == null) log.error "Error: HTTP ${resp?.status} when attempting to communicate with Bridge"
-         else log.error "No JSON data found in response. ${resp.headers.'Content-Type'} (HTTP ${resp.status})"
-         parent.sendBridgeDiscoveryCommandIfSSDPEnabled(true) // maybe IP changed, so attempt rediscovery 
-         parent.setBridgeStatus(false)
-      }
-      else if (resp.json) {
-         if (resp.json[0]?.error) {
-            // Bridge (not HTTP) error (bad username, bad command formatting, etc.):
-            isOK = false
-            log.warn "Error from Hue Bridge: ${resp.json[0].error}"
-            // Not setting Bridge to offline when light/scene/group devices end up here because could
-            // be old/bad ID and don't want to consider Bridge offline just for that (but also won't set
-            // to online because wasn't successful attempt)
-         }
-         // Otherwise: probably OK (not changing anything because isOK = true already)
-      }
-      else {
-         isOK = false
-         log.warn("HTTP status code ${resp.status} from Bridge")
-         if (resp?.status >= 400) parent.sendBridgeDiscoveryCommandIfSSDPEnabled(true) // maybe IP changed, so attempt rediscovery 
-         parent.setBridgeStatus(false)
-      }
-      if (isOK == true) parent.setBridgeStatus(true)
-   }
-   else {
-      log.warn "Error communiating with Hue Bridge: HTTP ${resp?.status}"
-      isOK = false
-   }
-   return isOK
-}
-
-void doSendEvent(String eventName, eventValue, String eventUnit=null) {
-   //if (enableDebug == true) log.debug "doSendEvent($eventName, $eventValue, $eventUnit)"
-   String descriptionText = "${device.displayName} ${eventName} is ${eventValue}${eventUnit ?: ''}"
-   if (settings.enableDesc == true) log.info(descriptionText)
-   if (eventUnit) {
-      sendEvent(name: eventName, value: eventValue, descriptionText: descriptionText, unit: eventUnit) 
-   } else {
-      sendEvent(name: eventName, value: eventValue, descriptionText: descriptionText) 
    }
 }

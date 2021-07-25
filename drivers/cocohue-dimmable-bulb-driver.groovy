@@ -14,9 +14,10 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2021-05-21
+ *  Last modified: 2021-07-24
  *
  *  Changelog:
+ *  v3.5.1  - Refactor some code into libraries (code still precompiled before upload; should not have any visible changes)
  *  v3.5    - Add LevelPreset capability (replaces old level prestaging option); added "reachable" attribte
               from Bridge to bulb and group drivers (thanks to @jtp10181 for original implementation)
  *  v3.1.3  - Adjust setLevel(0) to honor rate
@@ -29,14 +30,18 @@
  *  v1.9    - Initial release (based on CT bulb driver)
  */
 
+#include RMoRobert.CoCoHue_Common_Lib
+#include RMoRobert.CoCoHue_Bri_Lib
+#include RMoRobert.CoCoHue_Flash_Lib
+#include RMoRobert.CoCoHue_Prestage_Lib
+
 import groovy.transform.Field
 
 // Default preference values
-@Field static final BigDecimal defaultLevelTransitionTime = 1000
- 
+@Field static final BigDecimal defaultLevelTransitionTime = 1000 
 
 metadata {
-   definition (name: "CoCoHue Dimmable Bulb", namespace: "RMoRobert", author: "Robert Morris", importUrl: "https://raw.githubusercontent.com/HubitatCommunity/CoCoHue/master/drivers/cocohue-dimmable-bulb-driver.groovy") {
+   definition(name: "CoCoHue Dimmable Bulb", namespace: "RMoRobert", author: "Robert Morris", importUrl: "https://raw.githubusercontent.com/HubitatCommunity/CoCoHue/master/drivers/cocohue-dimmable-bulb-driver.groovy") {
       capability "Actuator"
       capability "Refresh"
       capability "Switch"
@@ -84,11 +89,6 @@ void initialize() {
    }
 }
 
-void debugOff() {
-   log.warn("Disabling debug logging")
-   device.updateSetting("enableDebug", [value:"false", type:"bool"])
-}
-
 // Probably won't happen but...
 void parse(String description) {
    log.warn("Running unimplemented parse for: '${description}'")
@@ -129,91 +129,6 @@ void off(Number transitionTime = null) {
 
 void refresh() {
    log.warn "Refresh CoCoHue Bridge device instead of individual device to update (all) bulbs/groups"
-}
-
-void startLevelChange(direction) {
-   if (enableDebug == true) log.debug "startLevelChange($direction)..."
-   Map cmd = ["bri": (direction == "up" ? 254 : 1),
-            "transitiontime": ((settings["levelChangeRate"] == "fast" || !settings["levelChangeRate"]) ?
-                                 30 : (settings["levelChangeRate"] == "slow" ? 60 : 45))]
-   sendBridgeCommand(cmd, false) 
-}
-
-void stopLevelChange() {
-   if (enableDebug == true) log.debug "stopLevelChange()..."
-   Map cmd = ["bri_inc": 0]
-   sendBridgeCommand(cmd, false) 
-}
-
-void setLevel(value) {
-   if (enableDebug == true) log.debug "setLevel($value)"
-   setLevel(value, ((transitionTime != null ? transitionTime.toBigDecimal() : defaultLevelTransitionTime)) / 1000)
-}
-
-void setLevel(Number value, Number rate) {
-   if (enableDebug == true) log.debug "setLevel($value, $rate)"
-   // For backwards compatibility; will be removed in future version:
-   if (levelStaging) {
-      log.warn "Level prestaging preference enabled and setLevel() called. This is deprecated and may be removed in the future. Please move to new, standard presetLevel() command."
-      if (device.currentValue("switch") != "on") {
-         presetLevel(value)
-         return
-      }
-   }
-   if (value < 0) value = 1
-   else if (value > 100) value = 100
-   else if (value == 0) {
-      off(rate)
-      return
-   }
-   Integer newLevel = scaleBriToBridge(value)
-   Integer scaledRate = (rate * 10).toInteger()
-   Map bridgeCmd = [
-      "on": true,
-      "bri": newLevel,
-      "transitiontime": scaledRate
-   ]
-   Map prestagedCmds = getPrestagedCommands()
-   if (prestagedCmds) {
-      bridgeCmd = prestagedCmds + bridgeCmd
-   }
-   sendBridgeCommand(bridgeCmd)
-}
-
-void presetLevel(Number level) {
-   if (enableDebug == true) log.debug "presetLevel($level)"
-   if (level < 0) level = 1
-   else if (level > 100) level = 100
-   Integer newLevel = scaleBriToBridge(level)
-   Integer scaledRate = ((transitionTime != null ? transitionTime.toBigDecimal() : 1000) / 1000).toInteger()
-   Boolean isOn = device.currentValue("switch") == "on"
-   doSendEvent("levelPreset", level)
-   if (isOn) {
-      setLevel(level)
-   } else {
-      state.presetLevel = true
-   }
-}
-
-void flash() {
-   if (enableDebug == true) log.debug "flash()"
-   if (settings.enableDesc == true) log.info("${device.displayName} started 15-cycle flash")
-   Map<String,String> cmd = ["alert": "lselect"]
-   sendBridgeCommand(cmd, false) 
-}
-
-void flashOnce() {
-   if (enableDebug == true) log.debug "flashOnce()"
-   if (settings.enableDesc == true) log.info("${device.displayName} started 1-cycle flash")
-   Map<String,String> cmd = ["alert": "select"]
-   sendBridgeCommand(cmd, false) 
-}
-
-void flashOff() {
-   if (enableDebug == true) log.debug "flashOff()"
-   if (settings.enableDesc == true) log.info("${device.displayName} was sent command to stop flash")
-   Map<String,String> cmd = ["alert": "none"]
-   sendBridgeCommand(cmd, false) 
 }
 
 /**
@@ -272,24 +187,6 @@ void createEventsFromMap(Map bridgeCommandMap, Boolean isFromBridge = false) {
 }
 
 /**
- * Returns Map containing any commands that would need to be sent to Bridge if anything is currently prestaged.
- * Otherwise, returns empty Map.
- * @param unsetPrestagingState If set to true (default), clears prestage flag
-*/
-Map getPrestagedCommands(Boolean unsetPrestagingState=true) {
-   if (enableDebug == true) log.debug "getPrestagedCommands($unsetPrestagingState)"
-   Map cmds = [:]
-   if (state.presetLevel == true) {
-      cmds << [bri: scaleBriToBridge(device.currentValue("levelPreset"))]
-   }
-   if (unsetPrestagingState == true) {
-      state.presetLevel = false
-   }
-   if (enableDebug == true) log.debug "Returning: $cmds"
-   return cmds
-}
-
-/**
  * Sends HTTP PUT to Bridge using the either command map provided
  * @param commandMap Groovy Map (will be converted to JSON) of Hue API commands to send, e.g., [on: true]
  * @param createHubEvents Will iterate over Bridge command map and do sendEvent for all
@@ -331,74 +228,4 @@ void parseSendCommandResponse(resp, data) {
    else {
       if (enableDebug == true) log.debug "  Not creating events from map because not specified to do or Bridge response invalid"
    }
-}
-
-/** Performs basic check on data returned from HTTP response to determine if should be
-  * parsed as likely Hue Bridge data or not; returns true (if OK) or logs errors/warnings and
-  * returns false if not
-  * @param resp The async HTTP response object to examine
-  */
-private Boolean checkIfValidResponse(resp) {
-   if (enableDebug == true) log.debug "Checking if valid HTTP response/data from Bridge..."
-   Boolean isOK = true
-   if (resp.status < 400) {
-      if (resp?.json == null) {
-         isOK = false
-         if (resp?.headers == null) log.error "Error: HTTP ${resp?.status} when attempting to communicate with Bridge"
-         else log.error "No JSON data found in response. ${resp.headers.'Content-Type'} (HTTP ${resp.status})"
-         parent.sendBridgeDiscoveryCommandIfSSDPEnabled(true) // maybe IP changed, so attempt rediscovery 
-         parent.setBridgeStatus(false)
-      }
-      else if (resp.json) {
-         if (resp.json[0]?.error) {
-            // Bridge (not HTTP) error (bad username, bad command formatting, etc.):
-            isOK = false
-            log.warn "Error from Hue Bridge: ${resp.json[0].error}"
-            // Not setting Bridge to offline when light/scene/group devices end up here because could
-            // be old/bad ID and don't want to consider Bridge offline just for that (but also won't set
-            // to online because wasn't successful attempt)
-         }
-         // Otherwise: probably OK (not changing anything because isOK = true already)
-      }
-      else {
-         isOK = false
-         log.warn("HTTP status code ${resp.status} from Bridge")
-         if (resp?.status >= 400) parent.sendBridgeDiscoveryCommandIfSSDPEnabled(true) // maybe IP changed, so attempt rediscovery 
-         parent.setBridgeStatus(false)
-      }
-      if (isOK == true) parent.setBridgeStatus(true)
-   }
-   else {
-      log.warn "Error communiating with Hue Bridge: HTTP ${resp?.status}"
-      isOK = false
-   }
-   return isOK
-}
-
-void doSendEvent(String eventName, eventValue, String eventUnit=null) {
-   //if (enableDebug == true) log.debug "doSendEvent($eventName, $eventValue, $eventUnit)"
-   String descriptionText = "${device.displayName} ${eventName} is ${eventValue}${eventUnit ?: ''}"
-   if (settings.enableDesc == true) log.info(descriptionText)
-   if (eventUnit) {
-      sendEvent(name: eventName, value: eventValue, descriptionText: descriptionText, unit: eventUnit) 
-   } else {
-      sendEvent(name: eventName, value: eventValue, descriptionText: descriptionText) 
-   }
-}
-
-/**
- * Scales Hubitat's 1-100 brightness levels to Hue Bridge's 1-254
- */
-private Integer scaleBriToBridge(hubitatLevel) {
-   Integer scaledLevel =  Math.round(hubitatLevel == 1 ? 1 : hubitatLevel.toBigDecimal() / 100 * 254)
-   return Math.round(scaledLevel)
-}
-
-/**
- * Scales Hue Bridge's 1-254 brightness levels to Hubitat's 1-100
- */
-private Integer scaleBriFromBridge(bridgeLevel) {
-   Integer scaledLevel = Math.round(bridgeLevel.toBigDecimal() / 254 * 100)
-   if (scaledLevel < 1) scaledLevel = 1
-   return Math.round(scaledLevel)
 }

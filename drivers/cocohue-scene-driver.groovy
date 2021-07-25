@@ -14,9 +14,11 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2021-05-23
+ *  Last modified: 2021-07-24
  * 
  *  Changelog:
+ *  v3.5.1  - Refactor some code into libraries (code still precompiled before upload; should not have any visible changes);
+ *            Remove capability "Light" from scene driver (better chance of Alexa seeing as switch and not light)
  *  v3.5    - Minor code cleanup, removal of custom "push" command now that is standard capability command
  *  v3.1    - Improved error handling and debug logging
  *  v3.0    - Improved HTTP error handling 
@@ -30,12 +32,13 @@
  *  v1.5b   - Initial public release
  */ 
 
+#include RMoRobert.CoCoHue_Common_Lib
+
 metadata {
-   definition (name: "CoCoHue Scene", namespace: "RMoRobert", author: "Robert Morris", importUrl: "https://raw.githubusercontent.com/HubitatCommunity/CoCoHue/master/drivers/cocohue-scene-driver.groovy") {
+   definition(name: "CoCoHue Scene", namespace: "RMoRobert", author: "Robert Morris", importUrl: "https://raw.githubusercontent.com/HubitatCommunity/CoCoHue/master/drivers/cocohue-scene-driver.groovy") {
       capability "Actuator"
       capability "Refresh"
       capability "Switch"
-      capability "Light"
       capability "PushableButton"
       capability "Configuration"
    }
@@ -82,11 +85,6 @@ void initialize() {
 void configure() {
    log.debug "configure()"
    setDefaultAttributeValues()
-}
-
-void debugOff() {
-   log.warn("Disabling debug logging")
-   device.updateSetting("enableDebug", [value:"false", type:"bool"])
 }
 
 // Probably won't happen but...
@@ -212,74 +210,10 @@ void parseSendCommandResponse(resp, data) {
    }
 }
 
-/** Performs basic check on data returned from HTTP response to determine if should be
-  * parsed as likely Hue Bridge data or not; returns true (if OK) or logs errors/warnings and
-  * returns false if not
-  * @param resp The async HTTP response object to examine
-  */
-private Boolean checkIfValidResponse(resp) {
-   if (enableDebug) log.debug "Checking if valid HTTP response/data from Bridge..."
-   Boolean isOK = true
-   if (resp.status < 400) {
-      if (resp?.json == null) {
-         isOK = false
-         if (resp?.headers == null) log.error "Error: HTTP ${resp?.status} when attempting to communicate with Bridge"
-         else log.error "No JSON data found in response. ${resp.headers.'Content-Type'} (HTTP ${resp.status})"
-         parent.sendBridgeDiscoveryCommandIfSSDPEnabled(true) // maybe IP changed, so attempt rediscovery 
-         parent.setBridgeStatus(false)
-      }
-      else if (resp.json) {
-         if (resp.json[0]?.error) {
-            // Bridge (not HTTP) error (bad username, bad command formatting, etc.):
-            isOK = false
-            log.warn "Error from Hue Bridge: ${resp.json[0].error}"
-            // Not setting Bridge to offline when light/scene/group devices end up here because could
-            // be old/bad ID and don't want to consider Bridge offline just for that (but also won't set
-            // to online because wasn't successful attempt)
-         }
-         // Otherwise: probably OK (not changing anything because isOK = true already)
-      }
-      else {
-         isOK = false
-         log.warn("HTTP status code ${resp.status} from Bridge")
-         if (resp?.status >= 400) parent.sendBridgeDiscoveryCommandIfSSDPEnabled(true) // maybe IP changed, so attempt rediscovery 
-         parent.setBridgeStatus(false)
-      }
-      if (isOK == true) parent.setBridgeStatus(true)
-   }
-   else {
-      log.warn "Error communiating with Hue Bridge: HTTP ${resp?.status}"
-      isOK = false
-   }
-   return isOK
-}
-
 void push(Number btnNum) {
    if (enableDebug) log.debug "push($btnNum)"
    on()
    doSendEvent("pushed", 1, null, true)
-}
-
-void doSendEvent(String eventName, eventValue, String eventUnit=null, forceStateChange=false) {
-   //if (enableDebug) log.debug "doSendEvent($eventName, $eventValue, $eventUnit)"
-   String descriptionText = "${device.displayName} ${eventName} is ${eventValue}${eventUnit ?: ''}"
-   if (enableDesc) log.info descriptionText
-   // TODO: Map-ify these parameters to make cleaner and less verbose?
-   if (eventUnit) {
-      if (forceStateChange) {
-         sendEvent(name: eventName, value: eventValue, descriptionText: descriptionText, unit: eventUnit, isStateChange: true) 
-      }
-      else {
-         sendEvent(name: eventName, value: eventValue, descriptionText: descriptionText, unit: eventUnit)          
-      }
-   } else {
-      if (forceStateChange) {
-         sendEvent(name: eventName, value: eventValue, descriptionText: descriptionText, isStateChange: true)  
-      }
-      else {
-         sendEvent(name: eventName, value: eventValue, descriptionText: descriptionText)  
-      }
-   }
 }
 
 /** Gets data about scene from Bridge; does not update bulb/group status */
