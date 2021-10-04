@@ -22,9 +22,10 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2021-05-23
+ *  Last modified: 2021-10-03
  * 
  *  Changelog:
+ *  v4.0   - Changes for EventSocket-based information pushing
  *  v3.5.1 - Improved username sanitization; removed logging for SSDP if debug logging disabled
  *  v3.5   - Minor code cleanup (and lots of driver changes)
  *  v3.1   - Driver updates (logging, error handling)
@@ -139,6 +140,11 @@ void initialize() {
       runIn(disableTime, debugOff)
    }
 
+   scheduleRefresh()
+}
+
+void scheduleRefresh() {
+   if (enableDebug) log.debug "scheduleRefresh()"
    Integer pollInt = settings["pollInterval"]?.toInteger()
    // If change polling options in UI, may need to modify some of these cases:
    switch (pollInt ?: 0) {
@@ -154,12 +160,12 @@ void initialize() {
          runEvery1Minute("refreshBridge")
          break
       case 300..1800:
-         logDebug("Schedulig polling every 5 minutes")
+         logDebug("Scheduling polling every 5 minutes")
          runEvery5Minutes("refreshBridge")
          break
       default:
          logDebug("Scheduling polling every hour")
-         runEvery1Hour("refreshBridge")                
+         runEvery1Hour("refreshBridge")
    }
 }
 
@@ -207,7 +213,7 @@ void debugOff() {
 }
 
 def pageFirstPage() {
-   state.authRefreshInterval = 5
+   state.authscheduleRefreshInterval = 5
    state.discoTryCount = 0
    state.authTryCount = 0
    if (app.getInstallationState() == "INCOMPLETE") {
@@ -1210,15 +1216,17 @@ Map<String,String> getBridgeData(String protocol="http", Integer port=null) {
 /**
  * Calls refresh() method on Bridge child, intended to be called at user-specified
  * polling interval
+ * @param reschedule If true (default), re-schedules/resets next poll to be within interval instead of possibly sooner
  */
-private void refreshBridge() {
+private void refreshBridge(Boolean reschedule=true) {
+   logDebug("refreshBridge($reschedule)")
    com.hubitat.app.DeviceWrapper bridge = getChildDevice("CCH/${state.bridgeID}")
    if (!bridge) {
       log.error "No Bridge device found; could not refresh/poll"
       return
    }
-   logDebug("Polling Bridge...")
    bridge.refresh()
+   if (reschedule == true) scheduleRefresh()
 }
 
 /**

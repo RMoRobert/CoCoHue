@@ -14,9 +14,10 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2021-07-24
+ *  Last modified: 2021-09-26
  * 
  *  Changelog:
+ *  v4.0    - EventStream support for real-time updates
  *  v3.5.1  - Refactor some code into libraries (code still precompiled before upload; should not have any visible changes)
  *  v3.5    - Minor code cleanup
  *  v3.1    - Improved error handling and debug logging
@@ -30,11 +31,18 @@
 
 #include RMoRobert.CoCoHue_Common_Lib
 
+import groovy.json.JsonSlurper
+import com.hubitat.app.DeviceWrapper
+
 metadata {
    definition(name: "CoCoHue Bridge", namespace: "RMoRobert", author: "Robert Morris", importUrl: "https://raw.githubusercontent.com/HubitatCommunity/CoCoHue/master/drivers/cocohue-bridge-driver.groovy") {
       capability "Actuator"
       capability "Refresh"
+      capability "Initialize"
+      command "connectEventStream"
+      //command "disconnectEventStream"
       attribute "status", "STRING"
+      attribute "eventStreamStatus", "STRING"
    }
    
    preferences() {
@@ -60,11 +68,92 @@ void initialize() {
       log.debug "Debug logging will be automatically disabled in ${disableMinutes} minutes"
       runIn(disableMinutes*60, debugOff)
    }
+   connectEventStream()
 }
 
-// Probably won't happen but...
+void connectEventStream() {
+   if (enableDebug) log.debug "connectEventStream()"
+   Map<String,String> data = parent.getBridgeData()
+   interfaces.eventStream.connect(
+      "https://${data.ip}/eventstream/clip/v2", [
+      headers: ["Accept": "text/event-stream", "hue-application-key": data.username],
+      rawData: true,
+      readTimeout: 3600,
+      ignoreSSLIssues: true
+   ])
+}
+
+void reconnectEventStream(Boolean notIfAlreadyConnected = true) {
+   if (enableDebug) log.debug "reconnectEventStream(notIfAlreadyConnected=$notIfAlreadyConnected)"
+   if (device.currentValue("eventStreamStatus") == "connected" && notIfAlreadyConnected) {
+      if (logEnable) log.debug "already connected; skipping reconnection"
+   }
+   else {
+      connectEventStream()
+   }
+}
+
+void disconnectEventStream() {
+   // doesn't seem to work?
+   interfaces.eventStream.close()
+}
+
+void eventStreamStatus(String message) {
+   if (enableDebug) "eventStreamStatus: $message"
+   if (message.startsWith("START:")) {
+      doSendEvent("eventStreamStatus", "connected")
+   }
+   else {
+      doSendEvent("eventStreamStatus", "disconnected")
+      if (state.connectionRetryTime) {
+         state.connectionRetryTime *= 2
+         if (state.connectionRetryTime > 900) {
+            state.connectionRetryTime = 900 // cap retry time at 15 minutes
+         }
+      }
+      else {
+         state.connectionRetryTime = 5
+      }
+      runIn(state.connectionRetryTime, "reconnectEventStream")
+   }
+}
+
+// For EventStream:
 void parse(String description) {
-   log.warn("Ignoring parse() for: '${description}'")
+   if (enableDebug) log.debug "parse: $description"\
+   // parseLanMessage() doesn't seem to get this quite right, so do manually...
+   def (String type, String data) = description.split(":", 2)
+   if (type == "data") {
+      if (enableDebug) log.debug "Parsing type = data"
+      List dataList = new JsonSlurper().parseText(data)
+      dataList.each {
+         log.trace "--> DATA = ${it.data[0]}"
+         String fullId = it.data?.id_v1[0]
+         switch (fullId) {
+            case { it.startsWith("/lights/") }:
+               String hueId = fullId.split("/")[-1]
+               log.trace "is light $hueId"
+               DeviceWrapper device = parent.getChildDevice("${device.deviceNetworkId}/Light/${hueId}")
+               log.trace "is device ${device.displayName}"
+               if (device != null) device.createEventsFromSSE(it.data[0])
+               break
+            case { it.startsWith("/groups/") }:
+               String hueId = fullId.split("/")[-1]
+               log.trace "is group $hueId"
+               break
+            case { it.startsWith("/sensors/") }:
+               String hueId = fullId.split("/")[-1]
+               log.trace "is sensor $hueId"
+               break
+            default:
+               if (enableDebug) log.debug "skipping ID: $hueId"
+         }
+         log.trace "---> DEV = $fullId"
+      }
+   }
+   else {
+      if (enableDebug) log.debug "Skipping type: ${type}"
+   }
 }
 
 void refresh() {
@@ -83,6 +172,13 @@ void refresh() {
    }
 }
 
+void scheduleRefresh() {
+   if (enableDebug) log.debug "scheduleRefresh()"
+   
+}
+
+// For HTTP API-based parsing/refreshes:
+
 /** Callback method that handles full Bridge refresh. Eventually delegated to individual
  *  methods below.
  */
@@ -96,13 +192,13 @@ private void parseStates(resp, data) {
    }
 }
 
-private void parseLightStates(Map lightsJson) { 
+private void parseLightStates(Map lightsJson) {
    if (enableDebug) log.debug "Parsing light states from Bridge..."
    // Uncomment this line if asked to for debugging (or you're curious):
    //log.debug "lightsJson = $lightsJson"
    try {
       lightsJson.each { id, val ->
-         com.hubitat.app.DeviceWrapper device = parent.getChildDevice("${device.deviceNetworkId}/Light/${id}")
+         DeviceWrapper device = parent.getChildDevice("${device.deviceNetworkId}/Light/${id}")
          if (device) {
             device.createEventsFromMap(val.state, true)
          }
@@ -120,7 +216,7 @@ private void parseGroupStates(Map groupsJson) {
    //log.debug "groupsJson = $groupsJson"
    try {
       groupsJson.each { id, val ->
-         com.hubitat.app.DeviceWrapper dev = parent.getChildDevice("${device.deviceNetworkId}/Group/${id}")
+         DeviceWrapper dev = parent.getChildDevice("${device.deviceNetworkId}/Group/${id}")
          if (dev) {
             dev.createEventsFromMap(val.action, true)
             dev.createEventsFromMap(val.state, true)
@@ -128,7 +224,7 @@ private void parseGroupStates(Map groupsJson) {
          }
       }
       Boolean anyOn = groupsJson.any { it.value?.state?.any_on == false }
-      com.hubitat.app.DeviceWrapper allLightsDev = parent.getChildDevice("${device.deviceNetworkId}/Group/0")
+      DeviceWrapper allLightsDev = parent.getChildDevice("${device.deviceNetworkId}/Group/0")
       if (allLightsDev) {
          allLightsDev.createEventsFromMap(['any_on': anyOn], true)
       }
@@ -149,7 +245,7 @@ private void parseSensorStates(Map sensorsJson) {
              val.type == "ZHAPresence" || val.type == "ZHALightLevel" || val.type == "ZHATemperature") {
             String mac = val?.uniqueid?.substring(0,23)
             if (mac != null) {
-               com.hubitat.app.DeviceWrapper dev = parent.getChildDevice("${device.deviceNetworkId}/Sensor/${mac}")
+               DeviceWrapper dev = parent.getChildDevice("${device.deviceNetworkId}/Sensor/${mac}")
                if (dev != null) {
                   dev.createEventsFromMap(val.state)
                   // All entries have config.battery, so just picking one to parse here to avoid redundancy:
@@ -444,7 +540,7 @@ private void parseLabsSensorStates(sensorJson) {
    //log.debug "sensorJson = $sensorJson"
    try {
       sensorJson.each { id, val ->
-         com.hubitat.app.DeviceWrapper device = parent.getChildDevice("${device.deviceNetworkId}/SensorRL/${id}")
+         DeviceWrapper device = parent.getChildDevice("${device.deviceNetworkId}/SensorRL/${id}")
          if (device) {
             device.createEventsFromMap(val.state)
          }

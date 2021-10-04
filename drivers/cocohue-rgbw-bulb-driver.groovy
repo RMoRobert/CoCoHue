@@ -14,9 +14,10 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2021-07-24
+ *  Last modified: 2021-09-19
  *
  *  Changelog:
+ *  v3.5.2  - Add CIE XY conversion
  *  v3.5.1  - Refactor some code into libraries (code still precompiled before upload; should not have any visible changes)
  *  v3.5    - Add LevelPreset capability (replaces old level prestaging option); added preliminary color
  *            and CT prestating coommands; added "reachable" attribte from Bridge to bulb and group
@@ -101,7 +102,7 @@ metadata {
          [["slow":"Slow"],["medium":"Medium"],["fast":"Fast (default)"]], defaultValue: "fast"
       // Sending "bri" with "on:true" alone seems to have no effect, so might as well not implement this for now...
       input name: "onTransitionTime", type: "enum", description: "", title: "On transition time", options:
-         [[(-2): "Hue default/do not specify (recommended; default; Hue may ignore other values)"],[0:"ASAP"],[200:"200ms"],[400:"400ms (default)"],[500:"500ms"],[1000:"1s"],[1500:"1.5s"],[2000:"2s"],[5000:"5s"]], defaultValue: 400
+         [[(-2): "Hue default/do not specify (recommended; default; Hue may ignore other values)"],[0:"ASAP"],[200:"200ms"],[400:"400ms (default)"],[500:"500ms"],[1000:"1s"],[1500:"1.5s"],[2000:"2s"],[5000:"5s"]], defaultValue: -2
       // Not recommended because of problem described here:  https://developers.meethue.com/forum/t/using-transitiontime-with-on-false-resets-bri-to-1/4585
       input name: "offTransitionTime", type: "enum", description: "", title: "Off transition time", options:
          [[(-2): "Hue default/do not specify (recommended; default)"],[(-1): "Use on transition time"],[0:"ASAP"],[200:"200ms"],[400:"400ms (default)"],[500:"500ms"],[1000:"1s"],[1500:"1.5s"],[2000:"2s"],[5000:"5s"]], defaultValue: -1
@@ -172,58 +173,6 @@ void on(Number transitionTime = null) {
    sendBridgeCommand(bridgeCmd)
 }
 
-Integer getScaledOnTransitionTime() {
-   Integer scaledRate = null
-   if (settings.onTransitionTime == null || settings.onTransitionTime == "-2" || settings.onTransitionTime == -2) {
-      // keep null; will result in not specifiying with command
-   }
-   else {
-      scaledRate = Math.round(settings.onTransitionTime.toFloat() / 100)
-   }
-   return scaledRate
-}
-
-Integer getScaledOffTransitionTime() {
-   Integer scaledRate = null
-   if (settings.offTransitionTime == null || settings.offTransitionTime == "-2" || settings.offTransitionTime == -2) {
-      // keep null; will result in not specifiying with command
-   }
-   else if (settings.offTransitionTime == "-1" || settings.offTransitionTime == -1) {
-      scaledRate = getScaledOnTransitionTime()
-   }
-   else {
-      scaledRate = Math.round(settings.offTransitionTime.toFloat() / 100)
-   }
-   return scaledRate
-}
-
-Integer getScaledCTTransitionTime() {
-   Integer scaledRate = null
-   if (settings.ctTransitionTime == null || settings.ctTransitionTime == "-2" || settings.ctTransitionTime == -2) {
-      // keep null; will result in not specifiying with command
-   }
-   else if (settings.ctTransitionTime == "-1" || settings.ctTransitionTime == -1) {
-      scaledRate = (settings.transitionTime != null) ? Math.round(settings.transitionTime.toFloat() / 100) : defaultTransitionTime
-   }
-   else {
-      scaledRate = Math.round(settings.ctTransitionTime.toFloat() / 100)
-   }
-   return scaledRate
-}
-
-Integer getScaledRGBTransitionTime() {
-   Integer scaledRate = null
-   if (settings.rgbTransitionTime == null || settings.rgbTransitionTime == "-2" || settings.rgbTransitionTime == -2) {
-      // keep null; will result in not specifying with command
-   }
-   else if (settings.rgbTransitionTime == "-1" || settings.rgbTransitionTime == -1) {
-      scaledRate = (settings.transitionTime != null) ? Math.round(settings.transitionTime.toFloat() / 100) : defaultTransitionTime
-   }
-   else {
-      scaledRate = Math.round(settings.rgbTransitionTime.toFloat() / 100)
-   }
-}
-
 void off(Number transitionTime = null) {
    if (enableDebug == true) log.debug "off()"
    Map bridgeCmd
@@ -244,7 +193,8 @@ void refresh() {
 }
 
 /**
- * Iterates over Hue light state commands/states in Hue format (e.g., ["on": true]) and does
+ * (for "classic"/v1 HTTP API)
+ * Iterates over Hue light state commands/states in Hue API v1 format (e.g., ["on": true]) and does
  * a sendEvent for each relevant attribute; intended to be called either when commands are sent
  * to Bridge or if pre-staged attribute is changed and "real" command not yet able to be sent, or
  * to parse/update light states based on data received from Bridge
@@ -278,7 +228,7 @@ void createEventsFromMap(Map bridgeCommandMap, Boolean isFromBridge = false) {
             break
          case "bri":
             eventName = "level"
-            eventValue = scaleBriFromBridge(it.value)
+            eventValue = scaleBriFromBridge(it.value, "1")
             eventUnit = "%"
             if (device.currentValue(eventName) != eventValue) {
                doSendEvent(eventName, eventValue, eventUnit)
@@ -362,6 +312,65 @@ void createEventsFromMap(Map bridgeCommandMap, Boolean isFromBridge = false) {
          default:
             break
             //log.warn "Unhandled key/value discarded: $it"
+      }
+   }
+}
+
+/**
+ * (for "new"/v2/EventSocket [SSE] API; not documented and subject to change)
+ * Iterates over Hue light state states in Hue API v2 format (e.g., "on={on=true}") and does
+ * a sendEvent for each relevant attribute; intended to be called when EventSocket data
+ * received for device (as an alternative to polling)
+ */
+void createEventsFromSSE(Map data) {
+   if (enableDebug == true) log.debug "createEventsFromSSE($data)"
+   String eventName, eventUnit, descriptionText
+   def eventValue // could be String or number
+   Boolean hasCT = data.color_temperature?.mirek != null
+   data.each { String key, value ->
+      switch (key) {
+         case "on":
+            eventName = "switch"
+            log.trace value.on
+            eventValue = value.on ? "on" : "off"
+            eventUnit = null
+            if (device.currentValue(eventName) != eventValue) doSendEvent(eventName, eventValue, eventUnit)
+            break
+         case "dimming":
+            eventName = "level"
+            eventValue = scaleBriFromBridge(value.brightness, "2")
+            eventUnit = "%"
+            if (device.currentValue(eventName) != eventValue) {
+               doSendEvent(eventName, eventValue, eventUnit)
+            }
+            break
+         case "color": 
+            if (!hasCT) {
+               if (enableDebug == true) log.debug "color received (presuming xy); refreshing bridge instead to get hue/sat"
+               // In lieu of good xy conversion, just refresh to get hue/sat:
+               parent.refreshBridge()
+            }
+            else {
+               if (enableDebug == true) log.debug "color received but also have CT, so assume CT parsing"
+            }
+            break
+         case "color_temperature":
+            if (!hasCT) {
+               if (enableDebug == true) "ignoring color_temperature because mirek null"
+               return
+            }
+            eventName = "colorTemperature"
+            eventValue = scaleCTFromBridge(value.mirek)
+            eventUnit = "K"
+            if (device.currentValue(eventName) != eventValue) doSendEvent(eventName, eventValue, eventUnit)
+            setGenericTempName(eventValue)
+            eventName = "colorMode"
+            eventValue = "CT"
+            eventUnit = null
+            if (device.currentValue(eventName) != eventValue) doSendEvent(eventName, eventValue, eventUnit)
+            break
+         default:
+            if (enableDebug == true) "not handling: $key: $value"
       }
    }
 }

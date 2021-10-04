@@ -14,9 +14,10 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2021-07-24
+ *  Last modified: 2021-07-25
  *
  *  Changelog:
+ *  v3.5.2 -  setColor() fix (refactor code into library--was not previously)
  *  v3.5.1  - Refactor some code into libraries (code still precompiled before upload; should not have any visible changes)
  *  v3.5    - Add LevelPreset capability (replaces old level prestaging option); added preliminary color
  *            and CT prestating coommands; added "reachable" attribte from Bridge to bulb and group

@@ -1,3 +1,5 @@
+// Version 1.0.2
+
 library (
    base: "driver",
    author: "RMoRobert",
@@ -73,21 +75,74 @@ void presetLevel(Number level) {
    }
 }
 
-// Internal methods for scaling
+/**
+ * Reads device preference for on() transition time, or provides default if not available; device
+ * can use input(name: onTransitionTime, ...) to provide this
+ */
+Integer getScaledOnTransitionTime() {
+   Integer scaledRate = null
+   if (settings.onTransitionTime == null || settings.onTransitionTime == "-2" || settings.onTransitionTime == -2) {
+      // keep null; will result in not specifiying with command
+   }
+   else {
+      scaledRate = Math.round(settings.onTransitionTime.toFloat() / 100)
+   }
+   return scaledRate
+}
+
 
 /**
- * Scales Hubitat's 1-100 brightness levels to Hue Bridge's 1-254
+ * Reads device preference for off() transition time, or provides default if not available; device
+ * can use input(name: onTransitionTime, ...) to provide this
  */
-Integer scaleBriToBridge(hubitatLevel) {
-   Integer scaledLevel =  Math.round(hubitatLevel == 1 ? 1 : hubitatLevel.toBigDecimal() / 100 * 254)
-   return Math.round(scaledLevel)
+Integer getScaledOffTransitionTime() {
+   Integer scaledRate = null
+   if (settings.offTransitionTime == null || settings.offTransitionTime == "-2" || settings.offTransitionTime == -2) {
+      // keep null; will result in not specifiying with command
+   }
+   else if (settings.offTransitionTime == "-1" || settings.offTransitionTime == -1) {
+      scaledRate = getScaledOnTransitionTime()
+   }
+   else {
+      scaledRate = Math.round(settings.offTransitionTime.toFloat() / 100)
+   }
+   return scaledRate
+}
+
+// Internal methods for scaling
+
+
+/**
+ * Scales Hubitat's 1-100 brightness levels to Hue Bridge's 1-254 (or 0-100)
+ * @param apiVersion: Use "1" (default) for classic, 1-254 API values; use "2" for v2/SSE 0.0-100.0 values (note: 0.0 is on)
+ */
+Number scaleBriToBridge(Number hubitatLevel, String apiVersion="1") {
+   if (apiVersion != "2") {
+      Integer scaledLevel
+      scaledLevel = Math.round(hubitatLevel == 1 ? 1 : hubitatLevel.toBigDecimal() / 100 * 254)
+      return Math.round(scaledLevel) as Integer
+   }
+   else {
+      BigDecimal scaledLevel
+      // for now, a quick cheat to make 1% the Hue minimum (should scale other values proportionally in future)
+      scaledLevel = hubitatLevel == 1 ? 0.0 : hubitatLevel.toBigDecimal().setScale(2, java.math.RoundingMode.HALF_UP)
+      return scaledLevel
+   }
 }
 
 /**
- * Scales Hue Bridge's 1-254 brightness levels to Hubitat's 1-100
+ * Scales Hue Bridge's 1-254 brightness levels to Hubitat's 1-100 (or 0-100)
+ * @param apiVersion: Use "1" (default) for classic, 1-254 API values; use "2" for v2/SSE 0.0-100.0 values (note: 0.0 is on)
  */
-Integer scaleBriFromBridge(bridgeLevel) {
-   Integer scaledLevel = Math.round(bridgeLevel.toBigDecimal() / 254 * 100)
-   if (scaledLevel < 1) scaledLevel = 1
-   return Math.round(scaledLevel)
+Integer scaleBriFromBridge(Number bridgeLevel, String apiVersion="1") {
+   Integer scaledLevel
+   if (apiVersion != "2") {
+      scaledLevel = Math.round(bridgeLevel.toBigDecimal() / 254 * 100)
+      if (scaledLevel < 1) scaledLevel = 1
+   }
+   else {
+      // for now, a quick cheat to make 1% the Hue minimum (should scale other values proportionally in future)
+      scaledLevel = Math.round(bridgeLevel <= 1.49 ? 1 : bridgeLevel)
+   }
+   return scaledLevel
 }

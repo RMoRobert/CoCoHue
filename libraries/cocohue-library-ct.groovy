@@ -1,4 +1,5 @@
-// Version 1.0.0
+// Version 1.0.1
+
 library (
    base: "driver",
    author: "RMoRobert",
@@ -72,6 +73,25 @@ private Integer scaleCTFromBridge(Number mireds) {
    Integer kelvin = Math.round(1000000/mireds) as Integer
    return kelvin
 }
+
+/**
+ * Reads device preference for CT transition time, or provides default if not available; device
+ * can use input(name: ctTransitionTime, ...) to provide this
+ */
+Integer getScaledCTTransitionTime() {
+   Integer scaledRate = null
+   if (settings.ctTransitionTime == null || settings.ctTransitionTime == "-2" || settings.ctTransitionTime == -2) {
+      // keep null; will result in not specifiying with command
+   }
+   else if (settings.ctTransitionTime == "-1" || settings.ctTransitionTime == -1) {
+      scaledRate = (settings.transitionTime != null) ? Math.round(settings.transitionTime.toFloat() / 100) : (defaultTransitionTime != null ? defaultTransitionTime : 250)
+   }
+   else {
+      scaledRate = Math.round(settings.ctTransitionTime.toFloat() / 100)
+   }
+   return scaledRate
+}
+
 
 // Hubitat-provided ct/name mappings
 void setGenericTempName(temp) {

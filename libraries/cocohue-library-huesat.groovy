@@ -1,4 +1,5 @@
-// Version 1.0.0
+// Version 1.0.1
+
 library (
    base: "driver",
    author: "RMoRobert",
@@ -144,6 +145,24 @@ Integer scaleSatFromBridge(bridgeLevel) {
    if (scaledLevel < 0) scaledLevel = 0
    else if (scaledLevel > 100) scaledLevel = 100
    return scaledLevel
+}
+
+
+/**
+ * Reads device preference for setColor/RGB transition time, or provides default if not available; device
+ * can use input(name: rgbTransitionTime, ...) to provide this
+ */
+Integer getScaledRGBTransitionTime() {
+   Integer scaledRate = null
+   if (settings.rgbTransitionTime == null || settings.rgbTransitionTime == "-2" || settings.rgbTransitionTime == -2) {
+      // keep null; will result in not specifying with command
+   }
+   else if (settings.rgbTransitionTime == "-1" || settings.rgbTransitionTime == -1) {
+      scaledRate = (settings.transitionTime != null) ? Math.round(settings.transitionTime.toFloat() / 100) : defaultTransitionTime
+   }
+   else {
+      scaledRate = Math.round(settings.rgbTransitionTime.toFloat() / 100)
+   }
 }
 
 // Hubiat-provided color/name mappings
