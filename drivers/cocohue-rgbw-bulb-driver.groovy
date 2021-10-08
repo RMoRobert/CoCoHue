@@ -14,10 +14,10 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2021-09-19
+ *  Last modified: 2021-10-07
  *
  *  Changelog:
- *  v3.5.2  - Add CIE XY conversion
+ *  v4.0    - EventStream support for real-time updates
  *  v3.5.1  - Refactor some code into libraries (code still precompiled before upload; should not have any visible changes)
  *  v3.5    - Add LevelPreset capability (replaces old level prestaging option); added preliminary color
  *            and CT prestating coommands; added "reachable" attribte from Bridge to bulb and group
@@ -54,6 +54,7 @@
 #include RMoRobert.CoCoHue_Prestage_Lib
 
 import groovy.transform.Field
+import hubitat.scheduling.AsyncResponse
 
 // Currently works for all Hue bulbs; can adjust if needed:
 @Field static final minMireds = 153
@@ -65,6 +66,13 @@ import groovy.transform.Field
 // These defaults are specified in Hue (decisecond) durations, used if not specified in preference or command:
 @Field static final Integer defaultLevelTransitionTime = 4
 @Field static final Integer defaultOnTransitionTime = 4
+
+// Default list of command Map keys to ignore if SSE enabled and command is sent from hub (not polled from Bridge), used to
+// ignore duplicates that are expected to be processed from SSE momentarily:
+@Field static final List<String> listKeysToIgnoreIfSSEEnabledAndNotFromBridge = ["on", "ct", "bri"]
+
+// "ct" or "hs" for now -- to be finalized later:xt
+@Field static final String xyParsingMode = "ct"
 
 metadata {
    definition(name: "CoCoHue RGBW Bulb", namespace: "RMoRobert", author: "Robert Morris", importUrl: "https://raw.githubusercontent.com/HubitatCommunity/CoCoHue/master/drivers/cocohue-rgbw-bulb-driver.groovy") {
@@ -100,12 +108,14 @@ metadata {
          [[0:"ASAP"],[200:"200ms"],[400:"400ms (default)"],[500:"500ms"],[1000:"1s"],[1500:"1.5s"],[2000:"2s"],[5000:"5s"]], defaultValue: 400
       input name: "levelChangeRate", type: "enum", description: "", title: '"Start level change" rate', options:
          [["slow":"Slow"],["medium":"Medium"],["fast":"Fast (default)"]], defaultValue: "fast"
+      /*
       // Sending "bri" with "on:true" alone seems to have no effect, so might as well not implement this for now...
       input name: "onTransitionTime", type: "enum", description: "", title: "On transition time", options:
          [[(-2): "Hue default/do not specify (recommended; default; Hue may ignore other values)"],[0:"ASAP"],[200:"200ms"],[400:"400ms (default)"],[500:"500ms"],[1000:"1s"],[1500:"1.5s"],[2000:"2s"],[5000:"5s"]], defaultValue: -2
       // Not recommended because of problem described here:  https://developers.meethue.com/forum/t/using-transitiontime-with-on-false-resets-bri-to-1/4585
       input name: "offTransitionTime", type: "enum", description: "", title: "Off transition time", options:
          [[(-2): "Hue default/do not specify (recommended; default)"],[(-1): "Use on transition time"],[0:"ASAP"],[200:"200ms"],[400:"400ms (default)"],[500:"500ms"],[1000:"1s"],[1500:"1.5s"],[2000:"2s"],[5000:"5s"]], defaultValue: -1
+      */
       input name: "ctTransitionTime", type: "enum", description: "", title: "Color temperature transition time", options:
          [[(-2): "Hue default/do not specify (default)"],[(-1): "Use level transition time (default)"],[0:"ASAP"],[200:"200ms"],[400:"400ms (default)"],[500:"500ms"],[1000:"1s"],[1500:"1.5s"],[2000:"2s"],[5000:"5s"]], defaultValue: -1
       input name: "rgbTransitionTime", type: "enum", description: "", title: "RGB transition time", options:
@@ -203,19 +213,28 @@ void refresh() {
  * @param isFromBridge Set to true if this is data read from Hue Bridge rather than intended to be sent
  *  to Bridge; if true, will ignore differences for prestaged attributes if switch state is off (TODO: how did new prestaging affect this?)
  */
-void createEventsFromMap(Map bridgeCommandMap, Boolean isFromBridge = false) {
+void createEventsFromMap(Map bridgeCommandMap, Boolean isFromBridge = false, Set<String> keysToIgnoreIfSSEEnabledAndNotFromBridge=listKeysToIgnoreIfSSEEnabledAndNotFromBridge) {
    if (!bridgeCommandMap) {
       if (enableDebug == true) log.debug "createEventsFromMap called but map command empty or null; exiting"
       return
    }
    Map bridgeMap = bridgeCommandMap
    if (enableDebug == true) log.debug "Preparing to create events from map${isFromBridge ? ' from Bridge' : ''}: ${bridgeMap}"
+   if (!isFromBridge && keysToIgnoreIfSSEEnabledAndNotFromBridge && parent.getEventStreamOpenStatus() == true) {
+      bridgeMap.keySet().removeAll(keysToIgnoreIfSSEEnabledAndNotFromBridge)
+      if (enableDebug == true) log.debug "Map after ignored keys removed: ${bridgeMap}"
+   }
    String eventName, eventUnit, descriptionText
    def eventValue // could be String or number
    String colorMode = bridgeMap["colormode"]
-   if (isFromBridge && bridgeMap["colormode"] == "xy") {
-      colorMode == "ct"
-      if (enableDebug == true) log.debug "In XY mode but parsing as CT"
+   if (isFromBridge && colorMode == "xy") {
+      if (xyParsingMode == "ct") {
+         colorMode = "ct"
+      }
+      else {
+         colorMode = "hs"
+      }
+      if (enableDebug == true) log.debug "In XY mode but parsing as CT (colorMode = $colorMode)"
    }
    Boolean isOn = bridgeMap["on"]
    bridgeMap.each {
@@ -236,7 +255,9 @@ void createEventsFromMap(Map bridgeCommandMap, Boolean isFromBridge = false) {
             break
          case "colormode":
             eventName = "colorMode"
-            eventValue = (it.value == "hs" ? "RGB" : "CT")
+            eventValue = (colorMode == "ct" ? "CT" : "RGB")
+            // Doing this above instead of reading from Bridge like used to...
+            //eventValue = (it.value == "hs" ? "RGB" : "CT")
             eventUnit = null
             if (device.currentValue(eventName) != eventValue) {
                doSendEvent(eventName, eventValue, eventUnit)
@@ -331,7 +352,6 @@ void createEventsFromSSE(Map data) {
       switch (key) {
          case "on":
             eventName = "switch"
-            log.trace value.on
             eventValue = value.on ? "on" : "off"
             eventUnit = null
             if (device.currentValue(eventName) != eventValue) doSendEvent(eventName, eventValue, eventUnit)
@@ -348,7 +368,7 @@ void createEventsFromSSE(Map data) {
             if (!hasCT) {
                if (enableDebug == true) log.debug "color received (presuming xy); refreshing bridge instead to get hue/sat"
                // In lieu of good xy conversion, just refresh to get hue/sat:
-               parent.refreshBridge()
+               parent.refreshBridgeWithDealay()
             }
             else {
                if (enableDebug == true) log.debug "color received but also have CT, so assume CT parsing"
@@ -405,7 +425,7 @@ void sendBridgeCommand(Map commandMap, Boolean createHubEvents=true) {
   * @param resp Async HTTP response object
   * @param data Map of commands sent to Bridge if specified to create events from map
   */
-void parseSendCommandResponse(resp, data) {
+void parseSendCommandResponse(AsyncResponse resp, Map data) {
    if (enableDebug == true) log.debug "Response from Bridge: ${resp.status}"
    if (checkIfValidResponse(resp) && data) {
       if (enableDebug == true) log.debug "  Bridge response valid; creating events from data map"

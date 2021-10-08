@@ -14,7 +14,7 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2021-09-26
+ *  Last modified: 2021-10-07
  * 
  *  Changelog:
  *  v4.0    - EventStream support for real-time updates
@@ -32,6 +32,7 @@
 #include RMoRobert.CoCoHue_Common_Lib
 
 import groovy.json.JsonSlurper
+import hubitat.scheduling.AsyncResponse
 import com.hubitat.app.DeviceWrapper
 
 metadata {
@@ -68,11 +69,14 @@ void initialize() {
       log.debug "Debug logging will be automatically disabled in ${disableMinutes} minutes"
       runIn(disableMinutes*60, debugOff)
    }
-   connectEventStream()
+   if (parent.getEventStremEnabledSetting()) connectEventStream()
 }
 
 void connectEventStream() {
    if (enableDebug) log.debug "connectEventStream()"
+   if (parent.getEventStremEnabledSetting() != true){
+      log.warn "CoCoHue app is configured not to use EventStream. To reliably use this interface, it is recommended to enable this option in the app."
+   }
    Map<String,String> data = parent.getBridgeData()
    interfaces.eventStream.connect(
       "https://${data.ip}/eventstream/clip/v2", [
@@ -87,6 +91,9 @@ void reconnectEventStream(Boolean notIfAlreadyConnected = true) {
    if (enableDebug) log.debug "reconnectEventStream(notIfAlreadyConnected=$notIfAlreadyConnected)"
    if (device.currentValue("eventStreamStatus") == "connected" && notIfAlreadyConnected) {
       if (logEnable) log.debug "already connected; skipping reconnection"
+   }   
+   else if (parent.getEventStremEnabledSetting()) {
+      if (logEnable) log.debug "skipping reconnection because (parent) app configured not to use EventStream"
    }
    else {
       connectEventStream()
@@ -101,9 +108,11 @@ void disconnectEventStream() {
 void eventStreamStatus(String message) {
    if (enableDebug) "eventStreamStatus: $message"
    if (message.startsWith("START:")) {
+      parent.setEventStreamOpenStatus(true) // notify app
       doSendEvent("eventStreamStatus", "connected")
    }
    else {
+      parent.setEventStreamOpenStatus(false) // notify app
       doSendEvent("eventStreamStatus", "disconnected")
       if (state.connectionRetryTime) {
          state.connectionRetryTime *= 2
@@ -132,14 +141,16 @@ void parse(String description) {
          switch (fullId) {
             case { it.startsWith("/lights/") }:
                String hueId = fullId.split("/")[-1]
-               log.trace "is light $hueId"
                DeviceWrapper device = parent.getChildDevice("${device.deviceNetworkId}/Light/${hueId}")
-               log.trace "is device ${device.displayName}"
                if (device != null) device.createEventsFromSSE(it.data[0])
                break
             case { it.startsWith("/groups/") }:
                String hueId = fullId.split("/")[-1]
                log.trace "is group $hueId"
+               DeviceWrapper device = parent.getChildDevice("${device.deviceNetworkId}/Group/${hueId}")
+               log.trace "is device ${device?.displayName}"
+               if (device != null) device.createEventsFromSSE(it.data[0])
+               break
                break
             case { it.startsWith("/sensors/") }:
                String hueId = fullId.split("/")[-1]
@@ -182,7 +193,7 @@ void scheduleRefresh() {
 /** Callback method that handles full Bridge refresh. Eventually delegated to individual
  *  methods below.
  */
-private void parseStates(resp, data) { 
+private void parseStates(AsyncResponse resp, Map data) { 
    if (enableDebug) log.debug "parseStates: States from Bridge received. Now parsing..."
    if (checkIfValidResponse(resp)) {
       parseLightStates(resp.json.lights)

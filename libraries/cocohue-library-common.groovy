@@ -1,4 +1,5 @@
-// Version 1.0.0
+// Version 1.0.1
+
 library (
    base: "driver",
    author: "RMoRobert",
@@ -18,7 +19,7 @@ void debugOff() {
   * returns false if not
   * @param resp The async HTTP response object to examine
   */
-private Boolean checkIfValidResponse(resp) {
+private Boolean checkIfValidResponse(hubitat.scheduling.AsyncResponse resp) {
    if (enableDebug == true) log.debug "Checking if valid HTTP response/data from Bridge..."
    Boolean isOK = true
    if (resp.status < 400) {
