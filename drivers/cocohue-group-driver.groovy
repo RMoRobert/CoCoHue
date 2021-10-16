@@ -14,9 +14,10 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2021-07-25
+ *  Last modified: 2021-10-13
  *
  *  Changelog:
+ *  v4.0    - EventStream support for real-time updates
  *  v3.5.2 -  setColor() fix (refactor code into library--was not previously)
  *  v3.5.1  - Refactor some code into libraries (code still precompiled before upload; should not have any visible changes)
  *  v3.5    - Add LevelPreset capability (replaces old level prestaging option); added preliminary color
@@ -55,6 +56,7 @@
 #include RMoRobert.CoCoHue_Prestage_Lib
 
 import groovy.transform.Field
+import hubitat.scheduling.AsyncResponse
 
 // Currently works for all Hue bulbs; can adjust if needed:
 @Field static final minMireds = 153
@@ -65,6 +67,13 @@ import groovy.transform.Field
 
 // Default preference values
 @Field static final BigDecimal defaultLevelTransitionTime = 1000
+
+// Default list of command Map keys to ignore if SSE enabled and command is sent from hub (not polled from Bridge), used to
+// ignore duplicates that are expected to be processed from SSE momentarily:
+@Field static final List<String> listKeysToIgnoreIfSSEEnabledAndNotFromBridge = ["on", "ct", "bri"]
+
+// "ct" or "hs" for now -- to be finalized later:
+@Field static final String xyParsingMode = "ct"
 
 metadata {
    definition(name: "CoCoHue Group", namespace: "RMoRobert", author: "Robert Morris", importUrl: "https://raw.githubusercontent.com/HubitatCommunity/CoCoHue/master/drivers/cocohue-group-driver.groovy") {
@@ -98,13 +107,18 @@ metadata {
    preferences {
       input name: "transitionTime", type: "enum", description: "", title: "Transition time", options:
          [[0:"ASAP"],[400:"400ms"],[500:"500ms"],[1000:"1s"],[1500:"1.5s"],[2000:"2s"],[5000:"5s"]], defaultValue: 400
-      input name: "hiRezHue", type: "bool", title: "Enable hue in degrees (0-360 instead of 0-100)", defaultValue: false
-      if (colorStaging) input name: "colorStaging", type: "bool", description: "DEPRECATED. Please use new prestaging commands instead. May be removed in future.", title: "Enable color pseudo-prestaging", defaultValue: false
-      if (levelStaging) input name: "levelStaging", type: "bool", description: "DEPRECATED. Please use new presetLevel() command instead. May be removed in future.", title: "Enable level pseudo-prestaging", defaultValue: false
       input name: "levelChangeRate", type: "enum", description: "", title: '"Start level change" rate', options:
          [["slow":"Slow"],["medium":"Medium"],["fast":"Fast (default)"]], defaultValue: "fast"
+      input name: "ctTransitionTime", type: "enum", description: "", title: "Color temperature transition time", options:
+         [[(-2): "Hue default/do not specify (default)"],[(-1): "Use level transition time (default)"],[0:"ASAP"],[200:"200ms"],[400:"400ms (default)"],[500:"500ms"],[1000:"1s"],[1500:"1.5s"],[2000:"2s"],[5000:"5s"]], defaultValue: -1
+      input name: "rgbTransitionTime", type: "enum", description: "", title: "RGB transition time", options:
+         [[(-2): "Hue default/do not specify (default)"],[(-1): "Use level transition time (default)"],[0:"ASAP"],[200:"200ms"],[400:"400ms (default)"],[500:"500ms"],[1000:"1s"],[1500:"1.5s"],[2000:"2s"],[5000:"5s"]], defaultValue: -1
+      input name: "hiRezHue", type: "bool", title: "Enable hue in degrees (0-360 instead of 0-100)", defaultValue: false
+      // Note: the following setting does not apply to SSE, which should update the group state immediately regardless:
       input name: "updateBulbs", type: "bool", description: "", title: "Update member bulb states immediately when group state changes",
          defaultValue: true
+      if (colorStaging) input name: "colorStaging", type: "bool", description: "DEPRECATED. Please use new prestaging commands instead. May be removed in future.", title: "Enable color pseudo-prestaging", defaultValue: false
+      if (levelStaging) input name: "levelStaging", type: "bool", description: "DEPRECATED. Please use new presetLevel() command instead. May be removed in future.", title: "Enable level pseudo-prestaging", defaultValue: false 
       input name: "updateScenes", type: "bool", description: "", title: "Mark all GroupScenes for this group as off when group device turns off",
          defaultValue: true
       input name: "enableDebug", type: "bool", title: "Enable debug logging", defaultValue: true
@@ -176,7 +190,8 @@ void refresh() {
 }
 
 /**
- * Iterates over Hue light state commands/states in Hue format (e.g., ["on": true]) and does
+ * (for "classic"/v1 HTTP API)
+ * Iterates over Hue light state commands/states in Hue v1 format (e.g., ["on": true]) and does
  * a sendEvent for each relevant attribute; intended to be called either when commands are sent
  * to Bridge or if pre-staged attribute is changed and "real" command not yet able to be sent, or
  * to parse/update light states based on data received from Bridge
@@ -185,19 +200,28 @@ void refresh() {
  * @param isFromBridge Set to true if this is data read from Hue Bridge rather than intended to be sent
  *  to Bridge; if true, will ignore differences for prestaged attributes if switch state is off (TODO: how did new prestaging affect this?)
  */
-void createEventsFromMap(Map bridgeCommandMap, Boolean isFromBridge = false) {
+void createEventsFromMap(Map bridgeCommandMap, Boolean isFromBridge = false, Set<String> keysToIgnoreIfSSEEnabledAndNotFromBridge=listKeysToIgnoreIfSSEEnabledAndNotFromBridge) {
    if (!bridgeCommandMap) {
       if (enableDebug == true) log.debug "createEventsFromMap called but map command empty or null; exiting"
       return
    }
    Map bridgeMap = bridgeCommandMap
    if (enableDebug == true) log.debug "Preparing to create events from map${isFromBridge ? ' from Bridge' : ''}: ${bridgeMap}"
+   if (keysToIgnoreIfSSEEnabledAndNotFromBridge && parent.getEventStreamOpenStatus() == true) {
+      bridgeMap.keySet().removeAll(keysToIgnoreIfSSEEnabledAndNotFromBridge)
+      if (enableDebug == true) log.debug "Map after ignored keys removed: ${bridgeMap}"
+   }
    String eventName, eventUnit, descriptionText
    def eventValue // could be string or number
    String colorMode = bridgeMap["colormode"]
-   if (isFromBridge && bridgeMap["colormode"] == "xy") {
-      colorMode == "ct"
-      if (enableDebug == true) log.debug "In XY mode but parsing as CT"
+   if (isFromBridge && colorMode == "xy") {
+      if (xyParsingMode == "ct") {
+         colorMode = "ct"
+      }
+      else {
+         colorMode = "hs"
+      }
+      if (enableDebug == true) log.debug "In XY mode but parsing as CT (colorMode = $colorMode)"
    }
    Boolean isOn = bridgeMap["any_on"]
    bridgeMap.each {
@@ -306,6 +330,64 @@ void createEventsFromMap(Map bridgeCommandMap, Boolean isFromBridge = false) {
 }
 
 /**
+ * (for "new"/v2/EventSocket [SSE] API; not documented and subject to change)
+ * Iterates over Hue light state states in Hue API v2 format (e.g., "on={on=true}") and does
+ * a sendEvent for each relevant attribute; intended to be called when EventSocket data
+ * received for device (as an alternative to polling)
+ */
+void createEventsFromSSE(Map data) {
+   if (enableDebug == true) log.debug "createEventsFromSSE($data)"
+   String eventName, eventUnit, descriptionText
+   def eventValue // could be String or number
+   Boolean hasCT = data.color_temperature?.mirek != null
+   data.each { String key, value ->
+      switch (key) {
+         case "on":  // appears equivalent to any_on in group (which is already CoCoHue behavior, so good)
+            eventName = "switch"
+            eventValue = value.on ? "on" : "off"
+            eventUnit = null
+            if (device.currentValue(eventName) != eventValue) doSendEvent(eventName, eventValue, eventUnit)
+            break
+         case "dimming":
+            eventName = "level"
+            eventValue = scaleBriFromBridge(value.brightness, "2")
+            eventUnit = "%"
+            if (device.currentValue(eventName) != eventValue) {
+               doSendEvent(eventName, eventValue, eventUnit)
+            }
+            break
+         case "color": 
+            if (!hasCT) {
+               if (enableDebug == true) log.debug "color received (presuming xy, no CT)"
+               // no point in doing this yet--but maybe if can convert XY/HS some day:
+               //parent.refreshBridgeWithDealay()
+            }
+            else {
+               if (enableDebug == true) log.debug "color received but also have CT, so assume CT parsing"
+            }
+            break
+         case "color_temperature":
+            if (!hasCT) {
+               if (enableDebug == true) "ignoring color_temperature because mirek null"
+               return
+            }
+            eventName = "colorTemperature"
+            eventValue = scaleCTFromBridge(value.mirek)
+            eventUnit = "K"
+            if (device.currentValue(eventName) != eventValue) doSendEvent(eventName, eventValue, eventUnit)
+            setGenericTempName(eventValue)
+            eventName = "colorMode"
+            eventValue = "CT"
+            eventUnit = null
+            if (device.currentValue(eventName) != eventValue) doSendEvent(eventName, eventValue, eventUnit)
+            break
+         default:
+            if (enableDebug == true) "not handling: $key: $value"
+      }
+   }
+}
+
+/**
  * Sends HTTP PUT to Bridge using the either command map provided
  * @param commandMap Groovy Map (will be converted to JSON) of Hue API commands to send, e.g., [on: true]
  * @param createHubEvents Will iterate over Bridge command map and do sendEvent for all
@@ -335,7 +417,7 @@ void sendBridgeCommand(Map commandMap, Boolean createHubEvents=true) {
   * @param resp Async HTTP response object
   * @param data Map of commands sent to Bridge if specified to create events from map
   */
-void parseSendCommandResponse(resp, data) {
+void parseSendCommandResponse(AsyncResponseresp, Map data) {
    if (enableDebug == true) log.debug "Response from Bridge: ${resp.status}"
    if (checkIfValidResponse(resp) && data) {
       if (enableDebug == true) log.debug "  Bridge response valid; creating events from data map"

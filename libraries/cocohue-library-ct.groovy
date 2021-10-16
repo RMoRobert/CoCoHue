@@ -11,6 +11,7 @@ library (
 
 void setColorTemperature(Number colorTemperature, Number level = null, Number transitionTime = null) {
    if (enableDebug == true) log.debug "setColorTemperature($colorTemperature, $level, $transitionTime)"
+   state.lastKnownColorMode = "CT"
    // For backwards compatibility; will be removed in future version:
    if (colorStaging) {
       log.warn "Color prestaging preference enabled and setColorTemperature() called. This is deprecated and may be removed in the future. Please move to new presetColorTemperature() command."

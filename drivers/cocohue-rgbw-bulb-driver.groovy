@@ -14,7 +14,7 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2021-10-07
+ *  Last modified: 2021-10-13
  *
  *  Changelog:
  *  v4.0    - EventStream support for real-time updates
@@ -71,7 +71,7 @@ import hubitat.scheduling.AsyncResponse
 // ignore duplicates that are expected to be processed from SSE momentarily:
 @Field static final List<String> listKeysToIgnoreIfSSEEnabledAndNotFromBridge = ["on", "ct", "bri"]
 
-// "ct" or "hs" for now -- to be finalized later:xt
+// "ct" or "hs" for now -- to be finalized later:
 @Field static final String xyParsingMode = "ct"
 
 metadata {
@@ -123,7 +123,7 @@ metadata {
       input name: "hiRezHue", type: "bool", title: "Enable hue in degrees (0-360 instead of 0-100)", defaultValue: false
       if (colorStaging) input name: "colorStaging", type: "bool", description: "DEPRECATED. Please use new prestaging commands instead. May be removed in future.", title: "Enable color pseudo-prestaging", defaultValue: false
       if (levelStaging) input name: "levelStaging", type: "bool", description: "DEPRECATED. Please use new presetLevel() command instead. May be removed in future.", title: "Enable level pseudo-prestaging", defaultValue: false
-
+      // Note: the following setting does not apply to SSE, which should update the group state immediately regardless:
       input name: "updateGroups", type: "bool", description: "", title: "Update state of groups immediately when bulb state changes",
          defaultValue: false
       input name: "enableDebug", type: "bool", title: "Enable debug logging", defaultValue: true
@@ -366,9 +366,9 @@ void createEventsFromSSE(Map data) {
             break
          case "color": 
             if (!hasCT) {
-               if (enableDebug == true) log.debug "color received (presuming xy); refreshing bridge instead to get hue/sat"
-               // In lieu of good xy conversion, just refresh to get hue/sat:
-               parent.refreshBridgeWithDealay()
+               if (enableDebug == true) log.debug "color received (presuming xy, no CT)"
+               // no point in doing this yet--but maybe if can convert XY/HS some day:
+               //parent.refreshBridgeWithDealay()
             }
             else {
                if (enableDebug == true) log.debug "color received but also have CT, so assume CT parsing"

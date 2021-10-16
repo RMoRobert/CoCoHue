@@ -34,6 +34,8 @@
 
 #include RMoRobert.CoCoHue_Common_Lib
 
+import hubitat.scheduling.AsyncResponse
+
 metadata {
    definition(name: "CoCoHue Scene", namespace: "RMoRobert", author: "Robert Morris", importUrl: "https://raw.githubusercontent.com/HubitatCommunity/CoCoHue/master/drivers/cocohue-scene-driver.groovy") {
       capability "Actuator"
@@ -185,7 +187,7 @@ void off() {
   * @param resp Async HTTP response object
   * @param data Map with keys 'attribute' and 'value' containing event data to send if successful (e.g., [attribute: 'switch', value: 'off'])
   */
-void parseSendCommandResponse(resp, data) {
+void parseSendCommandResponse(AsyncResponseresp, Map data) {
    if (enableDebug) log.debug "Response from Bridge: ${resp.status}; data from app = $data"
    if (checkIfValidResponse(resp) && data?.attribute != null && data?.value != null) {
       if (enableDebug) log.debug "  Bridge response valid; running creating events"

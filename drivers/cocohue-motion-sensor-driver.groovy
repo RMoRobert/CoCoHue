@@ -107,7 +107,7 @@ void createEventsFromMap(Map bridgeCmd) {
             eventName = "illuminance"
             eventValue = Math.round(10 ** (((it.value as Integer)-1)/10000))
             eventUnit = "lux"
-            if (device.currentValue(eventName) != eventValue) doSendEvent(eventName, eventValue  as Integer, eventUnit)
+            if (device.currentValue(eventName) != eventValue) doSendEvent(eventName, eventValue as Integer, eventUnit)
             break
          case "temperature":
             eventName = "temperature"
@@ -126,6 +126,44 @@ void createEventsFromMap(Map bridgeCmd) {
          default:
             break
             //log.warn "Unhandled key/value discarded: $it"
+      }
+   }
+}
+
+/**
+ * (for "new"/v2/EventSocket [SSE] API; not documented and subject to change)
+ * Iterates over Hue light state states in Hue API v2 format (e.g., "on={on=true}") and does
+ * a sendEvent for each relevant attribute; intended to be called when EventSocket data
+ * received for device (as an alternative to polling)
+ */
+void createEventsFromSSE(Map data) {
+   if (enableDebug == true) log.debug "createEventsFromSSE($data)"
+   String eventName, eventUnit, descriptionText
+   def eventValue // could be String or number
+   data.each { String key, value ->
+      switch (key) {
+         case "motion":
+            eventName = "motion"
+            eventValue = value.motion ? "active" : "inactive"
+            eventUnit = null
+            if (device.currentValue(eventName) != eventValue) doSendEvent(eventName, eventValue, eventUnit)
+            break
+         case "light":
+            eventName = "illuminance"
+            eventValue = Math.round(10 ** (((value.light_level as Integer)-1)/10000))
+            eventUnit = "lux"
+            if (device.currentValue(eventName) != eventValue) doSendEvent(eventName, eventValue, eventUnit)
+            break
+         case "temperature":
+            eventName = "temperature"
+            if (location.temperatureScale == "C") eventValue = ((value.temperature as BigDecimal)).setScale(1, java.math.RoundingMode.HALF_UP)
+            else eventValue = celsiusToFahrenheit((value.temperature  as BigDecimal).setScale(1, java.math.RoundingMode.HALF_UP))
+            if (settings["tempAdjust"]) eventValue = (eventValue as BigDecimal) + (settings["tempAdjust"] as BigDecimal)
+            eventUnit = "°${location.temperatureScale}"
+            if (device.currentValue(eventName) != eventValue) doSendEvent(eventName, eventValue as BigDecimal, eventUnit)
+            break
+         default:
+            if (enableDebug == true) "not handling: $key: $value"
       }
    }
 }

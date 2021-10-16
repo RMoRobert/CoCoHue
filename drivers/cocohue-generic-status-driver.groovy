@@ -25,6 +25,8 @@
  
 #include RMoRobert.CoCoHue_Common_Lib
 
+import hubitat.scheduling.AsyncResponse
+
 metadata {
    definition(name: "CoCoHue Generic Status Device", namespace: "RMoRobert", author: "Robert Morris", importUrl: "https://raw.githubusercontent.com/HubitatCommunity/CoCoHue/master/drivers/cocohue-generic-status-driver.groovy") {
       capability "Actuator"
@@ -165,7 +167,7 @@ void sendBridgeCommand(Map bridgeCmds = [:], Boolean createHubEvents=true) {
   * @param resp Async HTTP response object
   * @param data Map of commands sent to Bridge if specified to create events from map
   */
-void parseSendCommandResponse(resp, data) {
+void parseSendCommandResponse(AsyncResponseresp, Map data) {
    if (enableDebug) log.debug "Response from Bridge: ${resp.status}"
    if (checkIfValidResponse(resp) && data) {
       if (enableDebug) log.debug "  Bridge response valid; creating events from data map"

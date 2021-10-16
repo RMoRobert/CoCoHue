@@ -108,8 +108,25 @@ void uninstalled() {
 }
 
 void updated() {
-    log.info("Updated with settings: ${settings}")
-    initialize()
+   log.info("Updated with settings: ${settings}")
+   initialize()
+   // Upgrade pre-CoCoHue-4.0 motion sensor DNIs to match new DNI format (Hue IDs, separated by pipe character; not IEEE/MAC)
+   if (getChildDevices().any { DeviceWrapper dev -> dev.deviceNetworkId.startsWith("CCH/${state.bridgeID}/Sensor/") && dev.deviceNetworkId.tokenize('/')[-1].contains(":") }) {
+      DeviceWrapper bridge = getChildDevice("CCH/${state.bridgeID}")
+      bridge.getAllSensors()
+      pauseExecution(6000) // should work (wait 6s), though there's probably a more reliable way to time (async callback?)...
+      Map sensorCache = bridge.getAllSensorsCache()
+      sensorCache.each { String mac, Map value ->
+         DeviceWrapper dev = getChildDevice("CCH/${state.bridgeID}/Sensor/${mac}")
+         if (dev != null) {
+            log.debug "Updating DNI for ${dev.displayName} to CoCoHue 4.0 format (old DNI = ${dev.deviceNetworkId})"
+            List ids = value.ids.sort()
+            String newLastPart = ids.join("|")
+            dev.setDeviceNetworkId("CCH/${state.bridgeID}/${newLastPart}")
+            log.debug "Set DNI for ${dev.displayName} to CCH/${state.bridgeID}/${newLastPart}"
+         }
+      }
+   }
 }
 
 void initialize() {
@@ -464,7 +481,7 @@ def pageManageBridge() {
          input(name: "deleteDevicesOnUninstall", type: "bool", title: "Delete devices created by app (Bridge, light, group, and scene) if uninstalled", defaultValue: true)
       }        
       section("Other Options:") {
-         input name: "useEventStream", type: "bool", title: "Enable \"push\" updates (Server-Sent Events/EventSream) from Bridge (experimental; requires Bridge v2 and Hubitat 2.2.9 or later)"
+         input name: "useEventStream", type: "bool", title: "Enable \"push\" updates (Server-Sent Events/EventStream) from Bridge (experimental; requires Bridge v2 and Hubitat 2.2.9 or later)"
          input name: "pollInterval", type: "enum", title: "Poll bridge every...",
             options: [0:"Disabled", 10:"10 seconds", 15:"15 seconds", 20:"20 seconds", 30:"30 seconds", 45:"45 seconds", 60:"1 minute (default)",
                         300:"5 minutes", 1800:"30 minutes (default if EventStream enabled)", 3600:"1 hour"], defaultValue: ((useEventStream == true) ? 1800 : 60)
@@ -741,13 +758,15 @@ def pageSelectMotionSensors() {
       }
       if (sensorCache) {
          sensorCache.each { cachedSensor ->
-            //log.warn "* cached sensor = $cachedSensor"
-            DeviceWrapper sensorChild = unclaimedSensors.find { s -> s.deviceNetworkId == "CCH/${state.bridgeID}/Sensor/${cachedSensor.key}" }
+            List ids = cachedSensor.value.ids?.sort() // sort numerically in case aren't (though usually retrieved from Bridge as such)
+            String lastPart = ids.join("|") // DNI format is like CCH/BridgeID/Sensor/1|2|3, where 1, 2, and 3 are the Hue IDs for various components of this sensor
+            DeviceWrapper sensorChild = unclaimedSensors.find { s -> s.deviceNetworkId == "CCH/${state.bridgeID}/Sensor/${lastPart}" }
             if (sensorChild) {
-               addedSensors.put(cachedSensor.key, [hubitatName: sensorChild.name, hubitatId: sensorChild.id, hueName: cachedSensor.value?.name])
+               addedSensors.put(lastPart, [hubitatName: sensorChild.name, hubitatId: sensorChild.id, hueName: cachedSensor.value?.name])
                unclaimedSensors.removeElement(sensorChild)
             } else {
                Map newSensor = [:]
+               // eventually becomes input for setting/dropdown; Map format is [MAC: DisplayName]
                newSensor << [(cachedSensor.key): (cachedSensor.value.name)]
                arrNewSensors << newSensor
             }
@@ -759,14 +778,16 @@ def pageSelectMotionSensors() {
          addedSensors = addedSensors.sort { it.value.hubitatName }
       }
       if (!sensorCache) {
-         section("Discovering sensors. Please wait...") {            
+         section("Discovering sensors. Please wait...") {
             paragraph("Press \"Refresh\" if you see this message for an extended period of time")
             input(name: "btnSensorRefresh", type: "button", title: "Refresh", submitOnChange: true)
          }
       }
       else {
          section("Manage Sensors") {
-            paragraph "NOTE: Like all Hue devices on Hubitat, motion sensor changes are not \"pushed\" from Hue to Hubitat as they happen. Their states on Hubitat are updated only when the Bridge is polled, per your CoCoHue configuration options (or a manual \"Refresh\" on the Bridge device). <b>It is not recommended to rely on Hue motion sensors for time-sensitve motion-based automations on Hubitat</b> when used via the Hue Bridge (but note that it is possible to directly pair them with Hubitat). Some motion \"active\" events may also be missed entirely if the duration of activity lasts less than the polling interval."
+            if (!(settings.useEventStream)) {
+               paragraph "NOTE: Without \"push\" updates (EventStream/SSE) enabled, motion sensor changes are updated only when the Bridge is polled, per your CoCoHue configuration options (or a manual \"Refresh\" on the Bridge device). <b>It is not recommended to rely on Hue motion sensors for time-sensitve motion-based automations on Hubitat in this configuration</b> when used via the Hue Bridge. For example, some motion events may be missed entirely if the duration of activity lasts less than the polling interval, but there will be a delay before activity in any case."
+            }
             input(name: "newSensors", type: "enum", title: "Select Hue motion sensors to add:",
                   multiple: true, options: arrNewSensors)
             paragraph ""
@@ -980,22 +1001,23 @@ void createNewSelectedSensorDevices() {
    DeviceWrapper bridge = getChildDevice("CCH/${state.bridgeID}")
    if (bridge == null) log.error("Unable to find Bridge device")
    Map sensorCache = bridge?.getAllSensorsCache()
-   //log.warn "* sensorCache = $sensorCache"
-   settings["newSensors"].each {
-      def s = sensorCache.get(it)
-      if (s) {
+   settings["newSensors"].each { String mac ->
+      def cachedSensor = sensorCache.get(mac)
+      if (cachedSensor) {
          try {
-            logDebug("Creating new device for Hue sensor ${it} (${s.name})")
-            String devDNI = "CCH/${state.bridgeID}/Sensor/${it}"
-            Map devProps = [name: s.name]
+            logDebug("Creating new device for Hue sensor ${mac} (${cachedSensor.name}, IDs = $ids)")
+            List ids = cachedSensor.value.ids?.sort() // sort numerically in case aren't (though usually retrieved from Bridge as such)
+            String lastPart = ids.join("|") // DNI format is like CCH/BridgeID/Sensor/1|2|3, where 1, 2, and 3 are the Hue IDs for various components of this sensor
+            String devDNI = "CCH/${state.bridgeID}/Sensor/${lastPart}"
+            Map devProps = [name: cachedSensor.name]
             addChildDevice(childNamespace, driverName, devDNI, devProps)
 
          }
          catch (Exception ex) {
-            log.error("Unable to create new sensor device for $it: $ex")
+            log.error("Unable to create new sensor device for $mac: $ex")
          }
       } else {
-         log.error("Unable to create new device for sensor $it: MAC not found in Hue Bridge cache")
+         log.error("Unable to create new device for sensor $mac: MAC not found in Hue Bridge cache")
       }
    }    
    bridge.clearSensorsCache()
@@ -1240,7 +1262,7 @@ private void refreshBridge(Map<String,Boolean> options = [reschedule: false]) {
 }
 
 /**
- * Calls refresh() method on Bridge child, currently used when SSE xy color received to poll Bridge for HS
+ * Calls refresh() method on Bridge child, not yet used but planned to be with SSE xy color received to poll for HS
  * Will wait 1s (to avoid cluster of refreshes if multiple devices change at same time), and will also
  * re-schedule next periodic refresh (if enabled) to extend polling interval so this "counts" as such
 */
@@ -1254,7 +1276,6 @@ private void refreshBridgeWithDealay() {
    // Using 3-second delay; 1s seemed too fast in testing, so this might be good for most cases:
    runIn(3, "refreshBridge", [reschedule: true])
 }
-
 
 /**
  * Sets "status" attribute on Bridge child device (intended to be called from child light/group scene devices with
@@ -1382,6 +1403,7 @@ void setEventStreamOpenStatus(Boolean isOnline) {
  *  Returns true if app configured to use EventStream/SSE, else false (proxy since cannot directly access settings from child)
  */
 Boolean getEventStremEnabledSetting() {
+   log.trace "getEventStremEnabledSetting = " + ((settings.useEventStream == true) ? true : false)
    return (settings.useEventStream == true) ? true : false
 }
 

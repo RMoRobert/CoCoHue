@@ -11,6 +11,7 @@ library (
 
 void setColor(Map value) {
    if (enableDebug == true) log.debug "setColor($value)"
+   state.lastKnownColorMode = "RGB"
    // For backwards compatibility; will be removed in future version:
    if (colorStaging) {
       log.warn "Color prestaging preference enabled and setColor() called. This is deprecated and may be removed in the future. Please move to new presetColor() command."
@@ -79,6 +80,7 @@ void presetColor(Map value) {
 
 void setHue(value) {
    if (enableDebug == true) log.debug "setHue($value)"
+   state.lastKnownColorMode = "RGB"
    // For backwards compatibility; will be removed in future version:
    if (colorStaging) {
       log.warn "Color prestaging preference enabled and setHue() called. This is deprecated and may be removed in the future. Please move to new presetColor() command."
@@ -99,6 +101,7 @@ void setHue(value) {
 
 void setSaturation(value) {
    if (enableDebug == true) log.debug "setSaturation($value)"
+   state.lastKnownColorMode = "RGB"
    // For backwards compatibility; will be removed in future version:
    if (colorStaging) {
       log.warn "Color prestaging preference enabled and setSaturation() called. This is deprecated and may be removed in the future. Please move to new presetColor() command."

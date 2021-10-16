@@ -39,6 +39,7 @@
 
 
 import groovy.transform.Field
+import hubitat.scheduling.AsyncResponse
 
 // Currently works for all Hue bulbs; can adjust if needed:
 @Field static final minMireds = 153
@@ -76,7 +77,9 @@ metadata {
       if (colorStaging) input name: "colorStaging", type: "bool", description: "DEPRECATED. Please use new presetColorTemperature() instead. May be removed in future.", title: "Enable color pseudo-prestaging", defaultValue: false
       if (levelStaging) input name: "levelStaging", type: "bool", description: "DEPRECATED. Please use new presetLevel() command instead. May be removed in future.", title: "Enable level pseudo-prestaging", defaultValue: false
       input name: "levelChangeRate", type: "enum", description: "", title: '"Start level change" rate', options:
-         [["slow":"Slow"],["medium":"Medium"],["fast":"Fast (default)"]], defaultValue: "fast"
+         [["slow":"Slow"],["medium":"Medium"],["fast":"Fast (default)"]], defaultValue: "fast"      
+      input name: "ctTransitionTime", type: "enum", description: "", title: "Color temperature transition time", options:
+         [[(-2): "Hue default/do not specify (default)"],[(-1): "Use level transition time (default)"],[0:"ASAP"],[200:"200ms"],[400:"400ms (default)"],[500:"500ms"],[1000:"1s"],[1500:"1.5s"],[2000:"2s"],[5000:"5s"]], defaultValue: -1
       input name: "updateGroups", type: "bool", description: "", title: "Update state of groups immediately when bulb state changes",
          defaultValue: false
       input name: "enableDebug", type: "bool", title: "Enable debug logging", defaultValue: true
@@ -210,6 +213,50 @@ void createEventsFromMap(Map bridgeCommandMap, Boolean isFromBridge = false) {
 }
 
 /**
+ * (for "new"/v2/EventSocket [SSE] API; not documented and subject to change)
+ * Iterates over Hue light state states in Hue API v2 format (e.g., "on={on=true}") and does
+ * a sendEvent for each relevant attribute; intended to be called when EventSocket data
+ * received for device (as an alternative to polling)
+ */
+void createEventsFromSSE(Map data) {
+   if (enableDebug == true) log.debug "createEventsFromSSE($data)"
+   String eventName, eventUnit, descriptionText
+   def eventValue // could be String or number
+   Boolean hasCT = data.color_temperature?.mirek != null
+   data.each { String key, value ->
+      switch (key) {
+         case "on":
+            eventName = "switch"
+            eventValue = value.on ? "on" : "off"
+            eventUnit = null
+            if (device.currentValue(eventName) != eventValue) doSendEvent(eventName, eventValue, eventUnit)
+            break
+         case "dimming":
+            eventName = "level"
+            eventValue = scaleBriFromBridge(value.brightness, "2")
+            eventUnit = "%"
+            if (device.currentValue(eventName) != eventValue) {
+               doSendEvent(eventName, eventValue, eventUnit)
+            }
+            break
+         case "color_temperature":
+            if (!hasCT) {
+               if (enableDebug == true) "ignoring color_temperature because mirek null"
+               return
+            }
+            eventName = "colorTemperature"
+            eventValue = scaleCTFromBridge(value.mirek)
+            eventUnit = "K"
+            if (device.currentValue(eventName) != eventValue) doSendEvent(eventName, eventValue, eventUnit)
+            setGenericTempName(eventValue)
+            break
+         default:
+            if (enableDebug == true) "not handling: $key: $value"
+      }
+   }
+}
+
+/**
  * Sends HTTP PUT to Bridge using the either command map provided
  * @param commandMap Groovy Map (will be converted to JSON) of Hue API commands to send, e.g., [on: true]
  * @param createHubEvents Will iterate over Bridge command map and do sendEvent for all
@@ -239,7 +286,7 @@ void sendBridgeCommand(Map commandMap, Boolean createHubEvents=true) {
   * @param resp Async HTTP response object
   * @param data Map of commands sent to Bridge if specified to create events from map
   */
-void parseSendCommandResponse(resp, data) {
+void parseSendCommandResponse(AsyncResponseresp, Map data) {
    if (enableDebug == true) log.debug "Response from Bridge: ${resp.status}"
    if (checkIfValidResponse(resp) && data) {
       if (enableDebug == true) log.debug "  Bridge response valid; creating events from data map"

@@ -36,6 +36,7 @@
 #include RMoRobert.CoCoHue_Prestage_Lib
 
 import groovy.transform.Field
+import hubitat.scheduling.AsyncResponse
 
 // Default preference values
 @Field static final BigDecimal defaultLevelTransitionTime = 1000 
@@ -187,6 +188,38 @@ void createEventsFromMap(Map bridgeCommandMap, Boolean isFromBridge = false) {
 }
 
 /**
+ * (for "new"/v2/EventSocket [SSE] API; not documented and subject to change)
+ * Iterates over Hue light state states in Hue API v2 format (e.g., "on={on=true}") and does
+ * a sendEvent for each relevant attribute; intended to be called when EventSocket data
+ * received for device (as an alternative to polling)
+ */
+void createEventsFromSSE(Map data) {
+   if (enableDebug == true) log.debug "createEventsFromSSE($data)"
+   String eventName, eventUnit, descriptionText
+   def eventValue // could be String or number
+   data.each { String key, value ->
+      switch (key) {
+         case "on":
+            eventName = "switch"
+            eventValue = value.on ? "on" : "off"
+            eventUnit = null
+            if (device.currentValue(eventName) != eventValue) doSendEvent(eventName, eventValue, eventUnit)
+            break
+         case "dimming":
+            eventName = "level"
+            eventValue = scaleBriFromBridge(value.brightness, "2")
+            eventUnit = "%"
+            if (device.currentValue(eventName) != eventValue) {
+               doSendEvent(eventName, eventValue, eventUnit)
+            }
+            break
+         default:
+            if (enableDebug == true) "not handling: $key: $value"
+      }
+   }
+}
+
+/**
  * Sends HTTP PUT to Bridge using the either command map provided
  * @param commandMap Groovy Map (will be converted to JSON) of Hue API commands to send, e.g., [on: true]
  * @param createHubEvents Will iterate over Bridge command map and do sendEvent for all
@@ -216,7 +249,7 @@ void sendBridgeCommand(Map commandMap, Boolean createHubEvents=true) {
   * @param resp Async HTTP response object
   * @param data Map of commands sent to Bridge if specified to create events from map
   */
-void parseSendCommandResponse(resp, data) {
+void parseSendCommandResponse(AsyncResponseresp, Map data) {
    if (enableDebug == true) log.debug "Response from Bridge: ${resp.status}"
    if (checkIfValidResponse(resp) && data) {
       if (enableDebug == true) log.debug "  Bridge response valid; creating events from data map"
