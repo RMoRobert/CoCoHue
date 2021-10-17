@@ -14,9 +14,10 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2021-07-24
+ *  Last modified: 2021-10-16
  *
  *  Changelog:
+ *  v4.0    - Add SSE support for push 
  *  v3.5.1  - Refactor some code into libraries (code still precompiled before upload; should not have any visible changes)
  *  v3.5    - Add LevelPreset capability (replaces old level prestaging option); added "reachable" attribte
               from Bridge to bulb and group drivers (thanks to @jtp10181 for original implementation)
@@ -37,7 +38,6 @@
 #include RMoRobert.CoCoHue_Flash_Lib
 #include RMoRobert.CoCoHue_Prestage_Lib
 
-
 import groovy.transform.Field
 import hubitat.scheduling.AsyncResponse
 
@@ -48,6 +48,10 @@ import hubitat.scheduling.AsyncResponse
 // Default preference values
 @Field static final BigDecimal defaultLevelTransitionTime = 1000
 
+// Default list of command Map keys to ignore if SSE enabled and command is sent from hub (not polled from Bridge), used to
+// ignore duplicates that are expected to be processed from SSE momentarily:
+// (for CT devices, should cover most things)
+@Field static final List<String> listKeysToIgnoreIfSSEEnabledAndNotFromBridge = ["on", "ct", "bri"]
 
 metadata {
    definition(name: "CoCoHue CT Bulb", namespace: "RMoRobert", author: "Robert Morris", importUrl: "https://raw.githubusercontent.com/HubitatCommunity/CoCoHue/master/drivers/cocohue-ct-bulb-driver.groovy") {
@@ -158,13 +162,17 @@ void refresh() {
  * @param isFromBridge Set to true if this is data read from Hue Bridge rather than intended to be sent
  *  to Bridge; if true, will ignore differences for prestaged attributes if switch state is off (TODO: how did new prestaging affect this?)
  */
-void createEventsFromMap(Map bridgeCommandMap, Boolean isFromBridge = false) {
+void createEventsFromMap(Map bridgeCommandMap, Boolean isFromBridge = false, Set<String> keysToIgnoreIfSSEEnabledAndNotFromBridge=listKeysToIgnoreIfSSEEnabledAndNotFromBridge) {
    if (!bridgeCommandMap) {
       if (enableDebug == true) log.debug "createEventsFromMap called but map command empty or null; exiting"
       return
    }
    Map bridgeMap = bridgeCommandMap
    if (enableDebug == true) log.debug "Preparing to create events from map${isFromBridge ? ' from Bridge' : ''}: ${bridgeMap}"
+   if (!isFromBridge && keysToIgnoreIfSSEEnabledAndNotFromBridge && parent.getEventStreamOpenStatus() == true) {
+      bridgeMap.keySet().removeAll(keysToIgnoreIfSSEEnabledAndNotFromBridge)
+      if (enableDebug == true) log.debug "Map after ignored keys removed: ${bridgeMap}"
+   }
    String eventName, eventUnit, descriptionText
    def eventValue // could be String or number
    Boolean isOn = bridgeMap["on"]
@@ -286,7 +294,7 @@ void sendBridgeCommand(Map commandMap, Boolean createHubEvents=true) {
   * @param resp Async HTTP response object
   * @param data Map of commands sent to Bridge if specified to create events from map
   */
-void parseSendCommandResponse(AsyncResponseresp, Map data) {
+void parseSendCommandResponse(AsyncResponse resp, Map data) {
    if (enableDebug == true) log.debug "Response from Bridge: ${resp.status}"
    if (checkIfValidResponse(resp) && data) {
       if (enableDebug == true) log.debug "  Bridge response valid; creating events from data map"

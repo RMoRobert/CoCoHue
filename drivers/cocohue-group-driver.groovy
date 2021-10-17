@@ -417,7 +417,7 @@ void sendBridgeCommand(Map commandMap, Boolean createHubEvents=true) {
   * @param resp Async HTTP response object
   * @param data Map of commands sent to Bridge if specified to create events from map
   */
-void parseSendCommandResponse(AsyncResponseresp, Map data) {
+void parseSendCommandResponse(AsyncResponse resp, Map data) {
    if (enableDebug == true) log.debug "Response from Bridge: ${resp.status}"
    if (checkIfValidResponse(resp) && data) {
       if (enableDebug == true) log.debug "  Bridge response valid; creating events from data map"

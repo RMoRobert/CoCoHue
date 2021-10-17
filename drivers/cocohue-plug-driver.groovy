@@ -32,7 +32,14 @@
 #include RMoRobert.CoCoHue_Common_Lib
 #include RMoRobert.CoCoHue_Flash_Lib // can comment out if don't need commands; see also definition() below
 
+import groovy.transform.Field
 import hubitat.scheduling.AsyncResponse
+
+// Default list of command Map keys to ignore if SSE enabled and command is sent from hub (not polled from Bridge), used to
+// ignore duplicates that are expected to be processed from SSE momentarily:
+// (for on/off devices, should cover everything...)
+@Field static final List<String> listKeysToIgnoreIfSSEEnabledAndNotFromBridge = ["on"]
+
 
 metadata {
    definition(name: "CoCoHue On/Off Plug", namespace: "RMoRobert", author: "Robert Morris", importUrl: "https://raw.githubusercontent.com/HubitatCommunity/CoCoHue/master/drivers/cocohue-plug-driver.groovy") {
@@ -115,13 +122,17 @@ void refresh() {
  * @param isFromBridge Set to true if this is data read from Hue Bridge rather than intended to be sent
  *  to Bridge; if true, will ignore differences for prestaged attributes if switch state is off (TODO: how did new prestaging affect this?)
  */
-void createEventsFromMap(Map bridgeCommandMap, Boolean isFromBridge = false) {
+void createEventsFromMap(Map bridgeCommandMap, Boolean isFromBridge = false, Set<String> keysToIgnoreIfSSEEnabledAndNotFromBridge=listKeysToIgnoreIfSSEEnabledAndNotFromBridge) {
    if (!bridgeCommandMap) {
       if (enableDebug == true) log.debug "createEventsFromMap called but map command empty or null; exiting"
       return
    }
    Map bridgeMap = bridgeCommandMap
    if (enableDebug == true) log.debug "Preparing to create events from map${isFromBridge ? ' from Bridge' : ''}: ${bridgeMap}"
+   if (!isFromBridge && keysToIgnoreIfSSEEnabledAndNotFromBridge && parent.getEventStreamOpenStatus() == true) {
+      bridgeMap.keySet().removeAll(keysToIgnoreIfSSEEnabledAndNotFromBridge)
+      if (enableDebug == true) log.debug "Map after ignored keys removed: ${bridgeMap}"
+   }
    String eventName, eventUnit, descriptionText
    String eventValue // only String for on/off devices (could be number with others)
    bridgeMap.each {

@@ -187,7 +187,7 @@ void off() {
   * @param resp Async HTTP response object
   * @param data Map with keys 'attribute' and 'value' containing event data to send if successful (e.g., [attribute: 'switch', value: 'off'])
   */
-void parseSendCommandResponse(AsyncResponseresp, Map data) {
+void parseSendCommandResponse(AsyncResponse resp, Map data) {
    if (enableDebug) log.debug "Response from Bridge: ${resp.status}; data from app = $data"
    if (checkIfValidResponse(resp) && data?.attribute != null && data?.value != null) {
       if (enableDebug) log.debug "  Bridge response valid; running creating events"

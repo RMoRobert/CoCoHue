@@ -39,7 +39,12 @@ import groovy.transform.Field
 import hubitat.scheduling.AsyncResponse
 
 // Default preference values
-@Field static final BigDecimal defaultLevelTransitionTime = 1000 
+@Field static final BigDecimal defaultLevelTransitionTime = 1000
+
+// Default list of command Map keys to ignore if SSE enabled and command is sent from hub (not polled from Bridge), used to
+// ignore duplicates that are expected to be processed from SSE momentarily:
+// (for dim-only devices, should cover everything...)
+@Field static final List<String> listKeysToIgnoreIfSSEEnabledAndNotFromBridge = ["on", "bri"]
 
 metadata {
    definition(name: "CoCoHue Dimmable Bulb", namespace: "RMoRobert", author: "Robert Morris", importUrl: "https://raw.githubusercontent.com/HubitatCommunity/CoCoHue/master/drivers/cocohue-dimmable-bulb-driver.groovy") {
@@ -142,13 +147,17 @@ void refresh() {
  * @param isFromBridge Set to true if this is data read from Hue Bridge rather than intended to be sent
  *  to Bridge; if true, will ignore differences for prestaged attributes if switch state is off (TODO: how did new prestaging affect this?)
  */
-void createEventsFromMap(Map bridgeCommandMap, Boolean isFromBridge = false) {
+void createEventsFromMap(Map bridgeCommandMap, Boolean isFromBridge = false, Set<String> keysToIgnoreIfSSEEnabledAndNotFromBridge=listKeysToIgnoreIfSSEEnabledAndNotFromBridge) {
    if (!bridgeCommandMap) {
       if (enableDebug == true) log.debug "createEventsFromMap called but map command empty or null; exiting"
       return
    }
    Map bridgeMap = bridgeCommandMap
    if (enableDebug == true) log.debug "Preparing to create events from map${isFromBridge ? ' from Bridge' : ''}: ${bridgeMap}"
+   if (!isFromBridge && keysToIgnoreIfSSEEnabledAndNotFromBridge && parent.getEventStreamOpenStatus() == true) {
+      bridgeMap.keySet().removeAll(keysToIgnoreIfSSEEnabledAndNotFromBridge)
+      if (enableDebug == true) log.debug "Map after ignored keys removed: ${bridgeMap}"
+   }
    String eventName, eventUnit, descriptionText
    def eventValue // could be String or number
    Boolean isOn = bridgeMap["on"]
@@ -249,7 +258,7 @@ void sendBridgeCommand(Map commandMap, Boolean createHubEvents=true) {
   * @param resp Async HTTP response object
   * @param data Map of commands sent to Bridge if specified to create events from map
   */
-void parseSendCommandResponse(AsyncResponseresp, Map data) {
+void parseSendCommandResponse(AsyncResponse resp, Map data) {
    if (enableDebug == true) log.debug "Response from Bridge: ${resp.status}"
    if (checkIfValidResponse(resp) && data) {
       if (enableDebug == true) log.debug "  Bridge response valid; creating events from data map"

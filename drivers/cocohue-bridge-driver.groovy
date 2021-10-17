@@ -41,7 +41,7 @@ metadata {
       capability "Refresh"
       capability "Initialize"
       command "connectEventStream"
-      //command "disconnectEventStream"
+      command "disconnectEventStream"
       attribute "status", "STRING"
       attribute "eventStreamStatus", "STRING"
    }
@@ -79,6 +79,9 @@ void connectEventStream() {
       log.warn "CoCoHue app is configured not to use EventStream. To reliably use this interface, it is recommended to enable this option in the app."
    }
    Map<String,String> data = parent.getBridgeData()
+   if (enableDebug) {
+      log.debug "Connecting to event stream at 'https://${data.ip}/eventstream/clip/v2' with key '${data.username}'"
+   }
    interfaces.eventStream.connect(
       "https://${data.ip}/eventstream/clip/v2", [
       headers: ["Accept": "text/event-stream", "hue-application-key": data.username],
@@ -102,7 +105,6 @@ void reconnectEventStream(Boolean notIfAlreadyConnected = true) {
 }
 
 void disconnectEventStream() {
-   // doesn't seem to work?
    interfaces.eventStream.close()
 }
 
@@ -241,7 +243,7 @@ private void parseGroupStates(Map groupsJson) {
       }
       Boolean anyOn = groupsJson.any { it.value?.state?.any_on == false }
       DeviceWrapper allLightsDev = parent.getChildDevice("${device.deviceNetworkId}/Group/0")
-      if (allLightsDev) {
+      if (allLightsDev != null) {
          allLightsDev.createEventsFromMap(['any_on': anyOn], true)
       }
       
@@ -254,19 +256,20 @@ private void parseGroupStates(Map groupsJson) {
 private void parseSensorStates(Map sensorsJson) {
    if (enableDebug) log.debug "Parsing sensor states from Bridge..."
    // Uncomment this line if asked to for debugging (or you're curious):
-   //log.debug "sensorsJson = $sensorsJson"
+   log.debug "sensorsJson = $sensorsJson"
    try {
       sensorsJson.each { key, val ->
+         log.trace "id = $key"
          if (val.type == "ZLLPresence" || val.type == "ZLLLightLevel" || val.type == "ZLLTemperature" ||
-             val.type == "ZHAPresence" || val.type == "ZHALightLevel" || val.type == "ZHATemperature") {
-            String mac = val?.uniqueid?.substring(0,23)
-            if (mac != null) {
-               DeviceWrapper dev = parent.getChildDevice("${device.deviceNetworkId}/Sensor/${mac}")
-               if (dev != null) {
-                  dev.createEventsFromMap(val.state)
-                  // All entries have config.battery, so just picking one to parse here to avoid redundancy:
-                  if (val.type == "ZLLPresence" || val.type == "ZHAPresence") dev.createEventsFromMap(["battery": val.config.battery])
-               }
+          val.type == "ZHAPresence" || val.type == "ZHALightLevel" || val.type == "ZHATemperature") {
+            DeviceWrapper sensorDev = parent.getChildDevices.findAll { DeviceWrapper it ->
+               it.deviceNetworkId.startsWith("${device.deviceNetworkId}/Sensor/") &&
+               (key as String) in it.deviceNetworkId.tokenize('/')[3].tokenize('|')
+            }[0]
+            if (sensorDev != null) {
+               sensorDev.createEventsFromMap(val.state)
+               // All entries have config.battery, so just picking one to parse here to avoid redundancy:
+               if (val.type == "ZLLPresence" || val.type == "ZHAPresence") sensorDev.createEventsFromMap(["battery": val.config.battery])
             }
          }
       }
