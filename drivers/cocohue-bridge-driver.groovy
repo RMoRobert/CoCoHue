@@ -34,6 +34,12 @@
 import groovy.json.JsonSlurper
 import hubitat.scheduling.AsyncResponse
 import com.hubitat.app.DeviceWrapper
+import groovy.transform.Field
+
+// Number of seconds to wait after Bridge EventStream (SSE) is disconnected before consider it so on Hubitat
+// Seems to be helpful at the moment because get spurious disconnects when SSE is workign fine, shortly followed
+// by a reconnect (~6 sec for me, so 7 should cover most)
+@Field static final Integer eventStreanDisconnectGracePeriod = 7
 
 metadata {
    definition(name: "CoCoHue Bridge", namespace: "RMoRobert", author: "Robert Morris", importUrl: "https://raw.githubusercontent.com/HubitatCommunity/CoCoHue/master/drivers/cocohue-bridge-driver.groovy") {
@@ -111,24 +117,29 @@ void eventStreamStatus(String message) {
    if (enableDebug) "eventStreamStatus: $message"
    if (message.startsWith("START:")) {
       parent.setEventStreamOpenStatus(true) // notify app
+      unschedule("setEventStreamStatusToDisconnected")
       doSendEvent("eventStreamStatus", "connected")
       state.connectionRetryTime = 3
    }
    else {
-      parent.setEventStreamOpenStatus(false) // notify app
-      doSendEvent("eventStreamStatus", "disconnected")
-      if (state.connectionRetryTime) {
-         state.connectionRetryTime *= 2
-         if (state.connectionRetryTime > 900) {
-            state.connectionRetryTime = 900 // cap retry time at 15 minutes
-         }
-      }
-      else {
-         state.connectionRetryTime = 5
-      }
-      if (enableDebug) log.debug "reconnecting SSE in ${state.connectionRetryTime}"
-      runIn(state.connectionRetryTime, "reconnectEventStream")
+      runIn(eventStreanDisconnectGracePeriod, "setEventStreamStatusToDisconnected")
    }
+}
+
+private void setEventStreamStatusToDisconnected() {
+   parent.setEventStreamOpenStatus(false) // notify app
+   doSendEvent("eventStreamStatus", "disconnected")
+   if (state.connectionRetryTime) {
+      state.connectionRetryTime *= 2
+      if (state.connectionRetryTime > 900) {
+         state.connectionRetryTime = 900 // cap retry time at 15 minutes
+      }
+   }
+   else {
+      state.connectionRetryTime = 5
+   }
+   if (enableDebug) log.debug "reconnecting SSE in ${state.connectionRetryTime}"
+   runIn(state.connectionRetryTime, "reconnectEventStream")
 }
 
 // For EventStream:

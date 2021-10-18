@@ -25,7 +25,7 @@
  *  Last modified: 2021-10-15
  * 
  *  Changelog:
- *  v4.0   - Changes for EventSocket-based information pushing; new DNI format (CCH/appId..., not CCH/BridgeMACAbbrev...)
+ *  v4.0   - Changes for EventStream-based information pushing; new DNI format (CCH/appId..., not CCH/BridgeMACAbbrev...)
  *           After upgrading, open CoCoHue app and push "Done." NOTE: Downgrading (without hub restore) is not possible after this.
  *  v3.5.1 - Improved username sanitization; removed logging for SSDP if debug logging disabled
  *  v3.5   - Minor code cleanup (and lots of driver changes)
@@ -504,8 +504,9 @@ def pageManageBridge() {
       section("Other Options:") {
          input name: "useEventStream", type: "bool", title: "Enable \"push\" updates (Server-Sent Events/EventStream) from Bridge (experimental; requires Bridge v2 and Hubitat 2.2.9 or later)"
          input name: "pollInterval", type: "enum", title: "Poll bridge every...",
-            options: [0:"Disabled", 10:"10 seconds", 15:"15 seconds", 20:"20 seconds", 30:"30 seconds", 45:"45 seconds", 60:"1 minute (default)",
-                        300:"5 minutes", 1800:"30 minutes (default if EventStream enabled)", 3600:"1 hour"], defaultValue: ((useEventStream == true) ? 1800 : 60)
+            options: [0:"Disabled", 10:"10 seconds", 15:"15 seconds", 20:"20 seconds", 30:"30 seconds", 45:"45 seconds", 60:"1 minute (default; consider longer if using EventStream)",
+                        120:"2 minutes", 180:"3 minutes", 240:"4 minutes", 300:"5 minutes", 1800:"30 minutes", 3600:"1 hour"],
+                        defaultValue: 60
          input name: "boolCustomLabel", type: "bool", title: "Customize the name of this CoCoHue app instance", defaultValue: false, submitOnChange: true
          if (settings["boolCustomLabel"]) label title: "Custom name for this app", required: false
          input name: "enableDebug", type: "bool", title: "Enable debug logging", defaultValue: true
