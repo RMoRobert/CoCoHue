@@ -14,7 +14,7 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2021-10-14
+ *  Last modified: 2021-10-16
  * 
  *  Changelog:
  *  v4.0    - EventStream support for real-time updates
@@ -74,7 +74,6 @@ void initialize() {
 
 void connectEventStream() {
    if (enableDebug) log.debug "connectEventStream()"
-   log.trace "parent val = ${parent.getEventStremEnabledSetting()}"
    if (parent.getEventStremEnabledSetting() != true) {
       log.warn "CoCoHue app is configured not to use EventStream. To reliably use this interface, it is recommended to enable this option in the app."
    }
@@ -127,7 +126,7 @@ void eventStreamStatus(String message) {
       else {
          state.connectionRetryTime = 5
       }
-      log.trace "reconnecting SSE in ${state.connectionRetryTime}"
+      if (enableDebug) log.debug "reconnecting SSE in ${state.connectionRetryTime}"
       runIn(state.connectionRetryTime, "reconnectEventStream")
    }
 }
@@ -141,7 +140,7 @@ void parse(String description) {
       if (enableDebug) log.debug "Parsing type = data"
       List dataList = new JsonSlurper().parseText(data)
       dataList.each {
-         log.trace "--> DATA = ${it.data[0]}"
+         //log.trace "--> DATA = ${it.data[0]}"
          String fullId = it.data?.id_v1[0]
          switch (fullId) {
             case { it.startsWith("/lights/") }:
@@ -152,21 +151,20 @@ void parse(String description) {
             case { it.startsWith("/groups/") }:
                String hueId = fullId.split("/")[-1]
                DeviceWrapper device = parent.getChildDevice("${device.deviceNetworkId}/Group/${hueId}")
-               log.trace "is device ${device?.displayName}"
                if (device != null) device.createEventsFromSSE(it.data[0])
                break
                break
             case { it.startsWith("/sensors/") }:
                String hueId = fullId.split("/")[-1]
-               log.trace "is sensor $hueId"
-               DeviceWrapper device = parent.getChildDevices().find { DeviceWrapper dev -> hueId in dev.deviceNetworkId.tokenize('/')[-1].tokenize('|') }
-               log.trace "is device ${device?.displayName}"
+               DeviceWrapper device = parent.getChildDevices().find { DeviceWrapper dev ->
+                  hueId in dev.deviceNetworkId.tokenize('/')[-1].tokenize('|') &&
+                  dev.deviceNetworkId.startsWith("${device.deviceNetworkId}/Sensor/")  // shouldn't be necessary but gave me a Light ID once in testing for a sensor, so?!
+               }
                if (device != null) device.createEventsFromSSE(it.data[0])
                break
             default:
                if (enableDebug) log.debug "skipping ID: $hueId"
          }
-         log.trace "---> DEV = $fullId"
       }
    }
    else {
@@ -259,7 +257,6 @@ private void parseSensorStates(Map sensorsJson) {
    log.debug "sensorsJson = $sensorsJson"
    try {
       sensorsJson.each { key, val ->
-         log.trace "id = $key"
          if (val.type == "ZLLPresence" || val.type == "ZLLLightLevel" || val.type == "ZLLTemperature" ||
           val.type == "ZHAPresence" || val.type == "ZHALightLevel" || val.type == "ZHATemperature") {
             DeviceWrapper sensorDev = parent.getChildDevices.findAll { DeviceWrapper it ->

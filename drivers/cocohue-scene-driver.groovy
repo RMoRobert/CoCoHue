@@ -14,9 +14,10 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2021-07-24
+ *  Last modified: 2021-10-16
  * 
  *  Changelog:
+ *  v4.0    - Refactoring to match other CoCoHue drivers
  *  v3.5.1  - Refactor some code into libraries (code still precompiled before upload; should not have any visible changes);
  *            Remove capability "Light" from scene driver (better chance of Alexa seeing as switch and not light)
  *  v3.5    - Minor code cleanup, removal of custom "push" command now that is standard capability command

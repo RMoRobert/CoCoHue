@@ -14,9 +14,10 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2021-07-24
+ *  Last modified: 2021-10-16
  *
  *  Changelog:
+ *  v4.0    - Add SSE support for push
  *  v3.5.1  - Refactor some code into libraries (code still precompiled before upload; should not have any visible changes)
  *  v3.5    - Minor code cleanup
  *  v3.1.6  - Fixed runtime error when using temperature offset; ensure battery and lux reported as integers, temperature as BigDecimal

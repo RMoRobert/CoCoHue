@@ -14,10 +14,10 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2021-10-13
+ *  Last modified: 2021-10-16
  *
  *  Changelog:
- *  v4.0    - EventStream support for real-time updates
+ *  v4.0    - Add SSE support for push
  *  v3.5.1  - Refactor some code into libraries (code still precompiled before upload; should not have any visible changes)
  *  v3.5    - Add LevelPreset capability (replaces old level prestaging option); added preliminary color
  *            and CT prestating coommands; added "reachable" attribte from Bridge to bulb and group

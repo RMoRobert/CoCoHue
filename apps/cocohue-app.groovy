@@ -114,7 +114,7 @@ void updated() {
    // Upgrade pre-CoCoHue-4.0 DNIs to match new DNI format (CCH/AppID, not CCH/BridgeMacAbbrev)
    if (getChildDevices().any { DeviceWrapper dev -> dev.deviceNetworkId.startsWith("CCH/${state.bridgeID}/") }) {
       getChildDevices().each { DeviceWrapper d ->
-         if (d.deviceNetworkId.startsWith("CCH/${state.bridgeID}")) {
+         if (d.deviceNetworkId.startsWith("CCH/${state.bridgeID}") && !(d.deviceNetworkId.startsWith("CCH/${state.bridgeID}/Sensor"))) {
             String newDNI = d.deviceNetworkId.replace("CCH/${state.bridgeID}", "CCH/${app.getId()}")
             log.debug("Updating ${d.displayName} DNI from ${d.deviceNetworkId} to $newDNI")
             d.setDeviceNetworkId(newDNI)
@@ -142,9 +142,10 @@ void updated() {
             log.debug "Updating DNI for ${dev.displayName} to CoCoHue 4.0 format (old DNI = ${dev.deviceNetworkId})"
             List ids = value.ids.sort()
             String newLastPart = ids.join("|")
-            dev.setDeviceNetworkId("CCH/${app.getId()}/${newLastPart}")
+            dev.setDeviceNetworkId("CCH/${app.getId()}/Sensor/${newLastPart}")
             log.debug "Set DNI for ${dev.displayName} to CCH/${app.getId()}/${newLastPart}"
          }
+         log.debug "dev was $dev"
       }
    }
 }
@@ -1423,7 +1424,6 @@ void setEventStreamOpenStatus(Boolean isOnline) {
  *  Returns true if app configured to use EventStream/SSE, else false (proxy since cannot directly access settings from child)
  */
 Boolean getEventStremEnabledSetting() {
-   log.trace "getEventStremEnabledSetting = " + ((settings.useEventStream == true) ? true : false)
    return (settings.useEventStream == true) ? true : false
 }
 

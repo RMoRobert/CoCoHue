@@ -14,9 +14,10 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2021-07-24
+ *  Last modified: 2021-10-16
  *
  *  Changelog:
+ *  v4.0    - Add SSE support for push
  *  v3.5.1  - Refactor some code into libraries (code still precompiled before upload; should not have any visible changes)
  *  v3.5    - Add LevelPreset capability (replaces old level prestaging option); added "reachable" attribte
               from Bridge to bulb and group drivers (thanks to @jtp10181 for original implementation)
