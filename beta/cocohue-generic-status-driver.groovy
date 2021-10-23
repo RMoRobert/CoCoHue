@@ -23,6 +23,8 @@
  *  v3.1    - Improved error handling and debug logging
  *  v3.0    - Initial release
  */
+ 
+
 
 import hubitat.scheduling.AsyncResponse
 
@@ -187,7 +189,7 @@ private void setDefaultAttributeValues() {
    event = sendEvent(name: "switch", value: "off", isStateChange: false)
    event = sendEvent(name: "pushed", value: 1, isStateChange: false)
 }
-// ~~~~~ start include (8) RMoRobert.CoCoHue_Common_Lib ~~~~~
+// ~~~~~ start include (2) RMoRobert.CoCoHue_Common_Lib ~~~~~
 // Version 1.0.1 // library marker RMoRobert.CoCoHue_Common_Lib, line 1
 
 library ( // library marker RMoRobert.CoCoHue_Common_Lib, line 3
@@ -259,4 +261,4 @@ void doSendEvent(String eventName, eventValue, String eventUnit=null, Boolean fo
    } // library marker RMoRobert.CoCoHue_Common_Lib, line 69
 } // library marker RMoRobert.CoCoHue_Common_Lib, line 70
 
-// ~~~~~ end include (8) RMoRobert.CoCoHue_Common_Lib ~~~~~
+// ~~~~~ end include (2) RMoRobert.CoCoHue_Common_Lib ~~~~~

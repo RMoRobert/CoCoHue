@@ -29,6 +29,8 @@
  *  v1.0    - Initial Release
  */ 
 
+
+
 import groovy.json.JsonSlurper
 import hubitat.scheduling.AsyncResponse
 import com.hubitat.app.DeviceWrapper
@@ -595,7 +597,7 @@ void clearLabsSensorsCache() {
    if (enableDebug) log.debug "Running clearLabsSensorsCache..."
    state.remove("labsSensors")
 }
-// ~~~~~ start include (8) RMoRobert.CoCoHue_Common_Lib ~~~~~
+// ~~~~~ start include (2) RMoRobert.CoCoHue_Common_Lib ~~~~~
 // Version 1.0.1 // library marker RMoRobert.CoCoHue_Common_Lib, line 1
 
 library ( // library marker RMoRobert.CoCoHue_Common_Lib, line 3
@@ -667,4 +669,4 @@ void doSendEvent(String eventName, eventValue, String eventUnit=null, Boolean fo
    } // library marker RMoRobert.CoCoHue_Common_Lib, line 69
 } // library marker RMoRobert.CoCoHue_Common_Lib, line 70
 
-// ~~~~~ end include (8) RMoRobert.CoCoHue_Common_Lib ~~~~~
+// ~~~~~ end include (2) RMoRobert.CoCoHue_Common_Lib ~~~~~

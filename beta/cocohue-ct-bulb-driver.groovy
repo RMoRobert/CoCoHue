@@ -32,6 +32,12 @@
  *  v1.9    - Initial release (based on RGBW bulb driver)
  */ 
 
+
+
+
+
+
+
 import groovy.transform.Field
 import hubitat.scheduling.AsyncResponse
 
@@ -301,7 +307,7 @@ void parseSendCommandResponse(AsyncResponse resp, Map data) {
       if (enableDebug == true) log.debug "  Not creating events from map because not specified to do or Bridge response invalid"
    }
 }
-// ~~~~~ start include (8) RMoRobert.CoCoHue_Common_Lib ~~~~~
+// ~~~~~ start include (2) RMoRobert.CoCoHue_Common_Lib ~~~~~
 // Version 1.0.1 // library marker RMoRobert.CoCoHue_Common_Lib, line 1
 
 library ( // library marker RMoRobert.CoCoHue_Common_Lib, line 3
@@ -373,9 +379,9 @@ void doSendEvent(String eventName, eventValue, String eventUnit=null, Boolean fo
    } // library marker RMoRobert.CoCoHue_Common_Lib, line 69
 } // library marker RMoRobert.CoCoHue_Common_Lib, line 70
 
-// ~~~~~ end include (8) RMoRobert.CoCoHue_Common_Lib ~~~~~
+// ~~~~~ end include (2) RMoRobert.CoCoHue_Common_Lib ~~~~~
 
-// ~~~~~ start include (2) RMoRobert.CoCoHue_Bri_Lib ~~~~~
+// ~~~~~ start include (1) RMoRobert.CoCoHue_Bri_Lib ~~~~~
 // Version 1.0.2 // library marker RMoRobert.CoCoHue_Bri_Lib, line 1
 
 library ( // library marker RMoRobert.CoCoHue_Bri_Lib, line 3
@@ -525,7 +531,7 @@ Integer scaleBriFromBridge(Number bridgeLevel, String apiVersion="1") { // libra
    return scaledLevel // library marker RMoRobert.CoCoHue_Bri_Lib, line 147
 } // library marker RMoRobert.CoCoHue_Bri_Lib, line 148
 
-// ~~~~~ end include (2) RMoRobert.CoCoHue_Bri_Lib ~~~~~
+// ~~~~~ end include (1) RMoRobert.CoCoHue_Bri_Lib ~~~~~
 
 // ~~~~~ start include (3) RMoRobert.CoCoHue_CT_Lib ~~~~~
 // Version 1.0.1 // library marker RMoRobert.CoCoHue_CT_Lib, line 1
