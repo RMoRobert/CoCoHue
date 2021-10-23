@@ -31,11 +31,6 @@
  *  v1.9    - Initial release (based on CT bulb driver)
  */
 
-
-
-
-
-
 import groovy.transform.Field
 import hubitat.scheduling.AsyncResponse
 

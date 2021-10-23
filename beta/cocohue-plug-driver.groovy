@@ -29,9 +29,7 @@
  *            Removed ["alert:" "none"] from on() command, now possible explicitly with flashOff()
  *  v1.7    - Initial Release  
  */
- 
 
- // can comment out if don't need commands; see also definition() below
 
 import groovy.transform.Field
 import hubitat.scheduling.AsyncResponse

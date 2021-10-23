@@ -32,12 +32,6 @@
  *  v1.9    - Initial release (based on RGBW bulb driver)
  */ 
 
-
-
-
-
-
-
 import groovy.transform.Field
 import hubitat.scheduling.AsyncResponse
 

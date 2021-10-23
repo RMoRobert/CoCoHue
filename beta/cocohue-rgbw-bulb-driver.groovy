@@ -45,14 +45,6 @@
  *  v1.0    - Initial Release
  */ 
 
-
-
-
-
-
-
-
-
 import groovy.transform.Field
 import hubitat.scheduling.AsyncResponse
 

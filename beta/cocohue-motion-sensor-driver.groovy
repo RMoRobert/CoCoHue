@@ -26,8 +26,6 @@
  *  v3.0    - Initial release
  */
  
-
- 
 metadata {
    definition(name: "CoCoHue Motion Sensor", namespace: "RMoRobert", author: "Robert Morris", importUrl: "https://raw.githubusercontent.com/HubitatCommunity/CoCoHue/master/drivers/cocohue-motion-sensor-driver.groovy") {
       capability "Sensor"

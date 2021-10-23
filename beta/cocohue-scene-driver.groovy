@@ -33,8 +33,6 @@
  *  v1.5b   - Initial public release
  */ 
 
-
-
 import hubitat.scheduling.AsyncResponse
 
 metadata {

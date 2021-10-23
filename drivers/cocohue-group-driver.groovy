@@ -14,7 +14,7 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2021-10-19
+ *  Last modified: 2021-10-22
  *
  *  Changelog:
  *  v4.0    - Add SSE support for push
@@ -70,7 +70,8 @@ import hubitat.scheduling.AsyncResponse
 
 // Default list of command Map keys to ignore if SSE enabled and command is sent from hub (not polled from Bridge), used to
 // ignore duplicates that are expected to be processed from SSE momentarily:
-@Field static final List<String> listKeysToIgnoreIfSSEEnabledAndNotFromBridge = ["on", "ct", "bri"]
+// Unlike bulbs, SSE API does not seem to send anything besides on/off:
+@Field static final List<String> listKeysToIgnoreIfSSEEnabledAndNotFromBridge = ["on"]
 
 // "ct" or "hs" for now -- to be finalized later:
 @Field static final String xyParsingMode = "ct"
@@ -207,7 +208,7 @@ void createEventsFromMap(Map bridgeCommandMap, Boolean isFromBridge = false, Set
    }
    Map bridgeMap = bridgeCommandMap
    if (enableDebug == true) log.debug "Preparing to create events from map${isFromBridge ? ' from Bridge' : ''}: ${bridgeMap}"
-   if (keysToIgnoreIfSSEEnabledAndNotFromBridge && parent.getEventStreamOpenStatus() == true) {
+   if (!isFromBridge && keysToIgnoreIfSSEEnabledAndNotFromBridge && parent.getEventStreamOpenStatus() == true) {
       bridgeMap.keySet().removeAll(keysToIgnoreIfSSEEnabledAndNotFromBridge)
       if (enableDebug == true) log.debug "Map after ignored keys removed: ${bridgeMap}"
    }

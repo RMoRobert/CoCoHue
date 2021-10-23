@@ -23,8 +23,6 @@
  *  v3.1    - Improved error handling and debug logging
  *  v3.0    - Initial release
  */
- 
-
 
 import hubitat.scheduling.AsyncResponse
 

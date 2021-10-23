@@ -29,8 +29,6 @@
  *  v1.0    - Initial Release
  */ 
 
-
-
 import groovy.json.JsonSlurper
 import hubitat.scheduling.AsyncResponse
 import com.hubitat.app.DeviceWrapper
