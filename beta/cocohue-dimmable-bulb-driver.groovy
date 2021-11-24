@@ -14,7 +14,7 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2021-10-19
+ *  Last modified: 2021-11-24
  *
  *  Changelog:
  *  v4.0    - Add SSE support for push
@@ -38,6 +38,9 @@
 
 import groovy.transform.Field
 import hubitat.scheduling.AsyncResponse
+
+
+@Field static final Integer debugAutoDisableMinutes = 30
 
 // Default preference values
 @Field static final BigDecimal defaultLevelTransitionTime = 1000
@@ -89,10 +92,9 @@ void updated() {
 
 void initialize() {
    log.debug "initialize()"
-   Integer disableMinutes = 30
    if (enableDebug) {
-      log.debug "Debug logging will be automatically disabled in ${disableMinutes} minutes"
-      runIn(disableMinutes*60, debugOff)
+      log.debug "Debug logging will be automatically disabled in ${debugAutoDisableMinutes} minutes"
+      runIn(debugAutoDisableMinutes*60, "debugOff")
    }
 }
 
@@ -272,7 +274,7 @@ void parseSendCommandResponse(AsyncResponse resp, Map data) {
       if (enableDebug == true) log.debug "  Not creating events from map because not specified to do or Bridge response invalid"
    }
 }
-// ~~~~~ start include (2) RMoRobert.CoCoHue_Common_Lib ~~~~~
+// ~~~~~ start include (8) RMoRobert.CoCoHue_Common_Lib ~~~~~
 // Version 1.0.1 // library marker RMoRobert.CoCoHue_Common_Lib, line 1
 
 library ( // library marker RMoRobert.CoCoHue_Common_Lib, line 3
@@ -344,9 +346,9 @@ void doSendEvent(String eventName, eventValue, String eventUnit=null, Boolean fo
    } // library marker RMoRobert.CoCoHue_Common_Lib, line 69
 } // library marker RMoRobert.CoCoHue_Common_Lib, line 70
 
-// ~~~~~ end include (2) RMoRobert.CoCoHue_Common_Lib ~~~~~
+// ~~~~~ end include (8) RMoRobert.CoCoHue_Common_Lib ~~~~~
 
-// ~~~~~ start include (1) RMoRobert.CoCoHue_Bri_Lib ~~~~~
+// ~~~~~ start include (2) RMoRobert.CoCoHue_Bri_Lib ~~~~~
 // Version 1.0.2 // library marker RMoRobert.CoCoHue_Bri_Lib, line 1
 
 library ( // library marker RMoRobert.CoCoHue_Bri_Lib, line 3
@@ -496,7 +498,7 @@ Integer scaleBriFromBridge(Number bridgeLevel, String apiVersion="1") { // libra
    return scaledLevel // library marker RMoRobert.CoCoHue_Bri_Lib, line 147
 } // library marker RMoRobert.CoCoHue_Bri_Lib, line 148
 
-// ~~~~~ end include (1) RMoRobert.CoCoHue_Bri_Lib ~~~~~
+// ~~~~~ end include (2) RMoRobert.CoCoHue_Bri_Lib ~~~~~
 
 // ~~~~~ start include (5) RMoRobert.CoCoHue_Flash_Lib ~~~~~
 // Version 1.0.0 // library marker RMoRobert.CoCoHue_Flash_Lib, line 1

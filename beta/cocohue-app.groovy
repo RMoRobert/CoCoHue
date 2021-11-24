@@ -22,7 +22,7 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2021-10-19
+ *  Last modified: 2021-11-23
  * 
  *  Changelog:
  *  v4.0   - Changes for EventStream-based information pushing; new DNI format (CCH/appId..., not CCH/BridgeMACAbbrev...)
@@ -50,6 +50,8 @@
 import groovy.transform.Field
 import hubitat.scheduling.AsyncResponse
 import com.hubitat.app.DeviceWrapper
+
+@Field static final Integer debugAutoDisableMinutes = 30
 
 @Field static final String childNamespace = "RMoRobert" // namespace of child device drivers
 @Field static final Map driverMap = [
@@ -176,8 +178,8 @@ void initialize() {
 
    Integer disableTime = 1800
    if (enableDebug) {
-      log.debug "Debug logging will be automatically disabled in ${disableTime} seconds"
-      runIn(disableTime, debugOff)
+      log.debug "Debug logging will be automatically disabled in ${debugAutoDisableMinutes} minutes"
+      runIn(debugAutoDisableMinutes*60, "debugOff")
    }
 
    if (settings.useEventStream == true) {
@@ -190,9 +192,9 @@ void initialize() {
 
 void scheduleRefresh() {
    if (enableDebug) log.debug "scheduleRefresh()"
-   Integer pollInt = settings["pollInterval"]?.toInteger()
+   Integer pollInt = Integer.parseInt(settings["pollInterval"] ?: "0")
    // If change polling options in UI, may need to modify some of these cases:
-   switch (pollInt ?: 0) {
+   switch (pollInt) {
       case 0:
          logDebug("Polling disabled; not scheduling")
          break
@@ -200,13 +202,26 @@ void scheduleRefresh() {
          logDebug("Scheduling polling every ${pollInt} seconds")
          schedule("${Math.round(Math.random() * pollInt)}/${pollInt} * * ? * * *", "refreshBridge")
          break
-      case 60..259:
+      case 60..119:
          logDebug("Scheduling polling every 1 minute")
          runEvery1Minute("refreshBridge")
          break
-      case 300..1800:
+      case 120..179:
+         logDebug("Scheduling polling every 2 minutes")
+         schedule("${Math.round(Math.random() * 59)} */2 * ? * * *", "refreshBridge")
+         runEvery2Minutes("refreshBridge")
+         break
+      case 180..299:
+         logDebug("Scheduling polling every 3 minutes")
+         schedule("${Math.round(Math.random() * 59)} */3 * ? * * *", "refreshBridge")
+         break
+      case 300..1799:
          logDebug("Scheduling polling every 5 minutes")
          runEvery5Minutes("refreshBridge")
+         break
+      case 1800..3599:
+         logDebug("Scheduling polling every 30 minutes")
+         runEvery30Minutes("refreshBridge")
          break
       default:
          logDebug("Scheduling polling every hour")
@@ -504,8 +519,8 @@ def pageManageBridge() {
       section("Other Options:") {
          input name: "useEventStream", type: "bool", title: "Enable \"push\" updates (Server-Sent Events/EventStream) from Bridge (experimental; requires Bridge v2 and Hubitat 2.2.9 or later)"
          input name: "pollInterval", type: "enum", title: "Poll bridge every...",
-            options: [0:"Disabled", 10:"10 seconds", 15:"15 seconds", 20:"20 seconds", 30:"30 seconds", 45:"45 seconds", 60:"1 minute (default; consider longer if using EventStream)",
-                        120:"2 minutes", 180:"3 minutes", 240:"4 minutes", 300:"5 minutes", 1800:"30 minutes", 3600:"1 hour"],
+            options: [0:"Disabled", 10:"10 seconds", 15:"15 seconds", 20:"20 seconds", 30:"30 seconds", 45:"45 seconds", 60:"1 minute (default)",
+                        120:"2 minutes", 180:"3 minutes", 300:"5 minutes", 1800:"30 minutes", 3600:"1 hour"],
                         defaultValue: 60
          input name: "boolCustomLabel", type: "bool", title: "Customize the name of this CoCoHue app instance", defaultValue: false, submitOnChange: true
          if (settings["boolCustomLabel"]) label title: "Custom name for this app", required: false

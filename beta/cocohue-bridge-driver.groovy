@@ -14,7 +14,7 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2021-10-19
+ *  Last modified: 2021-11-24
  * 
  *  Changelog:
  *  v4.0    - EventStream support for real-time updates
@@ -37,9 +37,11 @@ import com.hubitat.app.DeviceWrapper
 import groovy.transform.Field
 
 // Number of seconds to wait after Bridge EventStream (SSE) is disconnected before consider it so on Hubitat
-// Seems to be helpful at the moment because get spurious disconnects when SSE is workign fine, shortly followed
+// Seems to be helpful at the moment because get spurious disconnects when SSE is working fine, shortly followed
 // by a reconnect (~6 sec for me, so 7 should cover most)
-@Field static final Integer eventStreanDisconnectGracePeriod = 8
+@Field static final Integer eventStreamDisconnectGracePeriod = 8
+
+@Field static final Integer debugAutoDisableMinutes = 30
 
 metadata {
    definition(name: "CoCoHue Bridge", namespace: "RMoRobert", author: "Robert Morris", importUrl: "https://raw.githubusercontent.com/HubitatCommunity/CoCoHue/master/drivers/cocohue-bridge-driver.groovy") {
@@ -70,10 +72,9 @@ void updated() {
 
 void initialize() {
    log.debug "initialize()"
-   Integer disableMinutes = 30
    if (enableDebug) {
-      log.debug "Debug logging will be automatically disabled in ${disableMinutes} minutes"
-      runIn(disableMinutes*60, debugOff)
+      log.debug "Debug logging will be automatically disabled in ${debugAutoDisableMinutes} minutes"
+      runIn(debugAutoDisableMinutes*60, "debugOff")
    }
    if (parent.getEventStremEnabledSetting()) connectEventStream()
 }
@@ -119,7 +120,7 @@ void eventStreamStatus(String message) {
       setEventStreamStatusToConnected()
    }
    else {
-      runIn(eventStreanDisconnectGracePeriod, "setEventStreamStatusToDisconnected")
+      runIn(eventStreamDisconnectGracePeriod, "setEventStreamStatusToDisconnected")
    }
 }
 
@@ -150,41 +151,51 @@ private void setEventStreamStatusToDisconnected() {
 void parse(String description) {
    if (enableDebug) log.debug "parse: $description"
    // parseLanMessage() doesn't seem to get this quite right, so do manually...
-   def (String type, String data) = description.split(":", 2)
-   if (type == "data") {
-      if (enableDebug) log.debug "Parsing type = data"
-      setEventStreamStatusToConnected() // should help avoid spurious disconnect messages?
-      List dataList = new JsonSlurper().parseText(data)
-      dataList.each {
-         //log.trace "--> DATA = ${it.data[0]}"
-         String fullId = it.data?.id_v1[0]
-         switch (fullId) {
-            case { it.startsWith("/lights/") }:
-               String hueId = fullId.split("/")[-1]
-               DeviceWrapper device = parent.getChildDevice("${device.deviceNetworkId}/Light/${hueId}")
-               if (device != null) device.createEventsFromSSE(it.data[0])
-               break
-            case { it.startsWith("/groups/") }:
-               String hueId = fullId.split("/")[-1]
-               DeviceWrapper device = parent.getChildDevice("${device.deviceNetworkId}/Group/${hueId}")
-               if (device != null) device.createEventsFromSSE(it.data[0])
-               break
-               break
-            case { it.startsWith("/sensors/") }:
-               String hueId = fullId.split("/")[-1]
-               DeviceWrapper device = parent.getChildDevices().find { DeviceWrapper dev ->
-                  hueId in dev.deviceNetworkId.tokenize('/')[-1].tokenize('|') &&
-                  dev.deviceNetworkId.startsWith("${device.deviceNetworkId}/Sensor/")  // shouldn't be necessary but gave me a Light ID once in testing for a sensor, so?!
-               }
-               if (device != null) device.createEventsFromSSE(it.data[0])
-               break
-            default:
-               if (enableDebug) log.debug "skipping Hue v1 ID: $hueId"
+   List<String> messages = description.split("\n\n")
+   messages.each { String message -> 
+      List<String> lines = description.split("\n")
+      StringBuilder sbData = new StringBuilder()
+      lines.each { String line ->
+         if (line.startsWith("data: ")) {
+            sbData << line.substring(6)
+         }
+         else {
+            if (enableDebug) log.debug "ignoring line: $line"
          }
       }
-   }
-   else {
-      if (enableDebug) log.debug "Skipping type: ${type}"
+      if (sbData) {
+         List dataList = new JsonSlurper().parseText(sbData.toString())
+         dataList.each {
+            //log.trace "--> DATA = ${it.data[0]}"
+            String fullId = it.data?.id_v1[0]
+            switch (fullId) {
+               case { it.startsWith("/lights/") }:
+                  String hueId = fullId.split("/")[-1]
+                  DeviceWrapper device = parent.getChildDevice("${device.deviceNetworkId}/Light/${hueId}")
+                  if (device != null) device.createEventsFromSSE(it.data[0])
+                  break
+               case { it.startsWith("/groups/") }:
+                  String hueId = fullId.split("/")[-1]
+                  DeviceWrapper device = parent.getChildDevice("${device.deviceNetworkId}/Group/${hueId}")
+                  if (device != null) device.createEventsFromSSE(it.data[0])
+                  break
+                  break
+               case { it.startsWith("/sensors/") }:
+                  String hueId = fullId.split("/")[-1]
+                  DeviceWrapper device = parent.getChildDevices().find { DeviceWrapper dev ->
+                     hueId in dev.deviceNetworkId.tokenize('/')[-1].tokenize('|') &&
+                     dev.deviceNetworkId.startsWith("${device.deviceNetworkId}/Sensor/")  // shouldn't be necessary but gave me a Light ID once in testing for a sensor, so?!
+                  }
+                  if (device != null) device.createEventsFromSSE(it.data[0])
+                  break
+               default:
+                  if (enableDebug) log.debug "skipping Hue v1 ID: $hueId"
+            }
+         }
+      }
+      else {
+         if (enableDebug) log.trace "no data parsed from message: $message"
+      }
    }
 }
 
@@ -597,7 +608,7 @@ void clearLabsSensorsCache() {
    if (enableDebug) log.debug "Running clearLabsSensorsCache..."
    state.remove("labsSensors")
 }
-// ~~~~~ start include (2) RMoRobert.CoCoHue_Common_Lib ~~~~~
+// ~~~~~ start include (8) RMoRobert.CoCoHue_Common_Lib ~~~~~
 // Version 1.0.1 // library marker RMoRobert.CoCoHue_Common_Lib, line 1
 
 library ( // library marker RMoRobert.CoCoHue_Common_Lib, line 3
@@ -669,4 +680,4 @@ void doSendEvent(String eventName, eventValue, String eventUnit=null, Boolean fo
    } // library marker RMoRobert.CoCoHue_Common_Lib, line 69
 } // library marker RMoRobert.CoCoHue_Common_Lib, line 70
 
-// ~~~~~ end include (2) RMoRobert.CoCoHue_Common_Lib ~~~~~
+// ~~~~~ end include (8) RMoRobert.CoCoHue_Common_Lib ~~~~~
