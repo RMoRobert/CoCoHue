@@ -5,3 +5,4 @@ drivers/.DS_Store
 dev/*
 .vscode/*
 hubUpload*
+hubDownload*
