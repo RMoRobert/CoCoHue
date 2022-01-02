@@ -1,7 +1,7 @@
 /**
  * ===========================  CoCoHue - Hue Bridge Integration =========================
  *
- *  Copyright 2019-2021 Robert Morris
+ *  Copyright 2019-2022 Robert Morris
  *
  *  DESCRIPTION:
  *  Community-developed Hue Bridge integration app for Hubitat, including support for lights,
@@ -22,7 +22,7 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2021-11-23
+ *  Last modified: 2022-01-02
  * 
  *  Changelog:
  *  v4.0   - Changes for EventStream-based information pushing; new DNI format (CCH/appId..., not CCH/BridgeMACAbbrev...)

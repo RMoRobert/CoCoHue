@@ -1,7 +1,7 @@
 /*
  * =============================  CoCoHue CT Bulb (Driver) ===============================
  *
- *  Copyright 2019-2021 Robert Morris
+ *  Copyright 2019-2022 Robert Morris
  * 
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  *  in compliance with the License. You may obtain a copy of the License at:
@@ -14,7 +14,7 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2021-10-19
+ *  Last modified: 2022-01-02
  *
  *  Changelog:
  *  v4.0    - Add SSE support for push 
@@ -40,6 +40,8 @@
 
 import groovy.transform.Field
 import hubitat.scheduling.AsyncResponse
+
+@Field static final Integer debugAutoDisableMinutes = 30
 
 // Currently works for all Hue bulbs; can adjust if needed:
 @Field static final minMireds = 153
@@ -103,10 +105,9 @@ void updated() {
 
 void initialize() {
    log.debug "initialize()"
-   Integer disableMinutes = 30
    if (enableDebug) {
-      log.debug "Debug logging will be automatically disabled in ${disableMinutes} minutes"
-      runIn(disableMinutes*60, debugOff)
+      log.debug "Debug logging will be automatically disabled in ${debugAutoDisableMinutes} minutes"
+      runIn(debugAutoDisableMinutes*60, "debugOff")
    }
 }
 
