@@ -21,9 +21,10 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2022-01-07
+ *  Last modified: 2022-06-05
  * 
  *  Changelog:
+ *  v4.0.3 - Immediately disconnect eventstream when option un-selected (and saved)
  *  v4.0.2 - Fix for error when adding new sensors
  *  v4.0.1 - Fix for app not sensing bridge authorization on initial setup
  *  v4.0   - Changes for EventStream-based information pushing; new DNI format (CCH/appId..., not CCH/BridgeMACAbbrev...)
@@ -186,6 +187,9 @@ void initialize() {
    if (settings.useEventStream == true) {
       DeviceWrapper bridge = getChildDevice("CCH/${app.getId()}")
       bridge?.connectEventStream()
+   }
+   else {
+      bridge?.disconnectEventStream()
    }
 
    scheduleRefresh()
