@@ -14,10 +14,11 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2022-04-04
+ *  Last modified: 2022-06-04
  * 
  *  Changelog:
- *  v4.0.1  - "On" state fix for "All Hue Lights" group
+ *  v4.0.2  - Fix to avoid unepected "off" transition time
+ *  v4.0.1  - Fix for "on" state of "All Hue Lights" group (if used)
  *  v4.0.1  - Minor sensor cache updates
  *  v4.0    - EventStream support for real-time updates
  *  v3.5.1  - Refactor some code into libraries (code still precompiled before upload; should not have any visible changes)
