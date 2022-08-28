@@ -21,9 +21,10 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2022-06-05
+ *  Last modified: 2022-08-28
  * 
  *  Changelog:
+ *  v4.1   - Add support for button devices (with v2 API only)
  *  v4.0.3 - Immediately disconnect eventstream when option un-selected (and saved)
  *  v4.0.2 - Fix for error when adding new sensors
  *  v4.0.1 - Fix for app not sensing bridge authorization on initial setup
@@ -48,6 +49,8 @@
  *  v1.1   - Added more polling intervals
  *  v1.0   - Initial Public Release
  */ 
+
+#include RMoRobert.CoCoHue_Button_Lib
 
 import groovy.transform.Field
 import hubitat.scheduling.AsyncResponse
@@ -92,6 +95,7 @@ preferences {
    page name: "pageSelectGroups"
    page name: "pageSelectScenes"
    page name: "pageSelectMotionSensors"
+   page name: "pageSelectButtons"
    page name: "pageSelectLabsActivators"
 }
 
@@ -472,6 +476,10 @@ def pageManageBridge() {
       logDebug "New sensors selected. Creating..."
       createNewSelectedSensorDevices()
    }
+   if (settings["newButtons"]) {
+      logDebug "New button devices selected. Creating..."
+      createNewSelectedButtonDevices()
+   }
    if (settings["newLabsDevs"]) {
       logDebug "New Labs devices selected. Creating..."
       createNewSelectedLabsDevices()
@@ -508,6 +516,8 @@ def pageManageBridge() {
                description: "", page: "pageSelectScenes")
          href(name: "hrefSelectMotionSensors", title: "Select Motion Sensors",
                description: "", page: "pageSelectMotionSensors")
+         href(name: "hrefSelectMotionSensors", title: "Select Button Devices",
+               description: "", page: "pageSelectButtons")
          href(name: "hrefSelectLabsActivators", title: "Select Hue Labs Activators",
                description: "", page: "pageSelectLabsActivators")
       }
@@ -868,6 +878,86 @@ def pageSelectMotionSensors() {
    }
 }
 
+def pageSelectButtons() {
+   DeviceWrapper bridge = getChildDevice("CCH/${app.getId()}")
+   bridge.getAllButtons()
+   List arrNewButtons = []
+   Map buttonCache = bridge.getAllButtonsCache()
+   List<DeviceWrapper> unclaimedButtons = getChildDevices().findAll { it.deviceNetworkId.startsWith("CCH/${app.getId()}/Button/") }
+   dynamicPage(name: "pageSelectButtons", refreshInterval: buttonCache ? 0 : 6, uninstall: true, install: false, nextPage: "pageManageBridge") {
+      Map addedButtons = [:]  // To be populated with buttons user has added, matched by Hue ID
+      if (!bridge) {
+         log.error "No Bridge device found"
+         return
+      }
+      if (buttonCache) {
+         buttonCache.each { cachedButton ->
+            DeviceWrapper buttonChild = unclaimedButtons.find { s -> s.deviceNetworkId == "CCH/${app.getId()}/Button/${cachedButton.key}" }
+            if (buttonChild) {
+               addedButtons.put(cachedButton.key, [hubitatName: buttonChild.name, hubitatId: buttonChild.id, hueName: cachedButton.value?.name])
+               unclaimedButtons.removeElement(buttonChild)
+            } else {
+               Map newButton = [:]
+               // eventually becomes input for setting/dropdown; Map format is [MAC: DisplayName]
+               newButton << [(cachedButton.key): (cachedButton.value.name)]
+               arrNewButtons << newButton
+            }
+         }
+         arrNewButtons = arrNewButtons.sort { a, b ->
+            // Sort by display name (default would be hue ID)
+            a.entrySet().iterator().next()?.value <=> b.entrySet().iterator().next()?.value
+         }
+         addedButtons = addedButtons.sort { it.value.hubitatName }
+      }
+      if (!buttonCache) {
+         section("Discovering buttons. Please wait...") {
+            paragraph "Press \"Refresh\" if you see this message for an extended period of time"
+            input name: "btnButtonRefresh", type: "button", title: "Refresh", submitOnChange: true
+         }
+      }
+      else {
+         section("Manage Button Devices") {
+            if (!(settings.useEventStream)) {
+               paragraph "NOTE: The \"push\" (EventStream/SSE) option is not enabled. Button devices will not function in CoCoHue without this option enabled."
+            }
+            input name: "newButtons", type: "enum", title: "Select Hue button devices to add:",
+                  multiple: true, options: arrNewButtons
+            paragraph ""
+            paragraph "Previously added buttons${addedButtons ? ' <span style=\"font-style: italic\">(Hue Bridge device name in parentheses)</span>' : ''}:"
+            if (addedButtons) {
+               StringBuilder buttonsText = new StringBuilder() 
+               buttonsText << "<ul>"
+               addedButtons.each {
+                  buttonsText << "<li><a href=\"/device/edit/${it.value.hubitatId}\" target=\"_blank\">${it.value.hubitatName}</a>"
+                  buttonsText << " <span style=\"font-style: italic\">(${it.value.hueName ?: 'not found on Hue'})</span></li>"
+                  //input(name: "btnRemove_Button_ID", type: "button", title: "Remove", width: 3)
+               }
+               buttonsText << "</ul>"
+               paragraph(buttonsText.toString())
+            }
+            else {
+               paragraph "<span style=\"font-style: italic\">No added button devices found</span>"
+            }
+            if (unclaimedButtons) {
+               paragraph "Hubitat button devices not found on Hue:"
+               StringBuilder buttonsText = new StringBuilder()
+               buttonsText << "<ul>"
+               unclaimedButtons.each {
+                  buttonsText << "<li><a href=\"/device/edit/${it.id}\" target=\"_blank\">${it.displayName}</a></li>"
+               }
+               buttonsText << "</ul>"
+               paragraph(buttonsText.toString())
+            }
+         }
+         section("Rediscover Buttons") {
+               paragraph("If you added new button devices to the Hue Bridge and do not see them above, click/tap the button " +
+                        "below to retrieve new information from the Bridge.")
+               input name: "btnButtonRefresh", type: "button", title: "Refresh Button List", submitOnChange: true
+         }
+      }
+   }
+}
+
 def pageSelectLabsActivators() {
    DeviceWrapper bridge = getChildDevice("CCH/${app.getId()}")
    bridge.getAllLabsDevices()
@@ -1065,6 +1155,39 @@ void createNewSelectedSensorDevices() {
    bridge.getAllSensors()
    bridge.refresh()
    app.removeSetting("newSensors")
+}
+
+/** Creates new Hubitat devices for new user-selected buttons on button-device-selection
+ * page (intended to be called after navigating away/using "Done" from that page)
+ */
+void createNewSelectedButtonDevices() {
+   String devDriver = "CoCoHue Button"
+   DeviceWrapper bridge = getChildDevice("CCH/${app.getId()}")
+   if (bridge == null) log.error("Unable to find Bridge device")
+   Map buttonCache = bridge?.getAllButtonsCache()
+   settings["newButtons"].each {
+      Map b = buttonCache.get(it)
+      if (b) {
+         try {
+            logDebug "Creating new device for Hue button device ${it} (${b.name})"
+            String devDNI = "CCH/${app.getId()}/Button/${it}"
+            Map devProps = [name: b.name]
+            DeviceWrapper d = addChildDevice(childNamespace, devDriver, devDNI, devProps)
+            if (d) {
+               d.updateDataValue("manufacturer_name", b.manufacturer_name)
+               d.updateDataValue("model_id", b.model_id)
+               d.setButtons(b.buttons)
+            }
+         } catch (Exception ex) {
+            log.error("Unable to create new device for $it: $ex")
+         }
+      } else {
+         log.error("Unable to create new device for button device $it: ID not found on Hue Bridge")
+      }
+   }
+   bridge.clearButtonsCache()
+   //bridge.getAllButtons()
+   app.removeSetting("newButtons")
 }
 
 /** Creates new Hubitat devices for new user-selected Labs devices on Labs device-selection
