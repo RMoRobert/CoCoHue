@@ -23,7 +23,9 @@
  *  v3.1    - Improved error handling and debug logging
  *  v3.0    - Initial release
  */
- 
+
+// This driver is used for Hue Labs activator devices
+
 #include RMoRobert.CoCoHue_Common_Lib
 
 import hubitat.scheduling.AsyncResponse

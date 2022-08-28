@@ -21,7 +21,6 @@
  */
 
 #include RMoRobert.CoCoHue_Common_Lib
-#include RMoRobert.CoCoHue_Button_Lib
 
 import hubitat.scheduling.AsyncResponse
 import groovy.transform.Field
@@ -33,6 +32,8 @@ metadata {
       capability "Actuator"
       //capability "Refresh"
       capability "PushableButton"
+      capability "HoldableButton"
+      capability "ReleasableButton"
       capability "Configuration"
    }
 
@@ -99,14 +100,23 @@ void parseSendCommandResponse(AsyncResponse resp, Map data) {
 
 void push(Number btnNum) {
    if (enableDebug) log.debug "push($btnNum)"
-   doSendEvent("pushed", xf, null, true)
+   doSendEvent("pushed", btnNum, null, true)
+}
+
+void hold(Number btnNum) {
+   if (enableDebug) log.debug "hold($btnNum)"
+   doSendEvent("held", btnNum, null, true)
+}
+
+void release(Number btnNum) {
+   if (enableDebug) log.debug "release($btnNum)"
+   doSendEvent("released", btnNum, null, true)
 }
 
 /**
- * (for "new"/v2/EventSocket [SSE] API; not documented and subject to change)
- * Iterates over Hue light state states in Hue API v2 format (e.g., "on={on=true}") and does
+ * Parses through device data/state in Hue API v2 format (e.g., "on={on=true}") and does
  * a sendEvent for each relevant attribute; intended to be called when EventSocket data
- * received for device (as an alternative to polling)
+ * received for device
  */
 void createEventsFromSSE(Map data) {
    if (enableDebug == true) log.debug "createEventsFromSSE($data)"
@@ -134,6 +144,10 @@ void createEventsFromSSE(Map data) {
    }
 }
 
+/**
+ * Sets state.button to IDs a Map in format [subButtonId: buttonNumber], used to determine
+ * which button number to use for events when it is believed to be one this device "owns"
+*/
 void setButtons(Map<String,Integer> buttons) {
    if (enableDebug) log.debug "setButtons($buttons)"
    state.buttons = buttons

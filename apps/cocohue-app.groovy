@@ -50,8 +50,6 @@
  *  v1.0   - Initial Public Release
  */ 
 
-#include RMoRobert.CoCoHue_Button_Lib
-
 import groovy.transform.Field
 import hubitat.scheduling.AsyncResponse
 import com.hubitat.app.DeviceWrapper
@@ -516,7 +514,7 @@ def pageManageBridge() {
                description: "", page: "pageSelectScenes")
          href(name: "hrefSelectMotionSensors", title: "Select Motion Sensors",
                description: "", page: "pageSelectMotionSensors")
-         href(name: "hrefSelectMotionSensors", title: "Select Button Devices",
+         href(name: "hrefSelectMotionSensors", title: "Select Button Devices (experimental)",
                description: "", page: "pageSelectButtons")
          href(name: "hrefSelectLabsActivators", title: "Select Hue Labs Activators",
                description: "", page: "pageSelectLabsActivators")
