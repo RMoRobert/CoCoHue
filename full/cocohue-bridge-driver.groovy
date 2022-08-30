@@ -97,7 +97,7 @@ void connectEventStream() {
       headers: ["Accept": "text/event-stream", "hue-application-key": data.username],
       rawData: true,
       pingInterval: 10,
-      readTimeout: 1800,
+      readTimeout: 3600,
       ignoreSSLIssues: true
    ])
 }

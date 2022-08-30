@@ -23,7 +23,9 @@
  *  v3.1    - Improved error handling and debug logging
  *  v3.0    - Initial release
  */
- 
+
+// This driver is used for Hue Labs activator devices
+
 
 
 import hubitat.scheduling.AsyncResponse
