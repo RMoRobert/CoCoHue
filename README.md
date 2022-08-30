@@ -3,6 +3,9 @@ CoCoHue: <b>Co</b>mmunity <b>Co</b>llection of <b>Hue</b> Bridge Apps and Driver
 
 (Hue Bridge Integration App for Hubitat)
 
+**NOTE:** This repository hosts the test/developmenet version of CoCoHue. Most users will want to install the production version
+from <a href="https://github.com/HubitatCommunity/CoCoHue">https://github.com/HubitatCommunity/CoCoHue</a> instead.
+
 This is a Hue Bridge integration designed to replace (or supplement) Hubitat's buit-in Hue Bridge
 integration. It provides several advantages, including:
 1. Access to Hue bulb "effects" (color loop, select/alert, etc.)
@@ -14,9 +17,6 @@ not rely on these for real-time data, at least for potentially time-sensitive at
 6. It's open source! Customize the code to suit your requirements if so desired
 
 For discussion and more information, visit the <a href="https://community.hubitat.com/t/release-cocohue-hue-bridge-integration-including-scenes/27978">Hubitat Community forum thread</a>.
-
-<b>NOTE</b>: This repository hosts the test/developmenet version of CoCoHue. Most users will want to install the production version
-from <a href="https://github.com/HubitatCommunity/CoCoHue">https://github.com/HubitatCommunity/CoCoHue</a> instead.
 
 ## To Install (Manual Method)
 1. Back up your hub and save a local copy before proceeding.
@@ -38,6 +38,7 @@ just installing them all, but technically all you need is the Bridge driver plus
       * https://raw.githubusercontent.com/RMoRobert/CoCoHue/master/drivers/cocohue-group-driver.groovy
       * https://raw.githubusercontent.com/RMoRobert/CoCoHue/master/drivers/cocohue-scene-driver.groovy
       * https://raw.githubusercontent.com/RMoRobert/CoCoHue/master/drivers/cocohue-generic-status-driver.groovy
+      * https://raw.githubusercontent.com/RMoRobert/CoCoHue/master/drivers/cocohue-button-driver.groovy
       
 4. Install an instance of app: go to **Apps > Add User App**, choose **CoCoHue**, and follow the prompts.
 
@@ -46,17 +47,14 @@ just installing them all, but technically all you need is the Bridge driver plus
 CoCoHue is also available on <a href="https://community.hubitat.com/t/beta-hubitat-package-manager/38016">Hubitat Package
 Manager</a>, a community app designed to make installing and updating community apps and drivers easier.
 
-(NOTE: If upgrading, existing 1.x users will still need to pay attention to the notice above; this will apply to the initial
-upgrade and every subsequent app upgrade HPM installs. The first install/upgrade must also be done manually, not with HPM, to
-ensure app names are not incorrectly matched.)
+**NOTE:** Users upgrading to 4.x from 3.x will need to open the CoCoHue app and select **Done** once after upgrading. It is recommended to download a hub backup before upgrading (restoring this backup is the best way to downgrade, as 4.x contains breaking changes). Users upgrading from 1.x will need to pay attention to the parent app note above.
 
 ## Feature Documentation
-CoCoHue is designed to be a drop-in replacement for Hubitat's existing Hue integration. If any devices behave differently, this
+CoCoHue is designed to be a replacement (although it can also be used as as supplement) for Hubitat's existing Hue integration. If any devices behave differently, this
 may be considered a bug (except for differences noted below). Please report any such behavior in the Community forum, and feel free
 to ask any questions there as well.
 
-This integration is intended to replace the built-in Hue Bridge Integration app (but you can use both side-by-side if you want, as you might
-if slowly transitioning from one to the other), and adds the following features:
+Besides features offered by the built-in integration, this integration adds the following features:
 
 1. Scenes: implemented as button and switch devices. To activate, "Push" button "1" or send an `on()` command. If you use
 scenes, it is recommended to keep polling enabled (actvating a scene will not update associated Hubitat group or bulb
@@ -75,7 +73,11 @@ behavior and makes prestaging options make more sense when using both. It also m
 updated without polling when either is mannipulated, though it is recommended to configure some polling interval
 regardless. Additionally, an "All Hue Lights" group is available to add if desired.
 
-3. Color loop effect: to fit in with Hubitat's "Light Effects" capability, Hue's only effect, `colorloop`, is implemented using
+3. Buttons and sensors: support for Hue indor/outdoor motion sensor and button devices like Hue Tap and Hue Dimmer (sensors work best with v2 API, and buttons are supported only with v2 API--see below)
+
+4. Hue API V2 support (experimental): allows for instant updates pushed from Bridge instead of polling-based approach from Hubitat.
+
+5. Color loop effect: to fit in with Hubitat's "Light Effects" capability, Hue's only effect, `colorloop`, is implemented using
 this capability and the command it uses, "Set Effect." Color loop is effect `1`. It can be activated by calling `setEffect(1)`.
 "None" (no effect; normal behavior) is implemented as effect `0`, so the effect can be cancelled by calling `setEffect(0)`.
 The `nextEffect` and `previousEffect` commands are pretty boring for this reason, but they are implemented to be consistent with
@@ -83,15 +85,17 @@ the standard Hubitat capability as it is currently documented. Setting a color, 
 (this is consistent with the behavior of other bulbs I tested). Setting a level or saturation will *not* because Hue allows adjustment
 of these while the effect (which does not manipulate these values) is in progress.
 
-4. Prestaging: this integration adds color and level prestaging options to mimic those found in many other native drivers.
-This means that if a `setLevel` (for level prestaging) or a `setColorTemperature`, `setColor`, `setHue`, or `setSaturation` command
-are received when the bulb is off, it will not turn on. Instead, the next time the bulb is turned on, it will be turned on with those settings.
-This works well if your bulbs are manipulated entirely from Hubitat. (Note: unlike some bulbs, a second `setLevel` with the same level
-as a previous, prestaged `setLevel() will not turn the bulb on to that level; a manual `on()` must be issued. The same is true for all
-prestaged attributes/values.) Unfortunately, Hue itself does not support prestaging on the Bridge (these prestaged settings are "remembered"
+6. Prestaging: the new standard "LevelPreset" capability and its required command, `presetLevel()`, are implemented in all bulb/group
+drivers. While not (yet?) standard, analagous custom commands are implemented to preset color and color temperature. Previously, this
+integration used color and level prestaging *options* (rather than commands) to mimic those found in some native drivers before
+this standardization (in that case, if a `setLevel` [for level prestaging] or a `setColorTemperature`, `setColor`, `setHue`, or `setSaturation` command
+are received when the bulb is off, it will not turn on; instead, the next time the bulb is turned on, it will be turned on with those settings.) These
+options are still available if you have already enabled them, but they are not available for new installs, and it is recommended that you transition
+away from them, as once this is all standardized, it is possible they will be removoed. Regarding prestaging in general,
+this works well if your bulbs are manipulated entirely from Hubitat. Unfortunately, Hue itself does not support prestaging on the Bridge (these prestaged settings are "remembered"
 entirely on the Hubitat device), so this will *not* work if you prestage in Hubitat and then turn the bulbs on outside of Hubitat. For
 this reason, the drivers label these options "pseudo-prestaging." (Recommendation: manipulate bulbs only from Hubitat if prestaging is enabled.)
 
-5. "Select" and "LSelect" Hue alerts: these are basically a one-time flash and a 15-time flash. These are implemented as the
-`flashOnce()` command and the pseudo-standard `flash()` command, respectively. An in-progress `flash()` can be stopped
+7. "Select" and "LSelect" Hue alerts: these are basically a one-time flash and a 15-time flash. These are implemented as the
+`flashOnce()` command and the now-standard `flash()` command, respectively. An in-progress flash can be stopped
 with `flashOff()` (or you can wait until it stops on own, approximately 30 seconds on official bulbs).
