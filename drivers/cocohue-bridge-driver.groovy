@@ -201,7 +201,6 @@ void parse(String description) {
                            }
                            else {
                               // try button; should eventually switch to v2 for all of this...
-                              log.trace "b -> ${updateEntryMap.owner?.rid}"
                               if (updateEntryMap.owner?.rid) dev = parent.getChildDevice("${device.deviceNetworkId}/Button/${updateEntryMap.owner.rid}")
                               if (dev != null) {
                                  dev.createEventsFromSSE(updateEntryMap)
