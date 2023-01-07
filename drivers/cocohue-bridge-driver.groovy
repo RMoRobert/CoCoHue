@@ -202,7 +202,7 @@ void parse(String description) {
                            }
                            else {
                               // try button; should eventually switch to v2 for all of this...
-                              if (it.data.owner?.rid) dev = parent.getChildDevice("${device.deviceNetworkId}/Button/${it.data.owner.rid[0]}")
+                              if (updateEntryMap.owner?.rid) dev = parent.getChildDevice("${device.deviceNetworkId}/Button/${updateEntryMap.owner.rid[0]}")
                               if (dev != null) {
                               dev.createEventsFromSSE(it.data[0])
                            }
@@ -215,7 +215,7 @@ void parse(String description) {
                }
             }
             else {
-               if (enableDebug) log.debug "skip: $it"
+               if (enableDebug) log.debug "skip: $dataEntryMap"
             }
          }
       }
