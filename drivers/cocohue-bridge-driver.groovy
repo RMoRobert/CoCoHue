@@ -190,7 +190,6 @@ void parse(String description) {
                            DeviceWrapper dev = parent.getChildDevice("${device.deviceNetworkId}/Group/${hueId}")
                            if (dev != null) dev.createEventsFromSSE(updateEntryMap)
                            break
-                           break
                         case { it.startsWith("/sensors/") }:
                            String hueId = fullId.split("/")[-1]
                            DeviceWrapper dev = parent.getChildDevices().find { DeviceWrapper dev ->
@@ -202,12 +201,13 @@ void parse(String description) {
                            }
                            else {
                               // try button; should eventually switch to v2 for all of this...
-                              if (updateEntryMap.owner?.rid) dev = parent.getChildDevice("${device.deviceNetworkId}/Button/${updateEntryMap.owner.rid[0]}")
+                              log.trace "b -> ${updateEntryMap.owner?.rid}"
+                              if (updateEntryMap.owner?.rid) dev = parent.getChildDevice("${device.deviceNetworkId}/Button/${updateEntryMap.owner.rid}")
                               if (dev != null) {
-                              dev.createEventsFromSSE(it.data[0])
+                                 dev.createEventsFromSSE(updateEntryMap)
+                              }
                            }
-                        }
-                        break
+                           break
                         default:
                            if (enableDebug) log.debug "skipping Hue v1 ID: $hueId"
                      }
