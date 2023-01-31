@@ -1,7 +1,7 @@
 /*
  * =============================  CoCoHue Button (Driver) ===============================
  *
- *  Copyright 2022 Robert Morris
+ *  Copyright 2022-2023 Robert Morris
  * 
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  *  in compliance with the License. You may obtain a copy of the License at:
@@ -14,9 +14,10 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2022-09-04
+ *  Last modified: 2023-01-30
  * 
  *  Changelog:
+ *  v4.1.4   - Improved HTTP error handling
  *  v4.1.2   - Add relative_rotary support (Hue Tap Dial, etc.)
  *  v4.1.1   - Improved button event parsing
  *  v4.1     - Initial release (with CoCoHue app/bridge 4.1)

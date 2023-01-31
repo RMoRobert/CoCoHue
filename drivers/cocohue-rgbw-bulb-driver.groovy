@@ -1,7 +1,7 @@
 /*
  * =============================  CoCoHue RGBW Bulb (Driver) ===============================
  *
- *  Copyright 2019-2022 Robert Morris
+ *  Copyright 2019-2023 Robert Morris
  * 
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  *  in compliance with the License. You may obtain a copy of the License at:
@@ -14,9 +14,10 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2022-06-04
- *
+ *  Last modified: 2023-01-30
+ * 
  *  Changelog:
+ *  v4.1.4  - Improved error handling, fix missing battery for motion sensors
  *  v4.0.2  - Fix to avoid unepected "off" transition time
  *  v4.0    - Add SSE support for push
  *  v3.5.1  - Refactor some code into libraries (code still precompiled before upload; should not have any visible changes)

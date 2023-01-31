@@ -14,9 +14,10 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2023-01-06
+ *  Last modified: 2023-01-30
  * 
  *  Changelog:
+ *  v4.1.4  - Improved error handling, fix missing battery for motion sensors
  *  v4.1.3  - Improved eventstream data handling (when multiple devices included in same payload, thanks to @Modem-Tones)
  *  v4.1.2  - Additional button enhancements (relative_rotary -- Hue Tap Dial, etc.)
  *  v4.1    - Add button device support (with v2 API only)
@@ -306,11 +307,12 @@ private void parseGroupStates(Map groupsJson) {
 private void parseSensorStates(Map sensorsJson) {
    if (enableDebug) log.debug "Parsing sensor states from Bridge..."
    // Uncomment this line if asked to for debugging (or you're curious):
+   // log.trace "sensorsJson = ${groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(sensorsJson))}"
    try {
       sensorsJson.each { key, val ->
          if (val.type == "ZLLPresence" || val.type == "ZLLLightLevel" || val.type == "ZLLTemperature" ||
           val.type == "ZHAPresence" || val.type == "ZHALightLevel" || val.type == "ZHATemperature") {
-            DeviceWrapper sensorDev = parent.getChildDevices.findAll { DeviceWrapper it ->
+            DeviceWrapper sensorDev = parent.getChildDevices().findAll { DeviceWrapper it ->
                it.deviceNetworkId.startsWith("${device.deviceNetworkId}/Sensor/") &&
                (key as String) in it.deviceNetworkId.tokenize('/')[3].tokenize('|')
             }[0]
