@@ -1,4 +1,6 @@
-// Version 1.0.1
+// Version 1.0.2
+
+// 1.0.2  - HTTP error handling tweaks
 
 library (
    base: "driver",
@@ -23,15 +25,15 @@ private Boolean checkIfValidResponse(hubitat.scheduling.AsyncResponse resp) {
    if (enableDebug == true) log.debug "Checking if valid HTTP response/data from Bridge..."
    Boolean isOK = true
    if (resp.status < 400) {
-      if (resp?.json == null) {
+      if (resp.json == null) {
          isOK = false
-         if (resp?.headers == null) log.error "Error: HTTP ${resp?.status} when attempting to communicate with Bridge"
+         if (resp.headers == null) log.error "Error: HTTP ${resp.status} when attempting to communicate with Bridge"
          else log.error "No JSON data found in response. ${resp.headers.'Content-Type'} (HTTP ${resp.status})"
          parent.sendBridgeDiscoveryCommandIfSSDPEnabled(true) // maybe IP changed, so attempt rediscovery 
          parent.setBridgeStatus(false)
       }
       else if (resp.json) {
-         if (resp.json[0]?.error) {
+         if (resp.json instanceof List && resp.json[0]?.error) {
             // Bridge (not HTTP) error (bad username, bad command formatting, etc.):
             isOK = false
             log.warn "Error from Hue Bridge: ${resp.json[0].error}"
