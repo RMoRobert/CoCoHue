@@ -1,4 +1,6 @@
-// Version 1.0.2
+// Version 1.0.3
+
+// 1.0.3  - levelhandling tweaks
 
 library (
    base: "driver",
@@ -142,7 +144,7 @@ Integer scaleBriFromBridge(Number bridgeLevel, String apiVersion="1") {
    }
    else {
       // for now, a quick cheat to make 1% the Hue minimum (should scale other values proportionally in future)
-      scaledLevel = Math.round(bridgeLevel <= 1.49 ? 1 : bridgeLevel)
+      scaledLevel = Math.round(bridgeLevel <= 1.49 && bridgeLevel > 0.001 ? 1 : bridgeLevel)
    }
    return scaledLevel
 }

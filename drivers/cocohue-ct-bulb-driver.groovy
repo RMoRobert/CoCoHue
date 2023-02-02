@@ -14,9 +14,10 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2023-01-30
+ *  Last modified: 2023-02-01
  * 
  *  Changelog:
+ *  v4.1.5  - Improved v2 brightness parsing
  *  v4.1.4  - Improved error handling, fix missing battery for motion sensors
  *  v4.0.2  - Fix to avoid unepected "off" transition time
  *  v4.0    - Add SSE support for push 
