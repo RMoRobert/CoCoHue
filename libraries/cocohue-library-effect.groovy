@@ -1,4 +1,4 @@
-// Version 1.0.0
+// Version 1.0.1
 
 library (
    base: "driver",
@@ -15,7 +15,7 @@ void setEffect(String effect) {
    if (id != null) setEffect(id.key)
 }
 
-void setEffect(Integer id) {
+void setEffect(Number id) {
    if (enableDebug == true) log.debug "setEffect($id)"
    sendBridgeCommand(["effect": (id == 1 ? "colorloop" : "none"), "on": true])
 }
