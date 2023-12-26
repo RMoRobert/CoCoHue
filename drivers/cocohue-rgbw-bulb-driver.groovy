@@ -274,7 +274,7 @@ void createEventsFromMap(Map bridgeCommandMap, Boolean isFromBridge = false, Set
             eventValue = scaleCTFromBridge(it.value)
             eventValue = it.value == 0 ? 0 : scaleCTFromBridge(it.value)
             eventUnit = "K"
-            if (device.currentValue(eventName) != eventValue) {
+            if (device.currentValue(eventName) != eventValue && eventValue != 0) {
                if (isFromBridge && colorMode == "hs") {
                   if (enableDebug == true) log.debug "Skipping colorTemperature event creation because light not in ct mode"
                   break

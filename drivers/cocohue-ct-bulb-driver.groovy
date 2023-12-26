@@ -207,7 +207,7 @@ void createEventsFromMap(Map bridgeCommandMap, Boolean isFromBridge = false, Set
             eventName = "colorTemperature"
             eventValue = it.value == 0 ? 0 : scaleCTFromBridge(it.value)
             eventUnit = "K"
-            if (device.currentValue(eventName) != eventValue) {
+            if (device.currentValue(eventName) != eventValue && eventValue != 0) {
                doSendEvent(eventName, eventValue, eventUnit)
             }
             setGenericTempName(eventValue)
