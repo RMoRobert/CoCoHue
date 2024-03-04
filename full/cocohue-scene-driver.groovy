@@ -57,10 +57,10 @@ metadata {
                    ["allScenesOff": "Mark all other CoCoHue scenes as off"],
                    ["autoOff": "Automatically mark as off in 5 seconds"]],
          defaultValue: "groupScenesOff"
-      input name: "onRefresh", type: "enum", title: "Bridge refresh on activation/deacivation: when this scene is activated or deactivated by a Hubitat command...",
+      input name: "onRefresh", type: "enum", title: "Bridge refresh on activation/deactivation: when this scene is activated or deactivated by a Hubitat command...",
          options: [["none": "Do not refresh Bridge"],
                    ["1000": "Refresh Bridge device in 1s"],
-                   ["5000": "Refrehs Bridge device in 5s"]],
+                   ["5000": "Refresh Bridge device in 5s"]],
          defaultValue: "none"
       input name: "enableDebug", type: "bool", title: "Enable debug logging", defaultValue: true
       input name: "enableDesc", type: "bool", title: "Enable descriptionText logging", defaultValue: true
