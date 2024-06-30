@@ -24,7 +24,7 @@
  *  Last modified: 2024-06-30
  * 
  *  Changelog:
- *  v4.1.3 - Add note that Hue Labs features are now deprecated
+ *  v4.1.9 - Add note that Hue Labs features are now deprecated
  *  v4.1.2 - Additional button enhancements (relative_rotary -- Hue Tap Dial, etc.)
  *  v4.1   - Add support for button devices (with v2 API only)
  *  v4.0.3 - Immediately disconnect eventstream when option un-selected (and saved)
