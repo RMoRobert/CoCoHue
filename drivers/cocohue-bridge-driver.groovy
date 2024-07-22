@@ -1,7 +1,7 @@
 /**
  * =============================  CoCoHue Bridge (Driver) ===============================
  *
- *  Copyright 2019-2023 Robert Morris
+ *  Copyright 2019-2024 Robert Morris
  * 
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  *  in compliance with the License. You may obtain a copy of the License at:
@@ -14,9 +14,10 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2023-01-30
+ *  Last modified: 2024-07-21
  * 
  *  Changelog:
+ *  v4.2    - Improved eventstream reconnection logic
  *  v4.1.4  - Improved error handling, fix missing battery for motion sensors
  *  v4.1.3  - Improved eventstream data handling (when multiple devices included in same payload, thanks to @Modem-Tones)
  *  v4.1.2  - Additional button enhancements (relative_rotary -- Hue Tap Dial, etc.)
@@ -47,6 +48,8 @@ import groovy.transform.Field
 // Seems to be helpful at the moment because get spurious disconnects when SSE is working fine, shortly followed
 // by a reconnect (~6 sec for me, so 7 should cover most)
 @Field static final Integer eventStreamDisconnectGracePeriod = 8
+// For readTimeout value in eventstream connection:
+@Field static final Integer eventStreamReadTimeout = 3600
 
 @Field static final Integer debugAutoDisableMinutes = 30
 
@@ -95,12 +98,13 @@ void connectEventStream() {
    if (enableDebug) {
       log.debug "Connecting to event stream at 'https://${data.ip}/eventstream/clip/v2' with key '${data.username}'"
    }
+   interfaces.eventStream.close()
    interfaces.eventStream.connect(
       "https://${data.ip}/eventstream/clip/v2", [
       headers: ["Accept": "text/event-stream", "hue-application-key": data.username],
       rawData: true,
       pingInterval: 10,
-      readTimeout: 3600,
+      readTimeout: eventStreamReadTimeout,
       ignoreSSLIssues: true
    ])
 }
@@ -127,8 +131,11 @@ void eventStreamStatus(String message) {
    if (message.startsWith("START:")) {
       setEventStreamStatusToConnected()
    }
-   else {
+   else if (message.startsWith("STOP:")) {
       runIn(eventStreamDisconnectGracePeriod, "setEventStreamStatusToDisconnected")
+   }
+   else {
+      if (enableDebug) log.debug "Unhandled eventStreamStatus message: $message"
    }
 }
 
@@ -151,7 +158,7 @@ private void setEventStreamStatusToDisconnected() {
    else {
       state.connectionRetryTime = 5
    }
-   if (enableDebug) log.debug "reconnecting SSE in ${state.connectionRetryTime}"
+   if (enableDebug) log.debug "Reconnecting SSE in ${state.connectionRetryTime}"
    runIn(state.connectionRetryTime, "reconnectEventStream")
 }
 
