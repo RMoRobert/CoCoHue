@@ -1,5 +1,6 @@
-// Version 1.0.3
+// Version 1.0.4
 
+// 1.0.4  - accept String for setLevel() level also 
 // 1.0.3  - levelhandling tweaks
 
 library (
@@ -13,7 +14,7 @@ library (
 
 // "SwitchLevel" commands:
 
-void startLevelChange(direction) {
+void startLevelChange(String direction) {
    if (enableDebug == true) log.debug "startLevelChange($direction)..."
    Map cmd = ["bri": (direction == "up" ? 254 : 1),
             "transitiontime": ((settings["levelChangeRate"] == "fast" || !settings["levelChangeRate"]) ?
@@ -60,6 +61,14 @@ void setLevel(Number value, Number rate) {
       bridgeCmd = prestagedCmds + bridgeCmd
    }
    sendBridgeCommand(bridgeCmd)
+}
+
+void setLevel(value, rate) {
+   if (enableDebug == true) log.debug "setLevel(Object $value, Object $rate)"
+   Float floatLevel = Float.parseFloat(value.toString())
+   Integer intLevel = Math.round(floatLevel)
+   Float floatRate = Float.parseFloat(rate.toString())
+   setLevel(intLevel, floatRate)
 }
 
 void presetLevel(Number level) {

@@ -1,7 +1,7 @@
 /*
  * =============================  CoCoHue RGBW Bulb (Driver) ===============================
  *
- *  Copyright 2019-2023 Robert Morris
+ *  Copyright 2019-2024 Robert Morris
  * 
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  *  in compliance with the License. You may obtain a copy of the License at:
@@ -14,9 +14,10 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2023-10-24
+ *  Last modified: 2024-07-29
  * 
  *  Changelog:
+ *  v4.2    - Library updates, prep for more v2 API
  *  v4.1.8  - Fix for division by zero for unexpected colorTemperature values
  *  v4.1.7  - Fix for unexpected Hubitat event creation when v2 API reports level of 0
  *  v4.1.6  - setEffect() parameter fix
@@ -345,7 +346,7 @@ void createEventsFromMap(Map bridgeCommandMap, Boolean isFromBridge = false, Set
 }
 
 /**
- * (for "new"/v2/EventSocket [SSE] API; not documented and subject to change)
+ * (for "new"/v2/EventSocket/SSE API)
  * Iterates over Hue light state states in Hue API v2 format (e.g., "on={on=true}") and does
  * a sendEvent for each relevant attribute; intended to be called when EventSocket data
  * received for device (as an alternative to polling)
@@ -395,6 +396,9 @@ void createEventsFromSSE(Map data) {
             eventValue = "CT"
             eventUnit = null
             if (device.currentValue(eventName) != eventValue) doSendEvent(eventName, eventValue, eventUnit)
+            break
+         case "id_v1":
+            if (state.id_v1 != value) state.id_v1 = value
             break
          default:
             if (enableDebug == true) "not handling: $key: $value"

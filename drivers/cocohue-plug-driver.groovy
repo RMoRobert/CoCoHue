@@ -1,7 +1,7 @@
 /*
  * =============================  CoCoHue On/Off Plug/Light (Driver) ===============================
  *
- *  Copyright 2019-2023 Robert Morris
+ *  Copyright 2019-2024 Robert Morris
  * 
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  *  in compliance with the License. You may obtain a copy of the License at:
@@ -14,9 +14,10 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2023-01-30
+ *  Last modified: 2024-07-29
  * 
  *  Changelog:
+ *  v4.2    - Library updates, prep for more v2 API
  *  v4.1.4  - Improved error handling, fix missing battery for motion sensors
  *  v4.0    - Add SSE support for push
  *  v3.5.1  - Refactor some code into libraries (code still precompiled before upload; should not have any visible changes)
@@ -182,6 +183,9 @@ void createEventsFromSSE(Map data) {
             eventValue = value.on ? "on" : "off"
             eventUnit = null
             if (device.currentValue(eventName) != eventValue) doSendEvent(eventName, eventValue, eventUnit)
+            break
+         case "id_v1":
+            if (state.id_v1 != value) state.id_v1 = value
             break
          default:
             if (enableDebug == true) "not handling: $key: $value"

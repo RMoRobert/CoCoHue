@@ -1,7 +1,7 @@
 /*
  * =============================  CoCoHue CT Bulb (Driver) ===============================
  *
- *  Copyright 2019-2023 Robert Morris
+ *  Copyright 2019-2024 Robert Morris
  * 
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  *  in compliance with the License. You may obtain a copy of the License at:
@@ -14,9 +14,10 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2023-10-24
+ *  Last modified: 2024-07-29
  * 
  *  Changelog:
+ *  v4.2    - Library updates, prep for more v2 API
  *  v4.1.8  - Fix for division by zero for unexpected colorTemperature values
  *  v4.1.7  - Fix for unexpected Hubitat event creation when v2 API reports level of 0
  *  v4.1.5  - Improved v2 brightness parsing
@@ -268,6 +269,9 @@ void createEventsFromSSE(Map data) {
             eventUnit = "K"
             if (device.currentValue(eventName) != eventValue) doSendEvent(eventName, eventValue, eventUnit)
             setGenericTempName(eventValue)
+            break
+         case "id_v1":
+            if (state.id_v1 != value) state.id_v1 = value
             break
          default:
             if (enableDebug == true) "not handling: $key: $value"

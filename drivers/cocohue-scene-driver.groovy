@@ -14,9 +14,10 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2024-03-03
+ *  Last modified: 2024-07-28
  * 
  *  Changelog:
+ *  v4.2    - Add support for parsing on/off events from v2 API state; library improvements; prep for mre v2 API use
  *  v4.1.5  - Fix typos
  *  v4.1.4  - Improved error handling, fix missing battery for motion sensors
  *  v4.0    - Refactoring to match other CoCoHue drivers
@@ -183,6 +184,34 @@ void off() {
    }
    else {
       log.warn "No off() action available for scene $device.displayName"
+   }
+}
+
+/**
+ * Iterates over Hue scene state state data in Hue API v2 (SSE) format and does
+ * a sendEvent for each relevant attribute; intended to be called when EventSocket data
+ * received for device (as an alternative to polling)
+ */
+void createEventsFromSSE(Map data) {
+   if (enableDebug == true) log.debug "createEventsFromSSE($data)"
+   String eventName, eventUnit, descriptionText
+   def eventValue // could be String or number
+   Boolean hasCT = data.color_temperature?.mirek != null
+   data.each { String key, value ->
+      //log.trace "$key = $value"
+      switch (key) {
+         case "status":
+            eventName = "switch"
+            eventValue = (value.active == "inactive" || value.active == null) ? "off" : "on"
+            eventUnit = null
+            if (device.currentValue(eventName) != eventValue) doSendEvent(eventName, eventValue, eventUnit)
+            break
+         case "id_v1":
+            if (state.id_v1 != value) state.id_v1 = value
+            break
+         default:
+            if (enableDebug == true) "not handling: $key: $value"
+      }
    }
 }
 

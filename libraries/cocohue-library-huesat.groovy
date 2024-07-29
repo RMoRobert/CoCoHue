@@ -1,4 +1,4 @@
-// Version 1.0.1
+// Version 1.0.2
 
 library (
    base: "driver",
@@ -120,34 +120,33 @@ void setSaturation(value) {
    sendBridgeCommand(bridgeCmd)
 }
 
-Integer scaleHueToBridge(hubitatLevel) {
-   Integer scaledLevel = Math.round(hubitatLevel.toBigDecimal() / (hiRezHue ? 360 : 100) * 65535)
-   if (scaledLevel < 0) scaledLevel = 0
-   else if (scaledLevel > 65535) scaledLevel = 65535
-   return scaledLevel
+Integer scaleHueToBridge(hubitatHue) {
+   Integer scaledHue = Math.round(hubitatHue.toBigDecimal() / (hiRezHue ? 360 : 100) * 65535)
+   if (scaledHue < 0) scaledHue = 0
+   else if (scaledHue > 65535) scaledHue = 65535
+   return scaledHue
 }
 
 Integer scaleHueFromBridge(bridgeLevel) {
-   Integer scaledLevel = Math.round(bridgeLevel.toBigDecimal() / 65535 * (hiRezHue ? 360 : 100))
-   if (scaledLevel < 0) scaledLevel = 0
-   else if (scaledLevel > 360) scaledLevel = 360
-   else if (scaledLevel > 100 && !hiRezHue) scaledLevel = 100
-   return scaledLevel
+   Integer scaledHue = Math.round(bridgeLevel.toBigDecimal() / 65535 * (hiRezHue ? 360 : 100))
+   if (scaledHue < 0) scaledHue = 0
+   else if (scaledHue > 360) scaledHue = 360
+   else if (scaledHue > 100 && !hiRezHue) scaledHue = 100
+   return scaledHue
 }
 
-Integer scaleSatToBridge(hubitatLevel) {
-   Integer scaledLevel = Math.round(hubitatLevel.toBigDecimal() / 100 * 254)
-   if (scaledLevel < 0) scaledLevel = 0
-   else if (scaledLevel > 254) scaledLevel = 254
-   return scaledLevel
-   return scaleHueFromBridge()
+Integer scaleSatToBridge(hubitatSat) {
+   Integer scaledSat = Math.round(hubitatSat.toBigDecimal() / 100 * 254)
+   if (scaledSat < 0) scaledSat = 0
+   else if (scaledSat > 254) scaledSat = 254
+   return scaledSat
 }
 
-Integer scaleSatFromBridge(bridgeLevel) {
-   Integer scaledLevel = Math.round(bridgeLevel.toBigDecimal() / 254 * 100)
-   if (scaledLevel < 0) scaledLevel = 0
-   else if (scaledLevel > 100) scaledLevel = 100
-   return scaledLevel
+Integer scaleSatFromBridge(bridgeSat) {
+   Integer scaledSat = Math.round(bridgeSat.toBigDecimal() / 254 * 100)
+   if (scaledSat < 0) scaledSat = 0
+   else if (scaledSat > 100) scaledSat = 100
+   return scaledSat
 }
 
 

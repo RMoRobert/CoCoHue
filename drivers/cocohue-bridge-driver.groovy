@@ -14,9 +14,10 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2024-07-21
+ *  Last modified: 2024-07-29
  * 
  *  Changelog:
+ *  v4.2.1  - Add scene on/off state reporting with v2 API
  *  v4.2    - Improved eventstream reconnection logic
  *  v4.1.4  - Improved error handling, fix missing battery for motion sensors
  *  v4.1.3  - Improved eventstream data handling (when multiple devices included in same payload, thanks to @Modem-Tones)
@@ -186,20 +187,25 @@ void parse(String description) {
                dataEntryMap.data?.each { updateEntryMap ->
                   //log.trace "--> map = ${updateEntryMap}"
                   String fullId = updateEntryMap.id_v1
+                  String hueId
                   if (fullId != null) {
                      switch (fullId) {
                         case { it.startsWith("/lights/") }:
-                           String hueId = fullId.split("/")[-1]
+                           hueId = fullId.split("/")[-1]
                            DeviceWrapper dev = parent.getChildDevice("${device.deviceNetworkId}/Light/${hueId}")
                            if (dev != null) dev.createEventsFromSSE(updateEntryMap)
                            break
                         case { it.startsWith("/groups/") }:
-                           String hueId = fullId.split("/")[-1]
+                            hueId = fullId.split("/")[-1]
                            DeviceWrapper dev = parent.getChildDevice("${device.deviceNetworkId}/Group/${hueId}")
                            if (dev != null) dev.createEventsFromSSE(updateEntryMap)
                            break
+                        case { it.startsWith("/scenes/") }:
+                            hueId = fullId.split("/")[-1]
+                            DeviceWrapper dev = parent.getChildDevice("${device.deviceNetworkId}/Scene/${hueId}")
+                            if (dev != null) dev.createEventsFromSSE(updateEntryMap)
                         case { it.startsWith("/sensors/") }:
-                           String hueId = fullId.split("/")[-1]
+                           hueId = fullId.split("/")[-1]
                            DeviceWrapper dev = parent.getChildDevices().find { DeviceWrapper dev ->
                               hueId in dev.deviceNetworkId.tokenize('/')[-1].tokenize('|') &&
                               dev.deviceNetworkId.startsWith("${device.deviceNetworkId}/Sensor/")  // shouldn't be necessary but gave me a Light ID once in testing for a sensor, so?!
@@ -216,7 +222,7 @@ void parse(String description) {
                            }
                            break
                         default:
-                           if (enableDebug) log.debug "skipping Hue v1 ID: $hueId"
+                           if (enableDebug) log.debug "skipping Hue v1 ID: $fullId"
                      }
                   }
                }
