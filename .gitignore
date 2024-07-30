@@ -6,3 +6,5 @@ dev/*
 .vscode/*
 hubUpload*
 hubDownload*
+CoCoHue.iml
+/.idea
