@@ -46,8 +46,8 @@ metadata {
 
    preferences {
       input name: "tempAdjust", type: "number", title: "Adjust temperature reading by this amount", description: "Example: 0.4 or -1.5 (optional)"
-      input name: "enableDebug", type: "bool", title: "Enable debug logging", defaultValue: true
-      input name: "enableDesc", type: "bool", title: "Enable descriptionText logging", defaultValue: true
+      input name: "logEnable", type: "bool", title: "Enable debug logging", defaultValue: true
+      input name: "txtEnable", type: "bool", title: "Enable descriptionText logging", defaultValue: true
    }
 }
 
@@ -63,7 +63,7 @@ void updated() {
 
 void initialize() {
    log.debug "initialize()"
-   if (enableDebug) {
+   if (logEnable) {
       log.debug "Debug logging will be automatically disabled in ${debugAutoDisableMinutes} minutes"
       runIn(debugAutoDisableMinutes*60, "debugOff")
    }
@@ -95,10 +95,10 @@ String getHueDeviceMAC() {
  */
 void createEventsFromMap(Map bridgeCmd) {
    if (!bridgeCmd) {
-      if (enableDebug) log.debug "createEventsFromMap called but map empty; exiting"
+      if (logEnable) log.debug "createEventsFromMap called but map empty; exiting"
       return
    }
-   if (enableDebug) log.debug "Preparing to create events from map: ${bridgeCmd}"
+   if (logEnable) log.debug "Preparing to create events from map: ${bridgeCmd}"
    String eventName, eventUnit, descriptionText
    def eventValue // could be numeric (lux, temp) or boolean (motion)
    bridgeCmd.each {
@@ -143,7 +143,7 @@ void createEventsFromMap(Map bridgeCmd) {
  * received for device (as an alternative to polling)
  */
 void createEventsFromSSE(Map data) {
-   if (enableDebug == true) log.debug "createEventsFromSSE($data)"
+   if (logEnable == true) log.debug "createEventsFromSSE($data)"
    String eventName, eventUnit, descriptionText
    def eventValue // could be String or number
    data.each { String key, value ->
@@ -172,7 +172,7 @@ void createEventsFromSSE(Map data) {
             if (state.id_v1 != value) state.id_v1 = value
             break
          default:
-            if (enableDebug == true) "not handling: $key: $value"
+            if (logEnable == true) "not handling: $key: $value"
       }
    }
 }

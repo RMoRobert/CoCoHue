@@ -94,8 +94,8 @@ metadata {
          [[(-2): "Hue default/do not specify (default)"],[(-1): "Use level transition time (default)"],[0:"ASAP"],[200:"200ms"],[400:"400ms (default)"],[500:"500ms"],[1000:"1s"],[1500:"1.5s"],[2000:"2s"],[5000:"5s"]], defaultValue: -1
       input name: "updateGroups", type: "bool", description: "", title: "Update state of groups immediately when bulb state changes",
          defaultValue: false
-      input name: "enableDebug", type: "bool", title: "Enable debug logging", defaultValue: true
-      input name: "enableDesc", type: "bool", title: "Enable descriptionText logging", defaultValue: true
+      input name: "logEnable", type: "bool", title: "Enable debug logging", defaultValue: true
+      input name: "txtEnable", type: "bool", title: "Enable descriptionText logging", defaultValue: true
    }
 }
 
@@ -111,7 +111,7 @@ void updated() {
 
 void initialize() {
    log.debug "initialize()"
-   if (enableDebug) {
+   if (logEnable) {
       log.debug "Debug logging will be automatically disabled in ${debugAutoDisableMinutes} minutes"
       runIn(debugAutoDisableMinutes*60, "debugOff")
    }
@@ -132,7 +132,7 @@ String getHueDeviceNumber() {
 }
 
 void on(Number transitionTime = null) {
-   if (enableDebug == true) log.debug "on()"
+   if (logEnable == true) log.debug "on()"
    Map bridgeCmd = ["on": true]
    if (transitionTime != null) {
       scaledRate = (transitionTime * 10) as Integer
@@ -146,7 +146,7 @@ void on(Number transitionTime = null) {
 }
 
 void off(Number transitionTime = null) {
-   if (enableDebug == true) log.debug "off()"
+   if (logEnable == true) log.debug "off()"
    Map bridgeCmd
    Integer scaledRate = transitionTime != null ? Math.round(transitionTime * 10).toInteger() : null
    if (scaledRate == null) {
@@ -176,14 +176,14 @@ void refresh() {
  */
 void createEventsFromMap(Map bridgeCommandMap, Boolean isFromBridge = false, Set<String> keysToIgnoreIfSSEEnabledAndNotFromBridge=listKeysToIgnoreIfSSEEnabledAndNotFromBridge) {
    if (!bridgeCommandMap) {
-      if (enableDebug == true) log.debug "createEventsFromMap called but map command empty or null; exiting"
+      if (logEnable == true) log.debug "createEventsFromMap called but map command empty or null; exiting"
       return
    }
    Map bridgeMap = bridgeCommandMap
-   if (enableDebug == true) log.debug "Preparing to create events from map${isFromBridge ? ' from Bridge' : ''}: ${bridgeMap}"
+   if (logEnable == true) log.debug "Preparing to create events from map${isFromBridge ? ' from Bridge' : ''}: ${bridgeMap}"
    if (!isFromBridge && keysToIgnoreIfSSEEnabledAndNotFromBridge && parent.getEventStreamOpenStatus() == true) {
       bridgeMap.keySet().removeAll(keysToIgnoreIfSSEEnabledAndNotFromBridge)
-      if (enableDebug == true) log.debug "Map after ignored keys removed: ${bridgeMap}"
+      if (logEnable == true) log.debug "Map after ignored keys removed: ${bridgeMap}"
    }
    String eventName, eventUnit, descriptionText
    def eventValue // could be String or number
@@ -239,7 +239,7 @@ void createEventsFromMap(Map bridgeCommandMap, Boolean isFromBridge = false, Set
  * received for device (as an alternative to polling)
  */
 void createEventsFromSSE(Map data) {
-   if (enableDebug == true) log.debug "createEventsFromSSE($data)"
+   if (logEnable == true) log.debug "createEventsFromSSE($data)"
    String eventName, eventUnit, descriptionText
    def eventValue // could be String or number
    Boolean hasCT = data.color_temperature?.mirek != null
@@ -261,7 +261,7 @@ void createEventsFromSSE(Map data) {
             break
          case "color_temperature":
             if (!hasCT) {
-               if (enableDebug == true) "ignoring color_temperature because mirek null"
+               if (logEnable == true) "ignoring color_temperature because mirek null"
                return
             }
             eventName = "colorTemperature"
@@ -274,7 +274,7 @@ void createEventsFromSSE(Map data) {
             if (state.id_v1 != value) state.id_v1 = value
             break
          default:
-            if (enableDebug == true) "not handling: $key: $value"
+            if (logEnable == true) "not handling: $key: $value"
       }
    }
 }
@@ -286,9 +286,9 @@ void createEventsFromSSE(Map data) {
  *        affected device attributes (e.g., will send an "on" event for "switch" if ["on": true] in map)
  */
 void sendBridgeCommand(Map commandMap, Boolean createHubEvents=true) {
-   if (enableDebug == true) log.debug "sendBridgeCommand($commandMap)"
+   if (logEnable == true) log.debug "sendBridgeCommand($commandMap)"
    if (commandMap == null || commandMap == [:]) {
-      if (enableDebug == true) log.debug "Commands not sent to Bridge because command map null or empty"
+      if (logEnable == true) log.debug "Commands not sent to Bridge because command map null or empty"
       return
    }
    Map<String,String> data = parent.getBridgeData()
@@ -300,7 +300,7 @@ void sendBridgeCommand(Map commandMap, Boolean createHubEvents=true) {
       timeout: 15
    ]
    asynchttpPut("parseSendCommandResponse", params, createHubEvents ? commandMap : null)
-   if (enableDebug == true) log.debug "-- Command sent to Bridge! --"
+   if (logEnable == true) log.debug "-- Command sent to Bridge! --"
 }
 
 /** 
@@ -310,15 +310,15 @@ void sendBridgeCommand(Map commandMap, Boolean createHubEvents=true) {
   * @param data Map of commands sent to Bridge if specified to create events from map
   */
 void parseSendCommandResponse(AsyncResponse resp, Map data) {
-   if (enableDebug == true) log.debug "Response from Bridge: ${resp.status}"
+   if (logEnable == true) log.debug "Response from Bridge: ${resp.status}"
    if (checkIfValidResponse(resp) && data) {
-      if (enableDebug == true) log.debug "  Bridge response valid; creating events from data map"
+      if (logEnable == true) log.debug "  Bridge response valid; creating events from data map"
       createEventsFromMap(data)
       if ((data.containsKey("on") || data.containsKey("bri")) && settings["updateGroups"]) {
          parent.updateGroupStatesFromBulb(data, getHueDeviceNumber())
       }
    }
    else {
-      if (enableDebug == true) log.debug "  Not creating events from map because not specified to do or Bridge response invalid"
+      if (logEnable == true) log.debug "  Not creating events from map because not specified to do or Bridge response invalid"
    }
 }

@@ -13,7 +13,7 @@ library (
 
 void debugOff() {
    log.warn "Disabling debug logging"
-   device.updateSetting("enableDebug", [value:"false", type:"bool"])
+   device.updateSetting("logEnable", [value:"false", type:"bool"])
 }
 
 /** Performs basic check on data returned from HTTP response to determine if should be
@@ -22,7 +22,7 @@ void debugOff() {
   * @param resp The async HTTP response object to examine
   */
 private Boolean checkIfValidResponse(hubitat.scheduling.AsyncResponse resp) {
-   if (enableDebug == true) log.debug "Checking if valid HTTP response/data from Bridge..."
+   if (logEnable == true) log.debug "Checking if valid HTTP response/data from Bridge..."
    Boolean isOK = true
    if (resp.status < 400) {
       if (resp.json == null) {
@@ -59,9 +59,9 @@ private Boolean checkIfValidResponse(hubitat.scheduling.AsyncResponse resp) {
 }
 
 void doSendEvent(String eventName, eventValue, String eventUnit=null, Boolean forceStateChange=false) {
-   //if (enableDebug == true) log.debug "doSendEvent($eventName, $eventValue, $eventUnit)"
+   //if (logEnable == true) log.debug "doSendEvent($eventName, $eventValue, $eventUnit)"
    String descriptionText = "${device.displayName} ${eventName} is ${eventValue}${eventUnit ?: ''}"
-   if (settings.enableDesc == true) log.info(descriptionText)
+   if (settings.txtEnable == true) log.info(descriptionText)
    if (eventUnit) {
       if (forceStateChange == true) sendEvent(name: eventName, value: eventValue, descriptionText: descriptionText, unit: eventUnit, isStateChange: true) 
       else sendEvent(name: eventName, value: eventValue, descriptionText: descriptionText, unit: eventUnit) 

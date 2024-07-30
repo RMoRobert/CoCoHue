@@ -15,7 +15,7 @@ library (
 // "SwitchLevel" commands:
 
 void startLevelChange(String direction) {
-   if (enableDebug == true) log.debug "startLevelChange($direction)..."
+   if (logEnable == true) log.debug "startLevelChange($direction)..."
    Map cmd = ["bri": (direction == "up" ? 254 : 1),
             "transitiontime": ((settings["levelChangeRate"] == "fast" || !settings["levelChangeRate"]) ?
                                  30 : (settings["levelChangeRate"] == "slow" ? 60 : 45))]
@@ -23,18 +23,18 @@ void startLevelChange(String direction) {
 }
 
 void stopLevelChange() {
-   if (enableDebug == true) log.debug "stopLevelChange()..."
+   if (logEnable == true) log.debug "stopLevelChange()..."
    Map cmd = ["bri_inc": 0]
    sendBridgeCommand(cmd, false) 
 }
 
 void setLevel(value) {
-   if (enableDebug == true) log.debug "setLevel($value)"
+   if (logEnable == true) log.debug "setLevel($value)"
    setLevel(value, ((transitionTime != null ? transitionTime.toFloat() : defaultLevelTransitionTime.toFloat())) / 1000)
 }
 
 void setLevel(Number value, Number rate) {
-   if (enableDebug == true) log.debug "setLevel($value, $rate)"
+   if (logEnable == true) log.debug "setLevel($value, $rate)"
    // For backwards compatibility; will be removed in future version:
    if (levelStaging) {
       log.warn "Level prestaging preference enabled and setLevel() called. This is deprecated and may be removed in the future. Please move to new, standard presetLevel() command."
@@ -64,7 +64,7 @@ void setLevel(Number value, Number rate) {
 }
 
 void setLevel(value, rate) {
-   if (enableDebug == true) log.debug "setLevel(Object $value, Object $rate)"
+   if (logEnable == true) log.debug "setLevel(Object $value, Object $rate)"
    Float floatLevel = Float.parseFloat(value.toString())
    Integer intLevel = Math.round(floatLevel)
    Float floatRate = Float.parseFloat(rate.toString())
@@ -72,7 +72,7 @@ void setLevel(value, rate) {
 }
 
 void presetLevel(Number level) {
-   if (enableDebug == true) log.debug "presetLevel($level)"
+   if (logEnable == true) log.debug "presetLevel($level)"
    if (level < 0) level = 1
    else if (level > 100) level = 100
    Integer newLevel = scaleBriToBridge(level)

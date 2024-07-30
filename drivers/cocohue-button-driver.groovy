@@ -43,8 +43,8 @@ metadata {
    }
 
    preferences {
-      input name: "enableDebug", type: "bool", title: "Enable debug logging", defaultValue: true
-      input name: "enableDesc", type: "bool", title: "Enable descriptionText logging", defaultValue: true
+      input name: "logEnable", type: "bool", title: "Enable debug logging", defaultValue: true
+      input name: "txtEnable", type: "bool", title: "Enable descriptionText logging", defaultValue: true
    }
 }
 
@@ -60,7 +60,7 @@ void updated() {
 
 void initialize() {
    log.debug "initialize()"
-   if (enableDebug) {
+   if (logEnable) {
       log.debug "Debug logging will be automatically disabled in ${debugAutoDisableMinutes} minutes"
       runIn(debugAutoDisableMinutes*60, "debugOff")
    }
@@ -94,29 +94,29 @@ String getHueDeviceNumber() {
   * @param data Map with keys 'attribute' and 'value' containing event data to send if successful (e.g., [attribute: 'switch', value: 'off'])
   */
 void parseSendCommandResponse(AsyncResponse resp, Map data) {
-   if (enableDebug) log.debug "Response from Bridge: ${resp.status}; data from app = $data"
+   if (logEnable) log.debug "Response from Bridge: ${resp.status}; data from app = $data"
    // TODO: Rethink for buttons...
    if (checkIfValidResponse(resp) && data?.attribute != null && data?.value != null) {
-      if (enableDebug) log.debug "  Bridge response valid; running creating events"
+      if (logEnable) log.debug "  Bridge response valid; running creating events"
       if (device.currentValue(data.attribute) != data.value) doSendEvent(data.attribute, data.value)   
    }
    else {
-      if (enableDebug) log.debug "  Not creating events from map because not specified to do or Bridge response invalid"
+      if (logEnable) log.debug "  Not creating events from map because not specified to do or Bridge response invalid"
    }
 }
 
 void push(btnNum) {
-   if (enableDebug) log.debug "push($btnNum)"
+   if (logEnable) log.debug "push($btnNum)"
    doSendEvent("pushed", btnNum.toInteger(), null, true)
 }
 
 void hold(btnNum) {
-   if (enableDebug) log.debug "hold($btnNum)"
+   if (logEnable) log.debug "hold($btnNum)"
    doSendEvent("held", btnNum.toInteger(), null, true)
 }
 
 void release(btnNum) {
-   if (enableDebug) log.debug "release($btnNum)"
+   if (logEnable) log.debug "release($btnNum)"
    doSendEvent("released", btnNum.toInteger(), null, true)
 }
 
@@ -126,7 +126,7 @@ void release(btnNum) {
  * received for device
  */
 void createEventsFromSSE(Map data) {
-   if (enableDebug == true) log.debug "createEventsFromSSE($data)"
+   if (logEnable == true) log.debug "createEventsFromSSE($data)"
    String eventName
    if (data.type == "button") {
       Integer eventValue = state.buttons.find({ it.key == data.id})?.value ?: 1
@@ -146,7 +146,7 @@ void createEventsFromSSE(Map data) {
             if (state.id_v1 != value) state.id_v1 = value
             break
          default:
-            if (enableDebug == true) log.debug "No button event created from: ${data.button.last_event}"
+            if (logEnable == true) log.debug "No button event created from: ${data.button.last_event}"
             break
       }
       state.lastHueEvent = data.button.last_event
@@ -172,7 +172,7 @@ void createEventsFromSSE(Map data) {
       if (eventName != null) doSendEvent(eventName, eventValue, null, true)
    }
    else {
-      if (enableDebug) log.debug "ignoring; data.type = ${data.type}"
+      if (logEnable) log.debug "ignoring; data.type = ${data.type}"
    }
 }
 
@@ -182,7 +182,7 @@ void createEventsFromSSE(Map data) {
  * accepts List of relative_rotary IDs, optional (will be used as additional button numbers)
  */
 void setButtons(Map<String,Integer> buttons, List<String> relativeRotaries=null) {
-   if (enableDebug) log.debug "setButtons($buttons, $relativeRotaries)"
+   if (logEnable) log.debug "setButtons($buttons, $relativeRotaries)"
    state.buttons = buttons
    if (relativeRotaries) state.relative_rotary = relativeRotaries
    Integer numButtons = buttons.keySet().size()
