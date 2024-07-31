@@ -10,7 +10,7 @@ library (
 )
 
 void setColor(Map value) {
-   if (enableDebug == true) log.debug "setColor($value)"
+   if (logEnable == true) log.debug "setColor($value)"
    state.lastKnownColorMode = "RGB"
    // For backwards compatibility; will be removed in future version:
    if (colorStaging) {
@@ -21,7 +21,7 @@ void setColor(Map value) {
       }
    }
    if (value.hue == null || value.hue == "NaN" || value.saturation == null || value.saturation == "NaN") {
-      if (enableDebug == true) log.debug "Exiting setColor because no hue and/or saturation set"
+      if (logEnable == true) log.debug "Exiting setColor because no hue and/or saturation set"
       return
    }
    Map bridgeCmd 
@@ -48,7 +48,7 @@ void setColor(Map value) {
 // and will convert to Groovy map for use with other implenentation of this command (which I hope will be standardized
 // some day..)
 void presetColor(String jsonValue) {
-   if (enableDebug == true) log.debug "presetColor(String $jsonValue)"
+   if (logEnable == true) log.debug "presetColor(String $jsonValue)"
    Map value = new groovy.json.JsonSlurper().parseText(jsonValue)
    presetColor(value)
 }
@@ -57,7 +57,7 @@ void presetColor(String jsonValue) {
 // for now, assuming it may be done by taking a color map like setColor() (but see also JSON variant above)
 // May also need presetHue() and presetSaturation(), but not including for now...
 void presetColor(Map value) {
-   if (enableDebug == true) log.debug "presetColor(Map $value)"
+   if (logEnable == true) log.debug "presetColor(Map $value)"
    if (value.hue != null) {
       doSendEvent("huePreset", value.hue)
    }
@@ -79,7 +79,7 @@ void presetColor(Map value) {
 }
 
 void setHue(value) {
-   if (enableDebug == true) log.debug "setHue($value)"
+   if (logEnable == true) log.debug "setHue($value)"
    state.lastKnownColorMode = "RGB"
    // For backwards compatibility; will be removed in future version:
    if (colorStaging) {
@@ -100,7 +100,7 @@ void setHue(value) {
 }
 
 void setSaturation(value) {
-   if (enableDebug == true) log.debug "setSaturation($value)"
+   if (logEnable == true) log.debug "setSaturation($value)"
    state.lastKnownColorMode = "RGB"
    // For backwards compatibility; will be removed in future version:
    if (colorStaging) {

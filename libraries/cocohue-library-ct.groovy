@@ -10,7 +10,7 @@ library (
 )
 
 void setColorTemperature(Number colorTemperature, Number level = null, Number transitionTime = null) {
-   if (enableDebug == true) log.debug "setColorTemperature($colorTemperature, $level, $transitionTime)"
+   if (logEnable == true) log.debug "setColorTemperature($colorTemperature, $level, $transitionTime)"
    state.lastKnownColorMode = "CT"
    // For backwards compatibility; will be removed in future version:
    if (colorStaging) {
@@ -42,7 +42,7 @@ void setColorTemperature(Number colorTemperature, Number level = null, Number tr
 // Not a standard command (yet?), but I hope it will get implemented as such soon in
 // the same manner as this. Otherwise, subject to change if/when that happens....
 void presetColorTemperature(Number colorTemperature) {
-   if (enableDebug == true) log.debug "presetColorTemperature($colorTemperature)"
+   if (logEnable == true) log.debug "presetColorTemperature($colorTemperature)"
    Boolean isOn = device.currentValue("switch") == "on"
    doSendEvent("colorTemperaturePreset", colorTemperature)
    if (isOn) {

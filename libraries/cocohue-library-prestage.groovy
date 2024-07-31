@@ -17,7 +17,7 @@ library (
  * @param unsetPrestagingState If set to true (default), clears prestage flag
 */
 Map getPrestagedCommands(Boolean unsetPrestagingState=true) {
-   if (enableDebug == true) log.debug "getPrestagedCommands($unsetPrestagingState)"
+   if (logEnable == true) log.debug "getPrestagedCommands($unsetPrestagingState)"
    Map cmds = [:]
    if (state.presetLevel == true) {
       cmds << [bri: scaleBriToBridge(device.currentValue("levelPreset"))]
@@ -34,7 +34,7 @@ Map getPrestagedCommands(Boolean unsetPrestagingState=true) {
    if (unsetPrestagingState == true) {
       clearPrestagedCommands()
    }
-   if (enableDebug == true) log.debug "Returning: $cmds"
+   if (logEnable == true) log.debug "Returning: $cmds"
    return cmds
 }
 

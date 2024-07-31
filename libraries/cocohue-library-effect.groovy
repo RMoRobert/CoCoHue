@@ -10,18 +10,18 @@ library (
 )
 
 void setEffect(String effect) {
-   if (enableDebug == true) log.debug "setEffect($effect)"
+   if (logEnable == true) log.debug "setEffect($effect)"
    def id = lightEffects.find { it.value == effect }
    if (id != null) setEffect(id.key)
 }
 
 void setEffect(Number id) {
-   if (enableDebug == true) log.debug "setEffect($id)"
+   if (logEnable == true) log.debug "setEffect($id)"
    sendBridgeCommand(["effect": (id == 1 ? "colorloop" : "none"), "on": true])
 }
 
 void setNextEffect() {
-   if (enableDebug == true) log.debug"setNextEffect()"
+   if (logEnable == true) log.debug"setNextEffect()"
    Integer currentEffect = state.crntEffectId ?: 0
    currentEffect++
    if (currentEffect > maxEffectNumber) currentEffect = 0
@@ -29,7 +29,7 @@ void setNextEffect() {
 }
 
 void setPreviousEffect() {
-   if (enableDebug == true) log.debug "setPreviousEffect()"
+   if (logEnable == true) log.debug "setPreviousEffect()"
    Integer currentEffect = state.crntEffectId ?: 0
    currentEffect--
    if (currentEffect < 0) currentEffect = 1

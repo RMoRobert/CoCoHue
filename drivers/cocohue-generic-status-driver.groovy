@@ -50,8 +50,8 @@ metadata {
                    ["1000": "Refresh Bridge device in 1s"],
                    ["5000": "Refresh Bridge device in 5s"]],
          defaultValue: "none"
-      input name: "enableDebug", type: "bool", title: "Enable debug logging", defaultValue: true
-      input name: "enableDesc", type: "bool", title: "Enable descriptionText logging", defaultValue: true
+      input name: "logEnable", type: "bool", title: "Enable debug logging", defaultValue: true
+      input name: "txtEnable", type: "bool", title: "Enable descriptionText logging", defaultValue: true
       input name: "suppressDeprecationWarning", type: "bool", title: "Suppress warning in logs about Hue Labs deprecation (see: https://www.philips-hue.com/en-us/support/article/huelabs/000003)"
    }
 }
@@ -70,7 +70,7 @@ void updated() {
 void initialize() {
    log.debug "initialize()"
    sendEvent(name: "numberOfButtons", value: 1)
-   if (enableDebug) {
+   if (logEnable) {
       log.debug "Debug logging will be automatically disabled in ${debugAutoDisableMinutes} minutes"
       runIn(debugAutoDisableMinutes*60, "debugOff")
    }
@@ -95,7 +95,7 @@ String getHueDeviceNumber() {
 }
 
 void on() {
-   if (enableDebug) log.debug "on()"
+   if (logEnable) log.debug "on()"
    sendBridgeCommand(["status": 1])
    if (settings["onRefresh"] == "1000" || settings["onRefresh"] == "5000") {
       parent.runInMillis(new Integer(settings["onRefresh"]), "refreshBridge")
@@ -106,7 +106,7 @@ void on() {
 }
 
 void off() {
-   if (enableDebug) log.debug "off()"
+   if (logEnable) log.debug "off()"
    sendBridgeCommand(["status": 0])
    if (settings["onRefresh"] == "1000" || settings["onRefresh"] == "5000") {
       parent.runInMillis(new Integer(settings["onRefresh"]), "refreshBridge")
@@ -117,7 +117,7 @@ void off() {
 }
 
 void push(btnNum) {
-   if (enableDebug) log.debug "push($btnNum)"
+   if (logEnable) log.debug "push($btnNum)"
    on()
    doSendEvent("pushed", 1, null, true)
 }
@@ -131,10 +131,10 @@ void push(btnNum) {
  */
 void createEventsFromMap(Map stateMap) {
    if (!stateMap) {
-      if (enableDebug) log.debug "createEventsFromMap called but state map empty; exiting"
+      if (logEnable) log.debug "createEventsFromMap called but state map empty; exiting"
       return
    }
-   if (enableDebug) log.debug "Preparing to create events from map: ${stateMap}"
+   if (logEnable) log.debug "Preparing to create events from map: ${stateMap}"
    String eventName, eventUnit, descriptionText
    String eventValue // should only be string here; could be String or number with lights/groups
    stateMap.each {
@@ -159,7 +159,7 @@ void createEventsFromMap(Map stateMap) {
  *        affected device attributes (e.g., will send an "on" event for sensor's "switch" if contains "state": 1)
  */
 void sendBridgeCommand(Map bridgeCmds = [:], Boolean createHubEvents=true) {
-   if (enableDebug) log.debug "Sending command to Bridge: ${bridgeCmds}"
+   if (logEnable) log.debug "Sending command to Bridge: ${bridgeCmds}"
    if (!bridgeCmds) {
       log.debug("Commands not sent to Bridge because command map empty")
       return
@@ -173,7 +173,7 @@ void sendBridgeCommand(Map bridgeCmds = [:], Boolean createHubEvents=true) {
       timeout: 15
       ]
    asynchttpPut("parseSendCommandResponse", params, createHubEvents ? bridgeCmds : null)
-   if (enableDebug) log.debug "-- Command sent to Bridge! --"
+   if (logEnable) log.debug "-- Command sent to Bridge! --"
 }
 
 /** 
@@ -183,13 +183,13 @@ void sendBridgeCommand(Map bridgeCmds = [:], Boolean createHubEvents=true) {
   * @param data Map of commands sent to Bridge if specified to create events from map
   */
 void parseSendCommandResponse(AsyncResponse resp, Map data) {
-   if (enableDebug) log.debug "Response from Bridge: ${resp.status}"
+   if (logEnable) log.debug "Response from Bridge: ${resp.status}"
    if (checkIfValidResponse(resp) && data) {
-      if (enableDebug) log.debug "  Bridge response valid; creating events from data map"
+      if (logEnable) log.debug "  Bridge response valid; creating events from data map"
       createEventsFromMap(data)
    }
    else {
-      if (enableDebug) log.debug "  Not creating events from map because not specified to do or Bridge response invalid"
+      if (logEnable) log.debug "  Not creating events from map because not specified to do or Bridge response invalid"
    }
 }
 
@@ -199,7 +199,7 @@ void parseSendCommandResponse(AsyncResponse resp, Map data) {
  * approximately warm white and off.
  */
 private void setDefaultAttributeValues() {
-   if (enableDebug) log.debug "Setting scene device states to sensibile default values..."
+   if (logEnable) log.debug "Setting scene device states to sensibile default values..."
    event = sendEvent(name: "switch", value: "off", isStateChange: false)
    event = sendEvent(name: "pushed", value: 1, isStateChange: false)
 }

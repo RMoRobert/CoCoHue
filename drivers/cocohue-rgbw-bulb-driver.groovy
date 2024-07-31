@@ -134,8 +134,8 @@ metadata {
       // Note: the following setting does not apply to SSE, which should update the group state immediately regardless:
       input name: "updateGroups", type: "bool", description: "", title: "Update state of groups immediately when bulb state changes",
          defaultValue: false
-      input name: "enableDebug", type: "bool", title: "Enable debug logging", defaultValue: true
-      input name: "enableDesc", type: "bool", title: "Enable descriptionText logging", defaultValue: true
+      input name: "logEnable", type: "bool", title: "Enable debug logging", defaultValue: true
+      input name: "txtEnable", type: "bool", title: "Enable descriptionText logging", defaultValue: true
    }
 }
 
@@ -153,7 +153,7 @@ void updated() {
 
 void initialize() {
    log.debug "initialize()"
-   if (enableDebug) {
+   if (logEnable) {
       log.debug "Debug logging will be automatically disabled in ${debugAutoDisableMinutes} minutes"
       runIn(debugAutoDisableMinutes*60, "debugOff")
    }
@@ -174,7 +174,7 @@ String getHueDeviceNumber() {
 }
 
 void on(Number transitionTime = null) {
-   if (enableDebug == true) log.debug "on()"
+   if (logEnable == true) log.debug "on()"
    Map bridgeCmd
    Integer scaledRate = transitionTime != null ? Math.round(transitionTime * 10).toInteger() : getScaledOnTransitionTime()
    if (scaledRate == null) {
@@ -191,7 +191,7 @@ void on(Number transitionTime = null) {
 }
 
 void off(Number transitionTime = null) {
-   if (enableDebug == true) log.debug "off()"
+   if (logEnable == true) log.debug "off()"
    Map bridgeCmd
    Integer scaledRate = transitionTime != null ? Math.round(transitionTime * 10).toInteger() : null
    if (scaledRate == null) {
@@ -222,14 +222,14 @@ void refresh() {
  */
 void createEventsFromMap(Map bridgeCommandMap, Boolean isFromBridge = false, Set<String> keysToIgnoreIfSSEEnabledAndNotFromBridge=listKeysToIgnoreIfSSEEnabledAndNotFromBridge) {
    if (!bridgeCommandMap) {
-      if (enableDebug == true) log.debug "createEventsFromMap called but map command empty or null; exiting"
+      if (logEnable == true) log.debug "createEventsFromMap called but map command empty or null; exiting"
       return
    }
    Map bridgeMap = bridgeCommandMap
-   if (enableDebug == true) log.debug "Preparing to create events from map${isFromBridge ? ' from Bridge' : ''}: ${bridgeMap}"
+   if (logEnable == true) log.debug "Preparing to create events from map${isFromBridge ? ' from Bridge' : ''}: ${bridgeMap}"
    if (!isFromBridge && keysToIgnoreIfSSEEnabledAndNotFromBridge && parent.getEventStreamOpenStatus() == true) {
       bridgeMap.keySet().removeAll(keysToIgnoreIfSSEEnabledAndNotFromBridge)
-      if (enableDebug == true) log.debug "Map after ignored keys removed: ${bridgeMap}"
+      if (logEnable == true) log.debug "Map after ignored keys removed: ${bridgeMap}"
    }
    String eventName, eventUnit, descriptionText
    def eventValue // could be String or number
@@ -241,7 +241,7 @@ void createEventsFromMap(Map bridgeCommandMap, Boolean isFromBridge = false, Set
       else {
          colorMode = "hs"
       }
-      if (enableDebug == true) log.debug "In XY mode but parsing as CT (colorMode = $colorMode)"
+      if (logEnable == true) log.debug "In XY mode but parsing as CT (colorMode = $colorMode)"
    }
    Boolean isOn = bridgeMap["on"]
    bridgeMap.each {
@@ -277,7 +277,7 @@ void createEventsFromMap(Map bridgeCommandMap, Boolean isFromBridge = false, Set
             eventUnit = "K"
             if (device.currentValue(eventName) != eventValue && eventValue != 0) {
                if (isFromBridge && colorMode == "hs") {
-                  if (enableDebug == true) log.debug "Skipping colorTemperature event creation because light not in ct mode"
+                  if (logEnable == true) log.debug "Skipping colorTemperature event creation because light not in ct mode"
                   break
                }
                doSendEvent(eventName, eventValue, eventUnit)
@@ -297,7 +297,7 @@ void createEventsFromMap(Map bridgeCommandMap, Boolean isFromBridge = false, Set
                doSendEvent(eventName, eventValue, eventUnit)
             }
             if (isFromBridge && colorMode != "hs") {
-                  if (enableDebug == true) log.debug "Skipping colorMode and color name event creation because light not in hs mode"
+                  if (logEnable == true) log.debug "Skipping colorMode and color name event creation because light not in hs mode"
                   break
             }
             setGenericName(eventValue)
@@ -352,7 +352,7 @@ void createEventsFromMap(Map bridgeCommandMap, Boolean isFromBridge = false, Set
  * received for device (as an alternative to polling)
  */
 void createEventsFromSSE(Map data) {
-   if (enableDebug == true) log.debug "createEventsFromSSE($data)"
+   if (logEnable == true) log.debug "createEventsFromSSE($data)"
    String eventName, eventUnit, descriptionText
    def eventValue // could be String or number
    Boolean hasCT = data.color_temperature?.mirek != null
@@ -374,17 +374,17 @@ void createEventsFromSSE(Map data) {
             break
          case "color": 
             if (!hasCT) {
-               if (enableDebug == true) log.debug "color received (presuming xy, no CT)"
+               if (logEnable == true) log.debug "color received (presuming xy, no CT)"
                // no point in doing this yet--but maybe if can convert XY/HS some day:
                //parent.refreshBridgeWithDealay()
             }
             else {
-               if (enableDebug == true) log.debug "color received but also have CT, so assume CT parsing"
+               if (logEnable == true) log.debug "color received but also have CT, so assume CT parsing"
             }
             break
          case "color_temperature":
             if (!hasCT) {
-               if (enableDebug == true) "ignoring color_temperature because mirek null"
+               if (logEnable == true) "ignoring color_temperature because mirek null"
                return
             }
             eventName = "colorTemperature"
@@ -401,7 +401,7 @@ void createEventsFromSSE(Map data) {
             if (state.id_v1 != value) state.id_v1 = value
             break
          default:
-            if (enableDebug == true) "not handling: $key: $value"
+            if (logEnable == true) "not handling: $key: $value"
       }
    }
 }
@@ -413,9 +413,9 @@ void createEventsFromSSE(Map data) {
  *        affected device attributes (e.g., will send an "on" event for "switch" if ["on": true] in map)
  */
 void sendBridgeCommand(Map commandMap, Boolean createHubEvents=true) {
-   if (enableDebug == true) log.debug "sendBridgeCommand($commandMap)"
+   if (logEnable == true) log.debug "sendBridgeCommand($commandMap)"
    if (commandMap == null || commandMap == [:]) {
-      if (enableDebug == true) log.debug "Commands not sent to Bridge because command map null or empty"
+      if (logEnable == true) log.debug "Commands not sent to Bridge because command map null or empty"
       return
    }
    Map<String,String> data = parent.getBridgeData()
@@ -427,7 +427,7 @@ void sendBridgeCommand(Map commandMap, Boolean createHubEvents=true) {
       timeout: 15
    ]
    asynchttpPut("parseSendCommandResponse", params, createHubEvents ? commandMap : null)
-   if (enableDebug == true) log.debug "-- Command sent to Bridge! --"
+   if (logEnable == true) log.debug "-- Command sent to Bridge! --"
 }
 
 /** 
@@ -437,15 +437,15 @@ void sendBridgeCommand(Map commandMap, Boolean createHubEvents=true) {
   * @param data Map of commands sent to Bridge if specified to create events from map
   */
 void parseSendCommandResponse(AsyncResponse resp, Map data) {
-   if (enableDebug == true) log.debug "Response from Bridge: ${resp.status}"
+   if (logEnable == true) log.debug "Response from Bridge: ${resp.status}"
    if (checkIfValidResponse(resp) && data) {
-      if (enableDebug == true) log.debug "  Bridge response valid; creating events from data map"
+      if (logEnable == true) log.debug "  Bridge response valid; creating events from data map"
       createEventsFromMap(data)
       if ((data.containsKey("on") || data.containsKey("bri")) && settings["updateGroups"]) {
          parent.updateGroupStatesFromBulb(data, getHueDeviceNumber())
       }
    }
    else {
-      if (enableDebug == true) log.debug "  Not creating events from map because not specified to do or Bridge response invalid"
+      if (logEnable == true) log.debug "  Not creating events from map because not specified to do or Bridge response invalid"
    }
 }

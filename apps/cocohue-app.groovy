@@ -183,7 +183,7 @@ void initialize() {
    }
 
    Integer disableTime = 1800
-   if (enableDebug) {
+   if (logEnable) {
       log.debug "Debug logging will be automatically disabled in ${debugAutoDisableMinutes} minutes"
       runIn(debugAutoDisableMinutes*60, "debugOff")
    }
@@ -200,7 +200,7 @@ void initialize() {
 }
 
 void scheduleRefresh() {
-   if (enableDebug) log.debug "scheduleRefresh()"
+   if (logEnable) log.debug "scheduleRefresh()"
    Integer pollInt = Integer.parseInt(settings["pollInterval"] ?: "0")
    // If change polling options in UI, may need to modify some of these cases:
    switch (pollInt) {
@@ -278,7 +278,7 @@ void periodicSendDiscovery(evt) {
 
 void debugOff() {
    log.warn "Disabling debug logging"
-   app.updateSetting("enableDebug", [value:"false", type:"bool"])
+   app.updateSetting("logEnable", [value:"false", type:"bool"])
 }
 
 def pageFirstPage() {
@@ -539,7 +539,7 @@ def pageManageBridge() {
                         defaultValue: 60
          input name: "boolCustomLabel", type: "bool", title: "Customize the name of this CoCoHue app instance", defaultValue: false, submitOnChange: true
          if (settings.boolCustomLabel) label title: "Custom name for this app", required: false
-         input name: "enableDebug", type: "bool", title: "Enable debug logging", defaultValue: true
+         input name: "logEnable", type: "bool", title: "Enable debug logging", defaultValue: true
       }
    }
 }
@@ -1601,5 +1601,5 @@ void appButtonHandler(btn) {
 }
 
 private void logDebug(str) {
-   if (!(settings.enableDebug == false)) log.debug(str)
+   if (!(settings.logEnable == false)) log.debug(str)
 }

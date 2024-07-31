@@ -64,8 +64,8 @@ metadata {
                    ["1000": "Refresh Bridge device in 1s"],
                    ["5000": "Refresh Bridge device in 5s"]],
          defaultValue: "none"
-      input name: "enableDebug", type: "bool", title: "Enable debug logging", defaultValue: true
-      input name: "enableDesc", type: "bool", title: "Enable descriptionText logging", defaultValue: true
+      input name: "logEnable", type: "bool", title: "Enable debug logging", defaultValue: true
+      input name: "txtEnable", type: "bool", title: "Enable descriptionText logging", defaultValue: true
    }
 }
 
@@ -83,7 +83,7 @@ void updated() {
 void initialize() {
    log.debug "initialize()"
    sendEvent(name: "numberOfButtons", value: 1)
-   if (enableDebug) {
+   if (logEnable) {
       log.debug "Debug logging will be automatically disabled in ${debugAutoDisableMinutes} minutes"
       runIn(debugAutoDisableMinutes*60, "debugOff")
    }
@@ -123,23 +123,23 @@ void on() {
    if (settings["onRefresh"] == "1000" || settings["onRefresh"] == "5000") {
       parent.runInMillis(settings["onRefresh"] as Integer, "refreshBridge")
    }
-   if (enableDebug) log.debug "Command sent to Bridge: $cmd"
+   if (logEnable) log.debug "Command sent to Bridge: $cmd"
 }
 
 void off() {
-   if (enableDebug) log.debug "off()"
+   if (logEnable) log.debug "off()"
    if (state.type == "GroupScene") {
-      if (enableDebug) log.debug "Scene is GroupScene; turning off group $state.group"
+      if (logEnable) log.debug "Scene is GroupScene; turning off group $state.group"
       List<String> dniParts = device.deviceNetworkId.split("/")
       String dni = "${dniParts[0]}/${dniParts[1]}/Group/${state.group}"
       com.hubitat.app.DeviceWrapper dev = parent.getChildDevice(dni)
       if (dev) {
-         if (enableDebug) log.debug "Hubitat device for group ${state.group} found; turning off"
+         if (logEnable) log.debug "Hubitat device for group ${state.group} found; turning off"
          dev.off()
          doSendEvent("switch", "off", null) // optimistic here; group device will catch if problem
       }
       else {
-         if (enableDebug) log.debug "Device not found; sending command directly to turn off Hue group"
+         if (logEnable) log.debug "Device not found; sending command directly to turn off Hue group"
          Map<String,String> data = parent.getBridgeData()
          Map cmd = ["on": false]
          Map params = [
@@ -150,21 +150,21 @@ void off() {
                timeout: 15
          ]
          asynchttpPut("parseSendCommandResponse", params, [attribute: 'switch', value: 'off'])
-         if (enableDebug) log.debug "Command sent to Bridge: $cmd"
+         if (logEnable) log.debug "Command sent to Bridge: $cmd"
       }
    } else if (state.type == "LightScene") {
       doSendEvent("switch", "off", null) // optimistic here (would be difficult to determine and aggregate individual light responses and should be rare anyway)
-      if (enableDebug) log.debug "Scene is LightScene; turning off lights $state.lights"
+      if (logEnable) log.debug "Scene is LightScene; turning off lights $state.lights"
       state.lights.each {
          List<String> dniParts = device.deviceNetworkId.split("/")
          String dni = "${dniParts[0]}/${dniParts[1]}/Light/${it}"
          com.hubitat.app.DeviceWrapper dev = parent.getChildDevice(dni)
          if (dev) {
-            if (enableDebug) log.debug "Hubitat device for light ${it} found; turning off"
+            if (logEnable) log.debug "Hubitat device for light ${it} found; turning off"
             dev.off()
          }
          else {
-            if (enableDebug) log.debug "Device not found; sending command directly to turn off Hue light"
+            if (logEnable) log.debug "Device not found; sending command directly to turn off Hue light"
             Map<String,String> data = parent.getBridgeData()
             Map cmd = ["on": false]
             Map params = [
@@ -175,7 +175,7 @@ void off() {
                timeout: 15
             ]
             asynchttpPut("parseSendCommandResponse", params)
-            if (enableDebug) log.debug "Command sent to Bridge: $cmd"
+            if (logEnable) log.debug "Command sent to Bridge: $cmd"
          }
       }
       if (settings["onRefresh"] == "1000" || settings["onRefresh"] == "5000") {
@@ -193,7 +193,7 @@ void off() {
  * received for device (as an alternative to polling)
  */
 void createEventsFromSSE(Map data) {
-   if (enableDebug == true) log.debug "createEventsFromSSE($data)"
+   if (logEnable == true) log.debug "createEventsFromSSE($data)"
    String eventName, eventUnit, descriptionText
    def eventValue // could be String or number
    Boolean hasCT = data.color_temperature?.mirek != null
@@ -210,7 +210,7 @@ void createEventsFromSSE(Map data) {
             if (state.id_v1 != value) state.id_v1 = value
             break
          default:
-            if (enableDebug == true) "not handling: $key: $value"
+            if (logEnable == true) "not handling: $key: $value"
       }
    }
 }
@@ -222,9 +222,9 @@ void createEventsFromSSE(Map data) {
   * @param data Map with keys 'attribute' and 'value' containing event data to send if successful (e.g., [attribute: 'switch', value: 'off'])
   */
 void parseSendCommandResponse(AsyncResponse resp, Map data) {
-   if (enableDebug) log.debug "Response from Bridge: ${resp.status}; data from app = $data"
+   if (logEnable) log.debug "Response from Bridge: ${resp.status}; data from app = $data"
    if (checkIfValidResponse(resp) && data?.attribute != null && data?.value != null) {
-      if (enableDebug) log.debug "  Bridge response valid; running creating events"
+      if (logEnable) log.debug "  Bridge response valid; running creating events"
       if (device.currentValue(data.attribute) != data.value) doSendEvent(data.attribute, data.value)   
       if (data.attribute == "switch" && data.value == "on") {
          if (settings["onPropagation"] == "groupScenesOff") {
@@ -237,24 +237,24 @@ void parseSendCommandResponse(AsyncResponse resp, Map data) {
             runIn(5, autoOffHandler)
          }
          else {
-            if (enableDebug) log.debug "No scene onPropagation configured; leaving other scene states as-is"
+            if (logEnable) log.debug "No scene onPropagation configured; leaving other scene states as-is"
          }
       }
    }
    else {
-      if (enableDebug) log.debug "  Not creating events from map because not specified to do or Bridge response invalid"
+      if (logEnable) log.debug "  Not creating events from map because not specified to do or Bridge response invalid"
    }
 }
 
 void push(Number btnNum) {
-   if (enableDebug) log.debug "push($btnNum)"
+   if (logEnable) log.debug "push($btnNum)"
    on()
    doSendEvent("pushed", 1, null, true)
 }
 
 /** Gets data about scene from Bridge; does not update bulb/group status */
 void refresh() {
-   if (enableDebug) log.debug "refresh()"
+   if (logEnable) log.debug "refresh()"
    Map<String,String> data = parent.getBridgeData()
    Map sceneParams = [
       uri: data.fullHost,
@@ -269,7 +269,7 @@ void refresh() {
  * Parses data returned when getting scene data from Bridge
  */
 void parseSceneAttributeResponse(resp, data) {
-   if (enableDebug) log.debug "parseSceneAttributeResponse response from Bridge: $resp.status"
+   if (logEnable) log.debug "parseSceneAttributeResponse response from Bridge: $resp.status"
    Map sceneAttributes
    try {
       sceneAttributes = resp.json
@@ -301,7 +301,7 @@ void parseSceneAttributeResponse(resp, data) {
  * approximately warm white and off.
  */
 private void setDefaultAttributeValues() {
-   if (enableDebug) log.debug "Setting scene device states to sensibile default values..."
+   if (logEnable) log.debug "Setting scene device states to sensibile default values..."
    event = sendEvent(name: "switch", value: "off", isStateChange: false)
    event = sendEvent(name: "pushed", value: 1, isStateChange: false)
 }

@@ -66,8 +66,8 @@ metadata {
    }
    
    preferences() {
-      input name: "enableDebug", type: "bool", title: "Enable debug logging", defaultValue: true
-      input name: "enableDesc", type: "bool", title: "Enable descriptionText logging", defaultValue: true
+      input name: "logEnable", type: "bool", title: "Enable debug logging", defaultValue: true
+      input name: "txtEnable", type: "bool", title: "Enable descriptionText logging", defaultValue: true
    }   
 }
 
@@ -83,7 +83,7 @@ void updated() {
 
 void initialize() {
    log.debug "initialize()"
-   if (enableDebug) {
+   if (logEnable) {
       log.debug "Debug logging will be automatically disabled in ${debugAutoDisableMinutes} minutes"
       runIn(debugAutoDisableMinutes*60, "debugOff")
    }
@@ -91,12 +91,12 @@ void initialize() {
 }
 
 void connectEventStream() {
-   if (enableDebug) log.debug "connectEventStream()"
+   if (logEnable) log.debug "connectEventStream()"
    if (parent.getEventStremEnabledSetting() != true) {
       log.warn "CoCoHue app is configured not to use EventStream. To reliably use this interface, it is recommended to enable this option in the app."
    }
    Map<String,String> data = parent.getBridgeData()
-   if (enableDebug) {
+   if (logEnable) {
       log.debug "Connecting to event stream at 'https://${data.ip}/eventstream/clip/v2' with key '${data.username}'"
    }
    interfaces.eventStream.close()
@@ -111,12 +111,12 @@ void connectEventStream() {
 }
 
 void reconnectEventStream(Boolean notIfAlreadyConnected = true) {
-   if (enableDebug) log.debug "reconnectEventStream(notIfAlreadyConnected=$notIfAlreadyConnected)"
+   if (logEnable) log.debug "reconnectEventStream(notIfAlreadyConnected=$notIfAlreadyConnected)"
    if (device.currentValue("eventStreamStatus") == "connected" && notIfAlreadyConnected) {
-      if (enableDebug) log.debug "already connected; skipping reconnection"
+      if (logEnable) log.debug "already connected; skipping reconnection"
    }   
    else if (parent.getEventStremEnabledSetting() != true) {
-      if (enableDebug) log.debug "skipping reconnection because (parent) app configured not to use EventStream"
+      if (logEnable) log.debug "skipping reconnection because (parent) app configured not to use EventStream"
    }
    else {
       connectEventStream()
@@ -128,7 +128,7 @@ void disconnectEventStream() {
 }
 
 void eventStreamStatus(String message) {
-   if (enableDebug) log.debug "eventStreamStatus: $message"
+   if (logEnable) log.debug "eventStreamStatus: $message"
    if (message.startsWith("START:")) {
       setEventStreamStatusToConnected()
    }
@@ -136,7 +136,7 @@ void eventStreamStatus(String message) {
       runIn(eventStreamDisconnectGracePeriod, "setEventStreamStatusToDisconnected")
    }
    else {
-      if (enableDebug) log.debug "Unhandled eventStreamStatus message: $message"
+      if (logEnable) log.debug "Unhandled eventStreamStatus message: $message"
    }
 }
 
@@ -159,13 +159,13 @@ private void setEventStreamStatusToDisconnected() {
    else {
       state.connectionRetryTime = 5
    }
-   if (enableDebug) log.debug "Reconnecting SSE in ${state.connectionRetryTime}"
+   if (logEnable) log.debug "Reconnecting SSE in ${state.connectionRetryTime}"
    runIn(state.connectionRetryTime, "reconnectEventStream")
 }
 
 // For EventStream:
 void parse(String description) {
-   if (enableDebug) log.debug "parse: $description"
+   if (logEnable) log.debug "parse: $description"
    List<String> messages = description.split("\n\n")
    setEventStreamStatusToConnected() // should help avoid spurious disconnect messages?
    messages.each { String message -> 
@@ -176,7 +176,7 @@ void parse(String description) {
             sbData << line.substring(6)
          }
          else {
-            if (enableDebug) log.debug "ignoring line: $line"
+            if (logEnable) log.debug "ignoring line: $line"
          }
       }
       if (sbData) {
@@ -222,24 +222,24 @@ void parse(String description) {
                            }
                            break
                         default:
-                           if (enableDebug) log.debug "skipping Hue v1 ID: $fullId"
+                           if (logEnable) log.debug "skipping Hue v1 ID: $fullId"
                      }
                   }
                }
             }
             else {
-               if (enableDebug) log.debug "skip: $dataEntryMap"
+               if (logEnable) log.debug "skip: $dataEntryMap"
             }
          }
       }
       else {
-         if (enableDebug) log.trace "no data parsed from message: $message"
+         if (logEnable) log.trace "no data parsed from message: $message"
       }
    }
 }
 
 void refresh() {
-   if (enableDebug) log.debug "refresh()"
+   if (logEnable) log.debug "refresh()"
    Map<String,String> data = parent.getBridgeData()
    Map params = [
       uri: data.fullHost,
@@ -255,7 +255,7 @@ void refresh() {
 }
 
 void scheduleRefresh() {
-   if (enableDebug) log.debug "scheduleRefresh()"
+   if (logEnable) log.debug "scheduleRefresh()"
    
 }
 
@@ -265,7 +265,7 @@ void scheduleRefresh() {
  *  methods below.
  */
 private void parseStates(AsyncResponse resp, Map data) { 
-   if (enableDebug) log.debug "parseStates: States from Bridge received. Now parsing..."
+   if (logEnable) log.debug "parseStates: States from Bridge received. Now parsing..."
    if (checkIfValidResponse(resp)) {
       parseLightStates(resp.json.lights)
       parseGroupStates(resp.json.groups)
@@ -275,7 +275,7 @@ private void parseStates(AsyncResponse resp, Map data) {
 }
 
 private void parseLightStates(Map lightsJson) {
-   if (enableDebug) log.debug "Parsing light states from Bridge..."
+   if (logEnable) log.debug "Parsing light states from Bridge..."
    // Uncomment this line if asked to for debugging (or you're curious):
    //log.debug "lightsJson = $lightsJson"
    try {
@@ -293,7 +293,7 @@ private void parseLightStates(Map lightsJson) {
 }
 
 private void parseGroupStates(Map groupsJson) {
-   if (enableDebug) log.debug "Parsing group states from Bridge..."
+   if (logEnable) log.debug "Parsing group states from Bridge..."
    // Uncomment this line if asked to for debugging (or you're curious):
    //log.debug "groupsJson = $groupsJson"
    try {
@@ -318,7 +318,7 @@ private void parseGroupStates(Map groupsJson) {
 }
 
 private void parseSensorStates(Map sensorsJson) {
-   if (enableDebug) log.debug "Parsing sensor states from Bridge..."
+   if (logEnable) log.debug "Parsing sensor states from Bridge..."
    // Uncomment this line if asked to for debugging (or you're curious):
    // log.trace "sensorsJson = ${groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(sensorsJson))}"
    try {
@@ -350,7 +350,7 @@ private void parseSensorStates(Map sensorsJson) {
  *  during bulb discovery in app.
  */
 void getAllBulbs() {
-   if (enableDebug) log.debug "Getting bulb list from Bridge..."
+   if (logEnable) log.debug "Getting bulb list from Bridge..."
    //clearBulbsCache()
    Map<String,String> data = parent.getBridgeData()
    Map params = [
@@ -363,7 +363,7 @@ void getAllBulbs() {
 }
 
 private void parseGetAllBulbsResponse(resp, data) {
-   if (enableDebug) log.debug "Parsing in parseGetAllBulbsResponse"
+   if (logEnable) log.debug "Parsing in parseGetAllBulbsResponse"
    if (checkIfValidResponse(resp)) {
       try {
          Map bulbs = [:]
@@ -371,7 +371,7 @@ private void parseGetAllBulbsResponse(resp, data) {
             bulbs[key] = [name: val.name, type: val.type]
          }
          state.allBulbs = bulbs
-         if (enableDebug) log.debug "  All bulbs received from Bridge: $bulbs"
+         if (logEnable) log.debug "  All bulbs received from Bridge: $bulbs"
       }
       catch (Exception ex) {
          log.error "Error parsing all bulbs response: $ex"
@@ -390,7 +390,7 @@ Map getAllBulbsCache() {
  * not working with old data
  */
 void clearBulbsCache() {
-   if (enableDebug) log.debug "Running clearBulbsCache..."
+   if (logEnable) log.debug "Running clearBulbsCache..."
    state.remove('allBulbs')
 }
 
@@ -401,7 +401,7 @@ void clearBulbsCache() {
  *  during bulb discovery in app.
  */
 void getAllGroups() {
-   if (enableDebug) log.debug "Getting group list from Bridge..."
+   if (logEnable) log.debug "Getting group list from Bridge..."
    //clearGroupsCache()
    Map<String,String> data = parent.getBridgeData()
    Map params = [
@@ -414,7 +414,7 @@ void getAllGroups() {
 }
 
 private void parseGetAllGroupsResponse(resp, data) {
-   if (enableDebug) log.debug "Parsing in parseGetAllGroupsResponse"
+   if (logEnable) log.debug "Parsing in parseGetAllGroupsResponse"
    if (checkIfValidResponse(resp)) {
       try {
          Map groups = [:]
@@ -423,7 +423,7 @@ private void parseGetAllGroupsResponse(resp, data) {
          }
          groups[0] = [name: "All Hue Lights", type:  "LightGroup"] // add "all Hue lights" group, ID 0
          state.allGroups = groups
-         if (enableDebug) log.debug "  All groups received from Bridge: $groups"
+         if (logEnable) log.debug "  All groups received from Bridge: $groups"
       }
       catch (Exception ex) {
          log.error "Error parsing all groups response: $ex"
@@ -442,7 +442,7 @@ Map getAllGroupsCache() {
  * not working with old data
  */
 void clearGroupsCache() {
-    if (enableDebug) log.debug "Running clearGroupsCache..."
+    if (logEnable) log.debug "Running clearGroupsCache..."
     state.remove('allGroups')
 }
 
@@ -453,7 +453,7 @@ void clearGroupsCache() {
  *  during bulb discovery in app.
  */
 void getAllScenes() {
-   if (enableDebug) log.debug "Getting scene list from Bridge..."
+   if (logEnable) log.debug "Getting scene list from Bridge..."
    getAllGroups() // so can get room names, etc.
    //clearScenesCache()
    Map<String,String> data = parent.getBridgeData()
@@ -467,7 +467,7 @@ void getAllScenes() {
 }
 
 private void parseGetAllScenesResponse(resp, data) {
-   if (enableDebug) log.debug "Parsing all scenes response..."
+   if (logEnable) log.debug "Parsing all scenes response..."
    if (checkIfValidResponse(resp)) {
       try {
          Map scenes = [:]
@@ -476,7 +476,7 @@ private void parseGetAllScenesResponse(resp, data) {
             if (val.group) scenes[key] << ["group": val.group]
          }
          state.allScenes = scenes
-         if (enableDebug) log.debug "  All scenes received from Bridge: $scenes"
+         if (logEnable) log.debug "  All scenes received from Bridge: $scenes"
       }
       catch (Exception ex) {
          log.error "Error parsing all scenes response: ${ex}"   
@@ -495,7 +495,7 @@ Map getAllScenesCache() {
  * not working with old data
  */
 void clearScenesCache() {
-   if (enableDebug) log.debug "Running clearScenesCache..."
+   if (logEnable) log.debug "Running clearScenesCache..."
    state.remove('allScenes')
 }
 
@@ -506,7 +506,7 @@ void clearScenesCache() {
  *  Motion sensors.) Intended to be called during sensor discovery in app.
  */
 void getAllSensors() {
-   if (enableDebug) log.debug "Getting sensor list from Bridge..."
+   if (logEnable) log.debug "Getting sensor list from Bridge..."
    Map<String,String> data = parent.getBridgeData()
    Map params = [
       uri: data.fullHost,
@@ -518,7 +518,7 @@ void getAllSensors() {
 }
 
 private void parseGetAllSensorsResponse(resp, data) {
-   if (enableDebug) log.debug "Parsing all sensors response..."
+   if (logEnable) log.debug "Parsing all sensors response..."
    if (checkIfValidResponse(resp)) {
       try {
          Map allSensors = [:]
@@ -546,7 +546,7 @@ private void parseGetAllSensorsResponse(resp, data) {
             if (value.ids?.size >= 3) hueMotionSensors << [(key): value]
          }
          state.allSensors = hueMotionSensors
-         if (enableDebug) log.debug "  All sensors received from Bridge: $hueMotionSensors"
+         if (logEnable) log.debug "  All sensors received from Bridge: $hueMotionSensors"
       }
       catch (Exception ex) {
          log.error "Error parsing all sensors response: ${ex}"   
@@ -565,7 +565,7 @@ Map<String,Map> getAllSensorsCache() {
  * not working with old data
  */
 void clearSensorsCache() {
-   if (enableDebug) log.debug "Running clearSensorsCache..."
+   if (logEnable) log.debug "Running clearSensorsCache..."
    state.remove('allSensors')
 }
 
@@ -576,7 +576,7 @@ void clearSensorsCache() {
  *  during buttoon discovery in app.
  */
 void getAllButtons() {
-   if (enableDebug) log.debug "Getting button list from Bridge..."
+   if (logEnable) log.debug "Getting button list from Bridge..."
    //clearButtonsCache()
    Map<String,String> data = parent.getBridgeData()
    Map params = [
@@ -591,7 +591,7 @@ void getAllButtons() {
 }
 
 private void parseGetAllButtonsResponse(resp, data) {
-   if (enableDebug) log.debug "Parsing in parseGetAllButtonsResponse"
+   if (logEnable) log.debug "Parsing in parseGetAllButtonsResponse"
    if (checkIfValidResponse(resp)) {
       try {
          Map buttons = [:]
@@ -654,7 +654,7 @@ private void parseGetAllButtonsResponse(resp, data) {
          }
          state.allButtons = buttons
          state.allRelativeRotaries = relativeRotaries
-         if (enableDebug) log.debug "  All buttons received from Bridge: $buttons"
+         if (logEnable) log.debug "  All buttons received from Bridge: $buttons"
       }
       catch (Exception ex) {
          log.error "Error parsing all buttons response: $ex"
@@ -673,7 +673,7 @@ Map getAllButtonsCache() {
  * not working with old data
  */
 void clearButtonsCache() {
-   if (enableDebug) log.debug "Running clearButtonsCache..."
+   if (logEnable) log.debug "Running clearButtonsCache..."
    state.remove('allButtons')
 }
 
@@ -682,7 +682,7 @@ void clearButtonsCache() {
 /** Requests list of all Hue Bridge state; callback will parse resourcelinks and sensors
  */
 void getAllLabsDevices() {
-   if (enableDebug) log.debug "Getting resourcelink list from Bridge..."
+   if (logEnable) log.debug "Getting resourcelink list from Bridge..."
    Map<String,String> data = parent.getBridgeData()
    Map params = [
       uri: data.fullHost,
@@ -694,7 +694,7 @@ void getAllLabsDevices() {
 }
 
 private void parseGetAllLabsDevicesResponse(resp, data) {
-   if (enableDebug) log.debug "Parsing all Labs devices response..."
+   if (logEnable) log.debug "Parsing all Labs devices response..."
    if (checkIfValidResponse(resp)) {
       try {
          Map names = [:]
@@ -717,7 +717,7 @@ private void parseGetAllLabsDevicesResponse(resp, data) {
       catch (Exception ex) {
          log.error "Error parsing all Labs sensors response: ${ex}"   
       }
-      if (enableDebug) log.debug "  All Labs sensors received from Bridge: $activatorSensors"
+      if (logEnable) log.debug "  All Labs sensors received from Bridge: $activatorSensors"
    }
 }
 
@@ -725,7 +725,7 @@ private void parseGetAllLabsDevicesResponse(resp, data) {
  *  devices when Bridge refreshed
  */
 private void parseLabsSensorStates(sensorJson) {
-   if (enableDebug) log.debug "Parsing Labs sensor states..."
+   if (logEnable) log.debug "Parsing Labs sensor states..."
    // Uncomment this line if asked to for debugging (or you're curious):
    //log.debug "sensorJson = $sensorJson"
    try {
@@ -753,6 +753,6 @@ Map getAllLabsSensorsCache() {
  * not working with old data
  */
 void clearLabsSensorsCache() {
-   if (enableDebug) log.debug "Running clearLabsSensorsCache..."
+   if (logEnable) log.debug "Running clearLabsSensorsCache..."
    state.remove("labsSensors")
 }
