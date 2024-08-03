@@ -21,9 +21,10 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2024-07-28
- * 
+ *  Last modified: 2024-07-30
+
  *  Changelog:
+ *  v5.0   - Use API v2 by default, remove deprecated features
  *  v4.1.9 - Add note that Hue Labs features are now deprecated
  *  v4.1.2 - Additional button enhancements (relative_rotary -- Hue Tap Dial, etc.)
  *  v4.1   - Add support for button devices (with v2 API only)
@@ -128,6 +129,7 @@ void updated() {
             d.setDeviceNetworkId(newDNI)
          }
       }
+    // Upgrade pre-CoCoHue-5.0 DNIs to match new DNI format i
    }
    // Upgrade pre-CoCoHue-4.0 motion sensor DNIs to match new DNI format (Hue IDs, separated by pipe character; not IEEE/MAC)
    if (getChildDevices().any { DeviceWrapper dev ->
@@ -182,7 +184,6 @@ void initialize() {
       unschedule("periodicSendDiscovery")
    }
 
-   Integer disableTime = 1800
    if (logEnable) {
       log.debug "Debug logging will be automatically disabled in ${debugAutoDisableMinutes} minutes"
       runIn(debugAutoDisableMinutes*60, "debugOff")
@@ -432,8 +433,10 @@ def pageLinkBridge() {
                if (!state.bridgeLinked) {
                   log.debug "Bridge authorized. Requesting information from Bridge and creating Hue Bridge device on Hubitat..."
                   paragraph "Bridge authorized. Requesting information from Bridge and creating Hue Bridge device on Hubitat..."
-                  if (settings["useSSDP"]) sendBridgeInfoRequest(true)
-                  else sendBridgeInfoRequest(true, null, settings["bridgeIP"] ?: state.ipAddress, settings["customPort"] as Integer ?: 80)
+                  //if (settings["useSSDP"]) sendBridgeInfoRequestOLD(true)
+                  //else sendBridgeInfoRequestOLD(true, null, settings["bridgeIP"] ?: state.ipAddress, settings["customPort"] as Integer ?: 80)
+                  if (settings["useSSDP"]) sendBridgeInfoRequest()
+                  else sendBridgeInfoRequest(ip: settings.bridgeIP ?: state.ipAddress, port: settings.customPort as Integer ?: null)
                }
                else {
                   logDebug("Bridge already linked; skipping Bridge device creation")
@@ -441,11 +444,11 @@ def pageLinkBridge() {
                      state.remove('discoveredBridges')
                      state.remove('authRefreshInterval')
                      //app.clearSetting('selectedDiscoveredBridge')
-                     paragraph("<b>Your Hue Bridge has been linked!</b> Press \"Next\" to begin adding lights, groups, " +
-                                 "or scenes.")
+                     paragraph "<b>Your Hue Bridge has been linked!</b> Press \"Next\" to begin adding lights " +
+                                 "and other devices from the Hue Bridge to your hub."
                   }
                   else {
-                     paragraph("There was a problem authorizing or linking your Hue Bridge. Please start over and try again.")
+                     paragraph "There was a problem authorizing or linking your Hue Bridge. Please start over and try again."
                   }
                }
          }
@@ -1241,12 +1244,12 @@ void sendUsernameRequest(String protocol="http", Integer port=null) {
 }
 
 
-/** Callback for sendUsernameRequest. Saves username in app state if Bridge is
- * successfully authorized, or logs error if unable to do so.
+/** Callback for sendUsernameRequest. Saves username (API key) in app state if Bridge
+ *  is successfully authorized, or logs error if unable to do so.
  */
 void parseUsernameResponse(resp, data) {
    def body = resp.json
-   logDebug "Attempting to request Hue Bridge username; result = ${body}"
+   logDebug "Attempting to request Hue Bridge API key/username; result = ${body}"
    if (body.success != null) {
       if (body.success[0] != null) {
          if (body.success[0].username) {
@@ -1261,21 +1264,139 @@ void parseUsernameResponse(resp, data) {
          log.warn "  Error from Bridge: ${body.error}"
       }
       else {
-         log.error "  Unknown error attempting to authorize Hue Bridge username"
+         log.error "  Unknown error attempting to authorize Hue Bridge API key"
       }
    }
 }
 
-/** Requests Bridge info (/description.xml by default) to verify that device is a
+/** Requests Bridge info from /api/0/config endpoint) to verify that device is a
  *  Hue Bridge and to retrieve information necessary to either create the Bridge device
  *  (when parsed in parseBridgeInfoResponse if createBridge == true) or to add to the list
  *  of discovered Bridge devices (when createBridge == false). protocol, ip, and port are optional
  *  and will default to getBridgeData() values if not specified
- *  // TODO: When move away from SSDP, check /api/config endpoint instead (check also swversion for v2 API availability)
+ *  @param options Possible values: createBridge (default true), protocol (default "https"), ip, port, haveAttemptedV1 (default false)
  */
-void sendBridgeInfoRequest(Boolean createBridge=true, String protocol="http", String ip = null, Integer port=null,
+void sendBridgeInfoRequest(Map options) {
+//void sendBridgeInfoRequest(Boolean createBridge=true, String protocol="https", String ip = null, Integer port=null) {
+   logDebug "sendBridgeInfoRequest()"
+   String fullHost
+   if (options.port) {
+      fullHost = "${options.protocol ?: 'https'}://${options.ip ?: state.ipAddress}:${options.port}"
+   }  
+   else {
+      fullHost = "${options.protocol ?: 'https'}://${options.ip ?: state.ipAddress}" 
+   }
+   Map params = [
+      uri: fullHost,
+      path: "/api/0/config",  // does not require authentication (API key/username)
+      contentType: "text/xml",
+      ignoreSSLIssues: true,
+      timeout: 15
+   ]
+   asynchttpGet("parseBridgeInfoResponse", params, options)
+}
+
+// Example response:
+/*
+{
+   "name": "Smartbridge 1",
+   "swversion": "1947054040",
+   "apiversion": "1.46.0",
+   "mac": "00:17:88:25:b8:f8",
+   "bridgeid": "001788FFFE25B8F8",
+   "factorynew": false,
+   "replacesbridgeid": null,
+   "modelid": "BSB002",
+}
+*/
+/** Parses response from GET of /api/0/config endpoint on the Bridge;
+ *  verifies that device is a Hue Bridge (modelName contains "Philips Hue Bridge")
+ * and obtains MAC address for use in creating Bridge DNI and device name
+ */
+private void parseBridgeInfoResponse(resp, Map data) {
+   logDebug "parseBridgeInfoResponse(resp?.data = ${resp?.data}, data = $data)"
+   Map body
+   try {
+      body = resp.json
+   }
+   catch (Exception ex) {
+      logDebug "  Responding device likely not a Hue Bridge: $ex"
+      if (!(data.haveAttemptedV1)) {
+         // try again with V1 API in case is V1 Bridge or old firmware on V2:
+         logDebug "  Retrying with V1 API"
+         data.haveAttemptedV1 = true
+         sendBridgeInfoRequest(data)
+      }
+   }
+   String friendlyBridgeName = body.name ?: "Unknown Bridge"
+   String bridgeMAC = body.mac.replaceAll(':', '').toUpperCase()
+   // Not using "full" bridge ID for this to retain V1 compatibility, but could(?):
+   String bridgeID = bridgeMAC.drop(6)   // last (12-6=) 6 of MAC serial
+   DeviceWrapper bridgeDevice
+
+   if (data?.createBridge) {
+      logDebug "    Attempting to create Hue Bridge device for $bridgeMAC"
+      if (!bridgeMAC) {
+         log.error "    Unable to retrieve MAC address for Bridge. Exiting before creation attempt."
+         return
+      }
+      state.bridgeID = bridgeID
+      state.bridgeMAC = bridgeMAC
+      try {
+         bridgeDevice = getChildDevice("CCH/${app.getId()}") ?: getChildDevice("CCH/${state.bridgeID}")
+         if (!bridgeDevice) bridgeDevice = addChildDevice(childNamespace, "CoCoHue Bridge", "CCH/${app.getId()}", null,
+                              [label: """CoCoHue Bridge ${state.bridgeID}${friendlyBridgeName ? " ($friendlyBridgeName)" : ""}""", name: "CoCoHue Bridge"])
+         if (!bridgeDevice) {
+            log.error "    Bridge device unable to be created or found. Check that driver is installed and no existing device exists for this Bridge." 
+         }
+         else {
+            state.bridgeLinked = true
+         }
+         if (!(settings.boolCustomLabel)) {
+            app.updateLabel("""CoCoHue - Hue Bridge Integration (${state.bridgeID}${friendlyBridgeName ? " - $friendlyBridgeName)" : ")"}""")
+         }
+      }
+      catch (IllegalArgumentException e) { // could be bad DNI if already exists
+         log.error "   Error creating Bridge device. IllegalArgumentException: $e"
+      }
+      catch (Exception e) {
+         log.error "    Error creating Bridge device: $e"
+      }
+   }
+   else { // createBridge = false, so either in discovery (so add to list instead) or received as part of regular app operation (so check if IP address changed if using Bridge discovery)
+      if (!(state.bridgeLinked)) { // so in discovery
+         logDebug "  Adding Bridge with MAC $bridgeMAC ($friendlyBridgeName) to list of discovered Bridges"
+         if (!state.discoveredBridges) state.discoveredBridges = []
+         if (!(state.discoveredBridges.any { it.containsKey(data?.ip) } )) {
+            state.discoveredBridges.add([(data.ip): "${friendlyBridgeName} - ${bridgeMAC}"])
+         }
+      }
+      else { // Bridge already added, so likely added with discovery; check if IP changed
+         logDebug "  Bridge already added; seaching if Bridge matches MAC $bridgeMAC"
+         if (bridgeMAC == state.bridgeMAC && bridgeMAC != null) { // found a match for this Bridge, so update IP:
+            if (data.ip && settings.useSSDP) {
+               state.ipAddress = data.ip
+               logDebug "  Bridge MAC matched. Setting IP as ${state.ipAddress}"
+            }
+            state.remove("failedDiscos")
+         }
+         else {
+            state.failedDiscos= state.failedDiscos ? state.failedDiscos += 1 : 1
+            logDebug "  No matching Bridge MAC found for ${state.bridgeMAC}. failedDiscos = ${state.failedDiscos}"
+         }
+      }
+   }
+}
+
+/** For SSDP: equests Bridge info (/description.xml by default) to verify that device is a
+ *  Hue Bridge and to retrieve information necessary to either create the Bridge device
+ *  (when parsed in parseBridgeDescResponseOld if createBridge == true) or to add to the list
+ *  of discovered Bridge devices (when createBridge == false). protocol, ip, and port are optional
+ *  and will default to getBridgeData() values if not specified
+ */
+void sendBridgeInfoRequestOLD(Boolean createBridge=true, String protocol="http", String ip = null, Integer port=null,
                            String ssdpPath="/description.xml") {
-   logDebug "Sending request for Bridge information"
+   logDebug "sendBridgeInfoRequestOLD()"
    String fullHost = ip ? """${protocol ?: "http"}://${ip}${port ? ":$port" : ''}""" : getBridgeData().fullHost
    Map params = [
       uri: fullHost,
@@ -1283,7 +1404,7 @@ void sendBridgeInfoRequest(Boolean createBridge=true, String protocol="http", St
       contentType: 'text/xml',
       timeout: 15
    ]
-   asynchttpGet("parseBridgeInfoResponse", params, [createBridge: createBridge, protocol: protocol ?: "http",
+   asynchttpGet("parseBridgeDescResponseOld", params, [createBridge: createBridge, protocol: protocol ?: "http",
                                                     port: port, ip: (ip ?: state.ipAddress)])
 }
 
@@ -1291,8 +1412,8 @@ void sendBridgeInfoRequest(Boolean createBridge=true, String protocol="http", St
  *  verifies that device is a Hue Bridge (modelName contains "Philips Hue Bridge")
  * and obtains MAC address for use in creating Bridge DNI and device name
  */
-private void parseBridgeInfoResponse(resp, data) {
-   logDebug("Parsing response from Bridge information request (resp = $resp, data = $data)")
+private void parseBridgeDescResponseOld(resp, data) {
+   logDebug("parseBridgeDescResponseOld (resp = $resp, data = $data)")
    groovy.util.slurpersupport.GPathResult body
    try {
       body = resp.xml
@@ -1373,13 +1494,15 @@ private void parseBridgeInfoResponse(resp, data) {
 
 /** Handles response from SSDP (sent to discover Bridge) */
 void ssdpHandler(evt) {
+   
    Map parsedMap = parseLanMessage(evt?.description)
    if (parsedMap) {
       String ip = "${convertHexToIP(parsedMap?.networkAddress)}"
       String ssdpPath = parsedMap.ssdpPath
       if (ip) {
          logDebug "Device at $ip responded to SSDP; sending info request to see if is Hue Bridge"
-         sendBridgeInfoRequest(false, "http", ip, null, ssdpPath ?: "/description.xml")
+         //sendBridgeInfoRequestOLD(false, "http", ip, null, ssdpPath ?: "/description.xml")
+         sendBridgeInfoRequest(ip: ip)
       }
       else {
          logDebug "In ssdpHandler but unable to obtain IP address from device response: $parsedMap"
