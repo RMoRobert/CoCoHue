@@ -14,9 +14,10 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2024-07-29
- * 
+ *  Last modified: 2024-08-07
+ *
  *  Changelog:
+ *  v5.0   - Use API v2 by default, remove deprecated features
  *  v4.2    - Library updates, prep for more v2 API
  *  v4.1.4  - Improved error handling, fix missing battery for motion sensors
  *  v4.0    - Add SSE support for push
@@ -93,9 +94,9 @@ String getHueDeviceMAC() {
  * to parse/update sensor state on Hubitat based on data received from Bridge
  * @param bridgeCmd Map of sensor states from Bridge (for lights, this could be either a command to or response from)
  */
-void createEventsFromMap(Map bridgeCmd) {
+void createEventsFromMapV1(Map bridgeCmd) {
    if (!bridgeCmd) {
-      if (logEnable) log.debug "createEventsFromMap called but map empty; exiting"
+      if (logEnable) log.debug "createEventsFromMapV1 called but map empty; exiting"
       return
    }
    if (logEnable) log.debug "Preparing to create events from map: ${bridgeCmd}"
@@ -142,8 +143,8 @@ void createEventsFromMap(Map bridgeCmd) {
  * a sendEvent for each relevant attribute; intended to be called when EventSocket data
  * received for device (as an alternative to polling)
  */
-void createEventsFromSSE(Map data) {
-   if (logEnable == true) log.debug "createEventsFromSSE($data)"
+void createEventsFromMapV2(Map data) {
+   if (logEnable == true) log.debug "createEventsFromMapV2($data)"
    String eventName, eventUnit, descriptionText
    def eventValue // could be String or number
    data.each { String key, value ->

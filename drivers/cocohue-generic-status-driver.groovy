@@ -129,9 +129,9 @@ void push(btnNum) {
  * this isn't supported for sensors, so this driver's methods are a bit different)
  * @param stateMap Map of JSON device state as received from Bridge
  */
-void createEventsFromMap(Map stateMap) {
+void createEventsFromMapV1(Map stateMap) {
    if (!stateMap) {
-      if (logEnable) log.debug "createEventsFromMap called but state map empty; exiting"
+      if (logEnable) log.debug "createEventsFromMapV1 called but state map empty; exiting"
       return
    }
    if (logEnable) log.debug "Preparing to create events from map: ${stateMap}"
@@ -186,7 +186,7 @@ void parseSendCommandResponse(AsyncResponse resp, Map data) {
    if (logEnable) log.debug "Response from Bridge: ${resp.status}"
    if (checkIfValidResponse(resp) && data) {
       if (logEnable) log.debug "  Bridge response valid; creating events from data map"
-      createEventsFromMap(data)
+      createEventsFromMapV1(data)
    }
    else {
       if (logEnable) log.debug "  Not creating events from map because not specified to do or Bridge response invalid"

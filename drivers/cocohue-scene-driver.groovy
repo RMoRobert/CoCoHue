@@ -14,9 +14,10 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2024-07-28
- * 
+ *  Last modified: 2024-07-30
+ *
  *  Changelog:
+ *  v5.0   - Use API v2 by default, remove deprecated features
  *  v4.2    - Add support for parsing on/off events from v2 API state; library improvements; prep for mre v2 API use
  *  v4.1.5  - Fix typos
  *  v4.1.4  - Improved error handling, fix missing battery for motion sensors
@@ -192,8 +193,8 @@ void off() {
  * a sendEvent for each relevant attribute; intended to be called when EventSocket data
  * received for device (as an alternative to polling)
  */
-void createEventsFromSSE(Map data) {
-   if (logEnable == true) log.debug "createEventsFromSSE($data)"
+void createEventsFromMapV2(Map data) {
+   if (logEnable == true) log.debug "createEventsFromMapV2($data)"
    String eventName, eventUnit, descriptionText
    def eventValue // could be String or number
    Boolean hasCT = data.color_temperature?.mirek != null

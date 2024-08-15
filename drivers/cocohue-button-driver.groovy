@@ -13,10 +13,11 @@
  *  for the specific language governing permissions and limitations under the License.
  *
  * =======================================================================================
-
- *  Last modified: 2024-07-29
- * 
+ *
+ *  Last modified: 2024-07-30
+ *
  *  Changelog:
+ *  v5.0   - Use API v2 by default, remove deprecated features
  *  v4.2    -  Library updates, prep for more v2 API
  *  v4.1.5   - Improve button command compatibility
  *  v4.1.4   - Improved HTTP error handling
@@ -125,8 +126,8 @@ void release(btnNum) {
  * a sendEvent for each relevant attribute; intended to be called when EventSocket data
  * received for device
  */
-void createEventsFromSSE(Map data) {
-   if (logEnable == true) log.debug "createEventsFromSSE($data)"
+void createEventsFromMapV2(Map data) {
+   if (logEnable == true) log.debug "createEventsFromMapV2($data)"
    String eventName
    if (data.type == "button") {
       Integer eventValue = state.buttons.find({ it.key == data.id})?.value ?: 1
