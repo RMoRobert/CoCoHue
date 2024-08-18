@@ -14,17 +14,17 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2024-08-14
+ *  Last modified: 2024-08-19
  *
  *  Changelog:
- *  v5.0   -  Use API v2 by default, remove deprecated features (or: might make separate driver?)
+ *  v5.0   -  Use API v2 by default, remove deprecated features
  *  v4.2.1  - Add scene on/off state reporting with v2 API
  *  v4.2    - Improved eventstream reconnection logic
  *  v4.1.4  - Improved error handling, fix missing battery for motion sensors
  *  v4.1.3  - Improved eventstream data handling (when multiple devices included in same payload, thanks to @Modem-Tones)
  *  v4.1.2  - Additional button enhancements (relative_rotary -- Hue Tap Dial, etc.)
  *  v4.1    - Add button device support (with v2 API only)
- *  v4.0.2  - Fix to avoid unepected "off" transition time
+ *  v4.0.2  - Fix to avoid unexpected "off" transition time
  *  v4.0.1  - Fix for "on" state of "All Hue Lights" group (if used)
  *  v4.0.1  - Minor sensor cache updates
  *  v4.0    - EventStream support for real-time updates
@@ -75,7 +75,7 @@ metadata {
       command "disconnectEventStream"
 
       // REMOVE WHEN DONE TESTING:
-      command "getAllScenesV2"
+      command "getAllButtonsV2"
 
       attribute "status", "STRING"
       attribute "eventStreamStatus", "STRING"
@@ -311,19 +311,16 @@ private void parseStatesV2(AsyncResponse resp, Map data) {
    if (logEnable) log.debug "parseStatesV2: States from Bridge received. Now parsing..."
    if (checkIfValidResponse(resp)) {
       //TODO: Check that all are updated for v2 (in progress!)
-      // Lights
+      // Lights:
       List<Map> lightsData = resp.json.data.findAll { it.type == "light"}
-      // Groups (and Rooms and Zones)
+      // Groups (and Rooms and Zones):
       List<Map> roomsData = resp.json.data.findAll { it.type == "room"}  // probably needed? check if needed here...
       List<Map> zonesData = resp.json.data.findAll { it.type == "zone"}  // probably needed? check if needed here...
       List<Map> groupsData = resp.json.data.findAll { it.type == "grouped_light"}
-      log.warn roomsData
-      log.trace groupsData
-      return
-      // Motion sensors (motion, temperature, lux, battery)
-      List<Map> motionData = resp.json.data.findAll { it.type == "motion"}
-      // Scene
+      // Scenes:
       List<Map> scenesData = resp.json.data.findAll { it.type == "scene"}
+      // Motion sensors (motion, temperature, lux, battery):
+      List<Map> motionData = resp.json.data.findAll { it.type == "motion"}
       List<Map> temperatureData = resp.json.data.findAll { it.type == "temperature"}
       List<Map> illuminanceData = resp.json.data.findAll { it.type == "light_level"}
       List<Map> batteryData = resp.json.data.findAll { it.type == "device_power"}
@@ -333,6 +330,7 @@ private void parseStatesV2(AsyncResponse resp, Map data) {
 
       parseLightStatesV2(lightsData)
       parseGroupStatesV2(groupsData)
+      parseSceneStatesV2(scenesData)
       // TODO: see if can combine this data into one instead of calling 4x total:
       parseMotionSensorStatesV2(motionData)
       parseMotionSensorStatesV2(temperatureData)
@@ -357,7 +355,7 @@ private void parseStatesV1(AsyncResponse resp, Map data) {
 private void parseLightStatesV2(List lightsJson) {
    if (logEnable) log.debug "parseLightStatesV2()"
    // Uncomment this line if asked to for debugging (or you're curious):
-   log.debug "lightsJson = $lightsJson"
+   //log.debug "lightsJson = $lightsJson"
    try {
       lightsJson.each { Map data ->
          String id = data.id 
@@ -479,10 +477,10 @@ private void parseMotionSensorStatesV2(List sensorJson) {
          String id_v1 = data.id_v1 - "/sensors/"
          DeviceWrapper dev = parent.getChildDevice("${device.deviceNetworkId}/Sensor/${id}")
          if (dev == null) {
-               dev = parent.getChildDevices().findAll { DeviceWrapper it ->
-                  it.deviceNetworkId.startsWith("${device.deviceNetworkId}/Sensor/") &&
-                  id_v1 in it.deviceNetworkId.tokenize('/')[3].tokenize('|')
-               }[0]
+               dev = parent.getChildDevices().find { DeviceWrapper d ->
+                  d.deviceNetworkId.startsWith("${device.deviceNetworkId}/Sensor/") &&
+                  id_v1 in d.deviceNetworkId.tokenize('/')[3].tokenize('|')
+               }
             if (dev != null) log.warn "Device ${dev.displayName} with Hue V1 ID $id_v1 and V2 ID $id never converted to V2 DNI format"
          }
          if (dev != null) {
@@ -645,12 +643,21 @@ void parseGetAllGroupsResponseV1(resp, data) {
 
 void getAllGroupsV2() {
    // sends two calls, one to /rooms and one to /zones
-   // does not use /grouped_light since these should cover all practical cases
+   // uses/grouped_light moslty to get "All Hue Lights" equivalent, as
+   // the /room and /zone endpoints should cover all practical cases
    // and also get the name and other needed info for display
    // To use results in parent app: look at state.allRooms and state.allZones (not state.allGroups like v1)
    if (logEnable) log.debug "getAllGroupsV2()"
    //clearBulbsCache()
    Map<String,String> data = parent.getBridgeData()
+   Map paramsGroupedLights = [
+      uri: "https://${data.ip}",
+      path: "/clip/v2/resource/grouped_light",
+      headers: ["hue-application-key": data.username],
+      contentType: "application/json",
+      timeout: 15,
+      ignoreSSLIssues: true
+   ]
    Map paramsRooms = [
       uri: "https://${data.ip}",
       path: "/clip/v2/resource/room",
@@ -667,27 +674,40 @@ void getAllGroupsV2() {
       timeout: 15,
       ignoreSSLIssues: true
    ]
-   asynchttpGet("parseGetAllRoomsOrZonesResponseV2", paramsRooms, [type: "room"])
-   asynchttpGet("parseGetAllRoomsOrZonesResponseV2", paramsZones, [type: "zone"])
+   asynchttpGet("parseGetAllGroupsOrRoomsOrZonesResponseV2", paramsGroupedLights, [type: "grouped_light"])
+   asynchttpGet("parseGetAllGroupsOrRoomsOrZonesResponseV2", paramsRooms, [type: "room"])
+   asynchttpGet("parseGetAllGroupsOrRoomsOrZonesResponseV2", paramsZones, [type: "zone"])
 }
 
-void parseGetAllRoomsOrZonesResponseV2(resp, Map<String,String> data) {
+void parseGetAllGroupsOrRoomsOrZonesResponseV2(resp, Map<String,String> data) {
    if (logEnable) log.debug "parseGetAllRoomsResponseV2(), type = ${data.type}"
    if (checkIfValidResponse(resp)) {
       try {
-         Map roomsOrZones = [:]
-         resp.json.data.each { Map roomOrZoneData ->
-            groupedLightId = roomOrZoneData.services.find({ svc -> svc.type == grouped_light })?.rid
-            if (groupedLightId != null) {
-               roomsOrZones[roomOrZoneData.id] = [name: roomOrZoneData.metadata.name, groupedLightId: groupedLightId]
+         if (data.type == "room" || data.type == "zone") {
+            Map roomsOrZones = [:]
+            resp.json.data.each { Map roomOrZoneData ->
+               String groupedLightId = roomOrZoneData.services.find({ svc -> svc.type == grouped_light })?.rid
+               if (groupedLightId != null) {
+                  roomsOrZones[roomOrZoneData.id] = [name: roomOrZoneData.metadata.name, groupedLightId: groupedLightId]
+               }
+               else {
+                  if (logEnable) log.debug "No grouped_light service found for room ID ${roomOrZoneData.id}"
+               }
             }
-            else {
-               if (logEnable) log.debug "No grouped_light service found for room ID ${roomOrZoneData.id}"
+            if (data.type == "room") state.allRooms = roomsOrZones
+            else state.allZones = roomsOrZones
+         }
+         else if (data.type == "grouped_light") {
+            // really only use to find equivalent of group 0 in V1 API or "All Hue Lights"
+            Map allHueLightsGroup = resp.json.data?.find { it.owner?.rtype == "bridge_home" }
+            if (allHueLightsGroup != null) {
+               state.allGroups = [:]
+               state.allGroups[allHueLightsGroup.id] = [name: "All Hue Lights", type: "n/a"]
             }
          }
-         if (data.type == "room") state.allRooms = roomsOrZones
-         else if (data.type == "zone") state.allZones = roomsOrZones
-         else log.warn "Unexpected type; should be \"room\" or \"zone\": ${data.type}"
+         else {
+            log.warn "Unexpected type; should be \"room\", \"zone\", or \"grouped_light\": ${data.type}"
+         }
          if (logEnable) log.debug "  All ${data.type}s received from Bridge: $roomsOrZones"
       }
       catch (Exception ex) {
@@ -781,7 +801,7 @@ void parseGetAllScenesResponseV1(resp, Map data=null) {
 
 void getAllScenesV2() {
    if (logEnable) log.debug "getAllScenesV2()"
-   getAllGroupsV1() // so can get room names, etc.
+   getAllGroupsV2() // so can get room names, etc.
    //clearScenesCache()
    Map<String,String> data = parent.getBridgeData()
    Map params = [
@@ -796,11 +816,6 @@ void getAllScenesV2() {
 }
 
 void parseGetAllScenesResponseV2(resp, Map data=null) {
-   if (logEnable) log.debug "parseGetAllScenesResponseV2()"
-            // try to match 1 format -- thoguh maybe not since group is not needed on v2 to activate?
-            // scenes[key] = ["name": val.name]
-            // if (val.group) scenes[key] << ["group": val.group]
-
    if (checkIfValidResponse(resp)) {
       try {
          Map scenes = [:]
@@ -813,7 +828,7 @@ void parseGetAllScenesResponseV2(resp, Map data=null) {
       catch (Exception ex) {
          log.error "Error parsing all scenes response: $ex"
       }
-   }   
+   }
 }
 
 /** Intended to be called from parent app to retrive previously
@@ -886,6 +901,51 @@ private void parseGetAllSensorsResponseV1(resp, data) {
    }
 }
 
+void getAllSensorsV2() {
+   if (logEnable) log.debug "getAllSensorsV2()"
+   getAllGroupsV1() // so can get room names, etc.
+   //clearScenesCache()
+   Map<String,String> data = parent.getBridgeData()
+   Map devParams = [
+      uri: "https://${data.ip}",
+      path: "/clip/v2/resource/device",
+      headers: ["hue-application-key": data.username],
+      contentType: "application/json",
+      timeout: 15,
+      ignoreSSLIssues: true
+   ]
+   // Seem to be able to get everything needed for discovery from /devices? Would need this for refresh/polling...
+   // Map motionParams = [
+   //    uri: "https://${data.ip}",
+   //    path: "/clip/v2/resource/motion",
+   //    headers: ["hue-application-key": data.username],
+   //    contentType: "application/json",
+   //    timeout: 15,
+   //    ignoreSSLIssues: true
+   // ]
+   asynchttpGet("parseGetAllSensorsResponseV2", devParams)
+}
+
+void parseGetAllSensorsResponseV2(resp, Map data=null) {
+   if (logEnable) log.debug "parseGetAllSensorsResponseV2()"
+   if (checkIfValidResponse(resp)) {
+      try {
+         List<Map> motionDevs = resp.json?.data?.findAll { Map devData ->
+            devData.services.any { svc -> svc.rtype == "motion"}
+         }
+         Map sensors = [:]
+         motionDevs.each { Map devData ->
+            sensors[devData.id] = devData.metadata.name
+         }
+         state.allSensors = sensors
+         if (logEnable) log.debug "  All sensors received from Bridge: $sensors"
+      }
+      catch (Exception ex) {
+         log.error "Error parsing all sensors response: $ex"
+      }
+   }
+}
+
 /** Intended to be called from parent app to retrive previously
  *  requested list of sensors
  */
@@ -898,7 +958,7 @@ Map<String,Map> getAllSensorsCache() {
  */
 void clearSensorsCache() {
    if (logEnable) log.debug "Running clearSensorsCache..."
-   state.remove('allSensors')
+   state.remove("allSensors")
 }
 
 // ------------ BUTTONS ------------
@@ -907,8 +967,9 @@ void clearSensorsCache() {
  *  allButtons in state when finished. Intended to be called
  *  during buttoon discovery in app.
  */
-void getAllButtonsV2() {
-   if (logEnable) log.debug "Getting button list from Bridge..."
+void getAllButtonsV1() {
+   // TODO: Make this all V2 and remove from V1; only works with V2 anyway...
+   if (logEnable) log.debug "getAllButtonsV1()"
    //clearButtonsCache()
    Map<String,String> data = parent.getBridgeData()
    Map params = [
@@ -922,8 +983,23 @@ void getAllButtonsV2() {
    asynchttpGet("parseGetAllButtonsResponseV2", params)
 }
 
-private void parseGetAllButtonsResponseV2(resp, data) {
-   if (logEnable) log.debug "Parsing in parseGetAllButtonsResponseV2"
+void getAllButtonsV2() {
+   if (logEnable) log.debug "getAllButtonsV2()"
+   //clearButtonsCache()
+   Map<String,String> data = parent.getBridgeData()
+   Map params = [
+      uri: "https://${data.ip}",
+      path: "/clip/v2/resource/device",
+      headers: ["hue-application-key": data.username],
+      contentType: "application/json",
+      timeout: 15,
+      ignoreSSLIssues: true
+   ]
+   asynchttpGet("parseGetAllButtonsResponseV2", params)
+}
+
+void parseGetAllButtonsResponseV2(resp, data) {
+   if (logEnable) log.debug "parseGetAllButtonsResponseV2()"
    if (checkIfValidResponse(resp)) {
       try {
          Map buttons = [:]
@@ -943,7 +1019,6 @@ private void parseGetAllButtonsResponseV2(resp, data) {
                   response.data.data.each {
                      if (buttons[it.owner.rid] == null) buttons[it.owner.rid] = [buttons: [:]]
                      buttons[it.owner.rid].buttons << [(it.id): it.metadata.control_id]
-                     
                   }
             }
          )
@@ -985,7 +1060,7 @@ private void parseGetAllButtonsResponseV2(resp, data) {
             log.warn "No data in returned JSON: $data"
          }
          state.allButtons = buttons
-         state.allRelativeRotaries = relativeRotaries
+         //state.allRelativeRotaries = relativeRotaries
          if (logEnable) log.debug "  All buttons received from Bridge: $buttons"
       }
       catch (Exception ex) {
