@@ -70,8 +70,8 @@ import com.hubitat.app.DeviceWrapper
    "DEFAULT":                  "CoCoHue RGBW Bulb"
 ]
 
-@Field static final Integer minV2SwVersion = 1948086000 // minimum swversion on Bridge needed for Hue V2 API
-                                                        // though 1955082050 recommended for Prod
+@Field static final Integer minPossibleV2SwVersion = 1948086000 // minimum swversion on Bridge needed for Hue V2 API
+@Field static final Integer minV2SwVersion = 1955082050         // ... but 1955082050 recommended for production use
 
 definition (
    name: "CoCoHue - Hue Bridge Integration",
@@ -440,7 +440,7 @@ def pageLinkBridge() {
                   String strParagraph = "Still waiting for authorization. Please make sure you pressed " +
                      "the button on the Hue Bridge."
                   if (state.authTryCount > 10) {
-                     if (!settings.useSSDP) strParagraph + "Also, verify that your Bridge IP address is correct: ${state.ipAddress}"
+                     if (!settings.useSSDP) strParagraph + " Also, verify that your Bridge IP address is correct: ${state.ipAddress}"
                   }
                   paragraph(strParagraph)
                }
@@ -481,6 +481,7 @@ def pageLinkBridge() {
       }
    }
 }
+
 def pageManageBridge() {
    if (settings["newBulbs"]) {
       logDebug "New bulbs selected. Creating..."
@@ -512,6 +513,7 @@ def pageManageBridge() {
       bridge.clearGroupsCache()
       bridge.clearScenesCache()
       bridge.clearSensorsCache()
+      bridge.clearButtonsCache()
    }
    else {
       log.warn "Bridge device not found!"
@@ -521,6 +523,7 @@ def pageManageBridge() {
    state.remove("addedGroups")
    state.remove("addedScenes")
    state.remove("addedSensors")
+   state.remove("addedButtons")
 
    dynamicPage(name: "pageManageBridge", uninstall: true, install: true) {  
       section("Manage Hue Bridge Devices:") {
@@ -546,7 +549,10 @@ def pageManageBridge() {
          input name: "deleteDevicesOnUninstall", type: "bool", title: "Delete devices created by app (Bridge, light, group, and scene) if uninstalled", defaultValue: true
       }        
       section("Other Options:") {
-         input name: "useEventStream", type: "bool", title: "Enable \"push\" updates (Server-Sent Events/EventStream) from Bridge (experimental; requires Bridge v2 and Hubitat 2.2.9 or later)"
+         //input name: "useEventStream", type: "bool", title: "Enable \"push\" updates (Server-Sent Events/EventStream) from Bridge (experimental; requires Bridge v2 and Hubitat 2.2.9 or later)"
+         if (!state.bridgeAuthorized) {
+            input name: "useEventStream", type: "bool", title: "Prefer V2 Hue API (EventStream or Server-Sent Events) if possible (note: cannot be disabled once enabled after Bridge added to hub)"
+         }
          input name: "pollInterval", type: "enum", title: "Poll bridge every...",
             options: [0:"Disabled", 15:"15 seconds", 20:"20 seconds", 30:"30 seconds", 45:"45 seconds", 60:"1 minute (default)", 120:"2 minutes",
                       180:"3 minutes", 300:"5 minutes", 420:"7 minutes", 6000:"10 minutes", 1800:"30 minutes", 3600:"1 hour", 7200:"2 hours", 18000:"5 hours"],
@@ -589,7 +595,7 @@ def pageSelectLights() {
          addedBulbs = addedBulbs.sort { it.value.hubitatName }
       }
       if (!bulbCache) {
-         section("Discovering bulbs/lights. Please wait...") {            
+         section("Discovering bulbs/lights. Please wait...") {
             paragraph "Select \"Refresh\" if you see this message for an extended period of time"
             input name: "btnBulbRefresh", type: "button", title: "Refresh", submitOnChange: true
          }
@@ -1179,7 +1185,7 @@ void parseUsernameResponse(resp, data) {
  *  (when parsed in parseBridgeInfoResponse if createBridge == true) or to add to the list
  *  of discovered Bridge devices (when createBridge == false). protocol, ip, and port are optional
  *  and will default to getBridgeData() values if not specified
- *  @param options Possible values: createBridge (default true), protocol (default "https"), ip, port, haveAttemptedV1 (default false)
+ *  @param options Possible values: createBridge (default true), protocol (default "https"), ip, port
  */
 void sendBridgeInfoRequest(Map options) {
    logDebug "sendBridgeInfoRequest()"
@@ -1217,7 +1223,7 @@ void sendBridgeInfoRequest(Map options) {
  *  verifies that device is a Hue Bridge (modelName contains "Philips Hue Bridge")
  * and obtains MAC address for use in creating Bridge DNI and device name
  */
-private void parseBridgeInfoResponse(resp, Map data) {
+void parseBridgeInfoResponse(resp, Map data) {
    logDebug "parseBridgeInfoResponse(resp?.data = ${resp?.data}, data = $data)"
    Map body
    try {
@@ -1225,12 +1231,13 @@ private void parseBridgeInfoResponse(resp, Map data) {
    }
    catch (Exception ex) {
       logDebug "  Responding device likely not a Hue Bridge: $ex"
-      if (!(data.haveAttemptedV1)) {
-         // try again with V1 API in case is V1 Bridge or old firmware on V2:
-         logDebug "  Retrying with V1 API"
-         data.haveAttemptedV1 = true
-         sendBridgeInfoRequest(data)
-      }
+      return
+      // if (!(data.haveAttemptedV1)) {
+      //    // try again with V1 API in case is V1 Bridge or old firmware on V2:
+      //    logDebug "  Retrying with V1 API"
+      //    data.haveAttemptedV1 = true
+      //    sendBridgeInfoRequest(data)
+      // }
    }
 
    String friendlyBridgeName = body.name ?: "Unknown Bridge"
@@ -1257,7 +1264,18 @@ private void parseBridgeInfoResponse(resp, Map data) {
          }
          else {
             state.bridgeLinked = true
-            if (swVersion) bridgeDevice.updateDataValue("swversion", swVersion)
+            if (swVersion) {
+               bridgeDevice.updateDataValue("swversion", swVersion)
+               try {
+                  Integer intVer = Integer.parseInt(swVersion)
+                  if (settings.useSSDP && intVer > minV2SwVersion) {
+                     state.useV2 = true
+                  }
+               }
+               catch (Exception ex) {
+                  log.error "Error converting bridge swVersion to Integer: $ex"
+               }
+            }
          }
          if (!(settings.boolCustomLabel)) {
             app.updateLabel("""CoCoHue - Hue Bridge Integration (${state.bridgeID}${friendlyBridgeName ? " - $friendlyBridgeName)" : ")"}""")
@@ -1341,7 +1359,8 @@ Map<String,String> getBridgeData(String protocol="http", Integer port=null) {
          thePort = (protocol == "https") ? 443 : 80
       }
    }
-   Map<String,String> map = [username: state.username, ip: "${state.ipAddress}", fullHost: "${protocol}://${state.ipAddress}:${thePort}"]
+   String apiVer = state.useV2 ? "V2" : "V1"
+   Map<String,String> map = [username: state.username, ip: "${state.ipAddress}", fullHost: "${protocol}://${state.ipAddress}:${thePort}", apiVersion: apiVer]
    return map
 }
 
