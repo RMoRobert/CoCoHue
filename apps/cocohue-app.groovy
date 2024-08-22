@@ -21,7 +21,7 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2024-08-04
+ *  Last modified: 2024-08-22
 
  *  Changelog:
  *  v5.0   - Use API v2 by default, remove deprecated features
@@ -56,6 +56,9 @@
 import groovy.transform.Field
 import hubitat.scheduling.AsyncResponse
 import com.hubitat.app.DeviceWrapper
+
+@Field static final String APIV1 = "V1"
+@Field static final String APIV2 = "V2"
 
 @Field static final Integer debugAutoDisableMinutes = 30
 
@@ -182,21 +185,21 @@ void updgradePre4DNIs() {
 void initialize() {
    log.debug "initialize()"
    unschedule()
-   state.remove('discoveredBridges')
+   state.remove("discoveredBridges")
    if (settings.useSSDP == true || settings["useSSDP"] == null) {
       if (settings["keepSSDP"] != false) {
-         log.debug("Subscribing to ssdp...")
+         logDebug "Subscribing to SSDP..."
          subscribe(location, "ssdpTerm.urn:schemas-upnp-org:device:basic:1", "ssdpHandler")
          schedule("${Math.round(Math.random() * 59)} ${Math.round(Math.random() * 59)} 6 ? * * *",
                "periodicSendDiscovery")
       }
       else {
-         log.debug("Not subscribing to ssdp...")
+         logDebug "Not subscribing to SSDP..."
          unsubscribe("ssdpHandler")
          unschedule("periodicSendDiscovery")
       }
       subscribe(location, "systemStart", hubRestartHandler)
-      if (state.bridgeAuthorized) sendBridgeDiscoveryCommand() // do discovery if user clicks 'Done'
+      if (state.bridgeAuthorized) sendBridgeDiscoveryCommand() // do discovery if user clicks "Done"
    }
    else {
       unsubscribe("ssdpHandler")
@@ -210,7 +213,17 @@ void initialize() {
 
    if (settings.useEventStream == true) {
       DeviceWrapper bridge = getChildDevice("CCH/${app.getId()}")
-      bridge?.connectEventStream()
+      if (bridge != null) {
+         bridge.connectEventStream()
+         String bridgeSwVersion = bridge.getDataValue("swversion")
+         if (bridgeSwVersion.isInteger() && Integer.parseInt(bridgeSwVersion) >= minV2SwVersion) {
+            state.useV2 = true
+         }
+         else if (bridgeSwVersion == null) {
+            sendBridgeInfoRequest()
+            runIn(20, "initialize") // re-check version after has time to fetch in case upgrading from old version without this value
+         }
+      }
    }
    else {
       bridge?.disconnectEventStream()
@@ -277,7 +290,7 @@ void sendBridgeDiscoveryCommandIfSSDPEnabled(Boolean checkIfRecent=true) {
          else if (state.failedDiscos >= 4 && state.failedDiscos < 6) lastDiscoThreshold = 1200000 // gradually increase interval if keeps failing...
          else if (state.failedDiscos >= 6 && state.failedDiscos < 18) lastDiscoThreshold = 3600000 // 1 hour now
          else lastDiscoThreshold =  7200000 // cap at 2 hr if been more than ~12 hr without Bridge
-         if (!(state.lastDiscoCommand) || (now() -  state.lastDiscoCommand >= lastDiscoThreshold)) {         
+         if (!(state.lastDiscoCommand) || (now() -  state.lastDiscoCommand >= lastDiscoThreshold)) {
             sendBridgeDiscoveryCommand()
          }
       }
@@ -545,13 +558,16 @@ def pageManageBridge() {
             input name: "keepSSDP", type: "bool", title: "Remain subscribed to Bridge discovery requests (recommended to keep enabled if Bridge has dynamic IP address)",
                defaultValue: true
          }
-         input name: "showAllScenes", type: "bool", title: "Allow adding scenes not associated with rooms/zones"
+         if (!state.useV2) input name: "showAllScenes", type: "bool", title: "Allow adding scenes not associated with rooms/zones"
          input name: "deleteDevicesOnUninstall", type: "bool", title: "Delete devices created by app (Bridge, light, group, and scene) if uninstalled", defaultValue: true
       }        
       section("Other Options:") {
          //input name: "useEventStream", type: "bool", title: "Enable \"push\" updates (Server-Sent Events/EventStream) from Bridge (experimental; requires Bridge v2 and Hubitat 2.2.9 or later)"
-         if (!state.bridgeAuthorized) {
-            input name: "useEventStream", type: "bool", title: "Prefer V2 Hue API (EventStream or Server-Sent Events) if possible (note: cannot be disabled once enabled after Bridge added to hub)"
+         if (!state.bridgeAuthorized || !useEventStream) {
+            input name: "useEventStream", type: "bool", title: "Prefer V2 Hue API (EventStream or Server-Sent Events) if possible (note: cannot be disabled once enabled after Bridge added to hub)", defaultValue: true
+         }
+         else {
+            paragraph "NOTE: Hue API V2 use is enabled. (This setting cannot be reverted once enabled.)"
          }
          input name: "pollInterval", type: "enum", title: "Poll bridge every...",
             options: [0:"Disabled", 15:"15 seconds", 20:"20 seconds", 30:"30 seconds", 45:"45 seconds", 60:"1 minute (default)", 120:"2 minutes",
@@ -673,7 +689,7 @@ def pageSelectGroups() {
          addedGroups = addedGroups.sort { it.value.hubitatName }
       }
       if (!groupCache) { 
-         section("Discovering groups. Please wait...") {            
+         section("Discovering groups. Please wait...") {
                paragraph "Select \"Refresh\" if you see this message for an extended period of time"
                input name: "btnGroupRefresh", type: "button", title: "Refresh", submitOnChange: true
          }
@@ -770,7 +786,7 @@ def pageSelectScenes() {
       }
 
       if (!sceneCache) {
-         section("Discovering scenes. Please wait...") {            
+         section("Discovering scenes. Please wait...") {
             paragraph "Select \"Refresh\" if you see this message for an extended period of time"
             input name: "btnSceneRefresh", type: "button", title: "Refresh", submitOnChange: true
          }
@@ -807,9 +823,9 @@ def pageSelectScenes() {
             }
          }
          section("Rediscover Scenes") {
-            paragraph("If you added new scenes to the Hue Bridge and do not see them above, if room/zone names are " +
-                     "missing from scenes (if assigned to one), or if you changed the \"Allow adding scenes not associated with rooms/zones...\" setting, " +
-                     "select the button below to retrieve new information from the Bridge.")
+            paragraph "If you added new scenes to the Hue Bridge and do not see them above or if room/zone names are " +
+                     "missing from scenes (and assigned to a room or zone in the Hue app), " +
+                     "select the button below to retrieve new information from the Bridge."
             input name: "btnSceneRefresh", type: "button", title: "Refresh Scene List", submitOnChange: true
          }
       }
@@ -857,7 +873,7 @@ def pageSelectMotionSensors() {
       }
       else {
          section("Manage Sensors") {
-            if (!(settings.useEventStream)) {
+            if (!(state.useV2)) {
                paragraph "NOTE: Without \"push\" updates (EventStream/SSE) enabled, motion sensor changes are updated only when the Bridge is polled, per your CoCoHue configuration options (or a manual \"Refresh\" on the Bridge device). <b>It is not recommended to rely on Hue motion sensors for time-sensitve motion-based automations on Hubitat in this configuration</b> when used via the Hue Bridge. For example, some motion events may be missed entirely if the duration of activity lasts less than the polling interval, but there will be a delay before activity in any case."
             }
             input name: "newSensors", type: "enum", title: "Select Hue motion sensors to add:",
@@ -937,8 +953,8 @@ def pageSelectButtons() {
       }
       else {
          section("Manage Button Devices") {
-            if (!(settings.useEventStream)) {
-               paragraph "NOTE: The \"push\" (EventStream/SSE) option is not enabled. Button devices will not function in CoCoHue without this option enabled."
+            if (!(state.useV2)) {
+               paragraph "NOTE: You have not enabled the preference to use the Hue V2 API. Button devices will not work with this integration without this option enabled."
             }
             input name: "newButtons", type: "enum", title: "Select Hue button devices to add:",
                   multiple: true, options: arrNewButtons
@@ -1190,11 +1206,11 @@ void parseUsernameResponse(resp, data) {
 void sendBridgeInfoRequest(Map options) {
    logDebug "sendBridgeInfoRequest()"
    String fullHost
-   if (options.port) {
+   if (options?.port) {
       fullHost = "${options.protocol ?: 'https'}://${options.ip ?: state.ipAddress}:${options.port}"
    }  
    else {
-      fullHost = "${options.protocol ?: 'https'}://${options.ip ?: state.ipAddress}" 
+      fullHost = "${options?.protocol ?: 'https'}://${options?.ip ?: state.ipAddress}" 
    }
    Map params = [
       uri: fullHost,
@@ -1245,7 +1261,7 @@ void parseBridgeInfoResponse(resp, Map data) {
    // Not using "full" bridge ID for this to retain V1 compatibility, but could(?):
    String bridgeID = bridgeMAC.drop(6)   // last (12-6=) 6 of MAC serial
    String swVersion = body.swversion // version 1948086000 means v2 API is available
-   DeviceWrapper bridgeDevice
+   DeviceWrapper bridgeDevice = getChildDevice("CCH/${app.getId()}") ?: getChildDevice("CCH/${state.bridgeID}")
 
    if (data?.createBridge) {
       logDebug "    Attempting to create Hue Bridge device for $bridgeMAC"
@@ -1256,7 +1272,6 @@ void parseBridgeInfoResponse(resp, Map data) {
       state.bridgeID = bridgeID
       state.bridgeMAC = bridgeMAC
       try {
-         bridgeDevice = getChildDevice("CCH/${app.getId()}") ?: getChildDevice("CCH/${state.bridgeID}")
          if (!bridgeDevice) bridgeDevice = addChildDevice(childNamespace, "CoCoHue Bridge", "CCH/${app.getId()}", null,
                               [label: """CoCoHue Bridge ${state.bridgeID}${friendlyBridgeName ? " ($friendlyBridgeName)" : ""}""", name: "CoCoHue Bridge"])
          if (!bridgeDevice) {
@@ -1268,7 +1283,7 @@ void parseBridgeInfoResponse(resp, Map data) {
                bridgeDevice.updateDataValue("swversion", swVersion)
                try {
                   Integer intVer = Integer.parseInt(swVersion)
-                  if (settings.useSSDP && intVer > minV2SwVersion) {
+                  if (settings.useSSDP && intVer >= minV2SwVersion) {
                      state.useV2 = true
                   }
                }
@@ -1359,7 +1374,7 @@ Map<String,String> getBridgeData(String protocol="http", Integer port=null) {
          thePort = (protocol == "https") ? 443 : 80
       }
    }
-   String apiVer = state.useV2 ? "V2" : "V1"
+   String apiVer = state.useV2 ? APIV2 : APIV1
    Map<String,String> map = [username: state.username, ip: "${state.ipAddress}", fullHost: "${protocol}://${state.ipAddress}:${thePort}", apiVersion: apiVer]
    return map
 }

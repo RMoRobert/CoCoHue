@@ -1,3 +1,4 @@
+// DEPRECATED - This feature was removed. File will be deleted from repository.
 /*
  * =============================  CoCoHue Generic Status Device (Driver) ===============================
  *

@@ -1,6 +1,10 @@
-// Version 1.0.2
+// Version 1.0.3
+// For use with CoCoHue drivers (not app)
 
-// 1.0.2  - HTTP error handling tweaks
+/**
+ * 1.0.3 - Add APIV1 and APIV2 "constants"
+ * 1.0.2  - HTTP error handling tweaks
+ */
 
 library (
    base: "driver",
@@ -10,6 +14,9 @@ library (
    name: "CoCoHue_Common_Lib",
    namespace: "RMoRobert"
 )
+
+@Field static final String APIV1 = "V1"
+@Field static final String APIV2 = "V2"
 
 void debugOff() {
    log.warn "Disabling debug logging"
@@ -30,10 +37,10 @@ private Boolean checkIfValidResponse(hubitat.scheduling.AsyncResponse resp) {
          if (resp.headers == null) log.error "Error: HTTP ${resp.status} when attempting to communicate with Bridge"
          else log.error "No JSON data found in response. ${resp.headers.'Content-Type'} (HTTP ${resp.status})"
          parent.sendBridgeDiscoveryCommandIfSSDPEnabled(true) // maybe IP changed, so attempt rediscovery 
-         parent.setBridgeStatus(false)
+         parent.setBridgeOnlineStatus(false)
       }
       else if (resp.json) {
-         if (resp.json instanceof List && resp.json[0]?.error) {
+         if ((resp.json instanceof List) && resp.json.getAt(0).error) {
             // Bridge (not HTTP) error (bad username, bad command formatting, etc.):
             isOK = false
             log.warn "Error from Hue Bridge: ${resp.json[0].error}"
@@ -46,10 +53,11 @@ private Boolean checkIfValidResponse(hubitat.scheduling.AsyncResponse resp) {
       else {
          isOK = false
          log.warn("HTTP status code ${resp.status} from Bridge")
+         // TODO: Update for mDNS if/when switch:
          if (resp?.status >= 400) parent.sendBridgeDiscoveryCommandIfSSDPEnabled(true) // maybe IP changed, so attempt rediscovery 
-         parent.setBridgeStatus(false)
+         parent.setBridgeOnlineStatus(false)
       }
-      if (isOK == true) parent.setBridgeStatus(true)
+      if (isOK == true) parent.setBridgeOnlineStatus(true)
    }
    else {
       log.warn "Error communiating with Hue Bridge: HTTP ${resp?.status}"

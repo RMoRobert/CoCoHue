@@ -4,7 +4,7 @@ library (
    base: "driver",
    author: "RMoRobert",
    category: "Convenience",
-   description: "For internal CoCoHue use only. Not intended for external use. Contains prestaging-related code shared by many CoCoHue drivers.",
+   description: "DEPRECATED. For internal CoCoHue use only. Not intended for external use. Contains prestaging-related code shared by many CoCoHue drivers.",
    name: "CoCoHue_Prestage_Lib",
    namespace: "RMoRobert"
 )

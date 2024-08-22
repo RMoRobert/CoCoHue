@@ -120,12 +120,11 @@ void refresh() {
 /**
  * Iterates over Hue light state commands/states in Hue format (e.g., ["on": true]) and does
  * a sendEvent for each relevant attribute; intended to be called either when commands are sent
- * to Bridge or if pre-staged attribute is changed and "real" command not yet able to be sent, or
- * to parse/update light states based on data received from Bridge
+ * to Bridge or to parse/update light states based on data received from Bridge
  * @param bridgeMap Map of light states that are or would be sent to bridge OR state as received from
  *  Bridge
  * @param isFromBridge Set to true if this is data read from Hue Bridge rather than intended to be sent
- *  to Bridge; if true, will ignore differences for prestaged attributes if switch state is off (TODO: how did new prestaging affect this?)
+ *  to Bridge; TODO: see if still needed now that pseudo-prestaging removed
  */
 void createEventsFromMapV1(Map bridgeCommandMap, Boolean isFromBridge = false, Set<String> keysToIgnoreIfSSEEnabledAndNotFromBridge=listKeysToIgnoreIfSSEEnabledAndNotFromBridge) {
    if (!bridgeCommandMap) {
@@ -168,7 +167,7 @@ void createEventsFromMapV1(Map bridgeCommandMap, Boolean isFromBridge = false, S
 }
 
 /**
- * (for "new"/v2/EventSocket [SSE] API; not documented and subject to change)
+ * (for V2 API)
  * Iterates over Hue light state states in Hue API v2 format (e.g., "on={on=true}") and does
  * a sendEvent for each relevant attribute; intended to be called when EventSocket data
  * received for device (as an alternative to polling)

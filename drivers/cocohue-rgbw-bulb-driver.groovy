@@ -58,7 +58,6 @@
 #include RMoRobert.CoCoHue_HueSat_Lib
 #include RMoRobert.CoCoHue_Flash_Lib
 #include RMoRobert.CoCoHue_Effect_Lib
-#include RMoRobert.CoCoHue_Prestage_Lib
 
 import groovy.transform.Field
 import hubitat.scheduling.AsyncResponse
@@ -91,7 +90,6 @@ metadata {
       capability "Refresh"
       capability "Switch"
       capability "SwitchLevel"
-      capability "LevelPreset"
       capability "ChangeLevel"
       capability "Light"
       capability "ColorMode"
@@ -101,13 +99,6 @@ metadata {
       command "flashOnce"
       command "flashOff"
 
-      // Not (yet?) standard, but hopefully will be standardized soon (and similar to this--as analagous to LevelPreset as possible):
-      command "presetColorTemperature", [[name:"Color temperature*",type:"NUMBER", description:"Color temperature to prestage", constraints:["NUMBER"]]]
-      command "presetColor", [[name:"Color Map*",type:"JSON_OBJECT", description:"Color to prestage (Map with keys: hue, saturation, value; also accepts JSON object for better UI compatibility, subject to change)"]]
-      attribute "colorTemperaturePreset", "number"
-      attribute "huePreset", "number"
-      attribute "saturationPreset", "number"
-      
       attribute "effect", "string"
       attribute "reachable", "string"
    }
@@ -130,8 +121,6 @@ metadata {
       input name: "rgbTransitionTime", type: "enum", description: "", title: "RGB transition time", options:
          [[(-2): "Hue default/do not specify (default)"],[(-1): "Use level transition time (default)"],[0:"ASAP"],[200:"200ms"],[400:"400ms (default)"],[500:"500ms"],[1000:"1s"],[1500:"1.5s"],[2000:"2s"],[5000:"5s"]], defaultValue: -1
       input name: "hiRezHue", type: "bool", title: "Enable hue in degrees (0-360 instead of 0-100)", defaultValue: false
-      if (colorStaging) input name: "colorStaging", type: "bool", description: "DEPRECATED. Please use new prestaging commands instead. May be removed in future.", title: "Enable color pseudo-prestaging", defaultValue: false
-      if (levelStaging) input name: "levelStaging", type: "bool", description: "DEPRECATED. Please use new presetLevel() command instead. May be removed in future.", title: "Enable level pseudo-prestaging", defaultValue: false
       // Note: the following setting does not apply to SSE, which should update the group state immediately regardless:
       input name: "updateGroups", type: "bool", description: "", title: "Update state of groups immediately when bulb state changes",
          defaultValue: false
@@ -184,10 +173,6 @@ void on(Number transitionTime = null) {
    else {
       bridgeCmd = ["on": true, "transitiontime": scaledRate]
    }
-   Map prestagedCmds = getPrestagedCommands()
-   if (prestagedCmds) {
-      bridgeCmd = prestagedCmds + bridgeCmd
-   }
    sendBridgeCommand(bridgeCmd)
 }
 
@@ -201,8 +186,6 @@ void off(Number transitionTime = null) {
    else {
       bridgeCmd = ["on": false, "transitiontime": scaledRate]
    }
-   // Shouldn't need to do (on() would clear and should have been turned on in meantime), but some users may want to:
-   //clearPrestagedCommands()
    sendBridgeCommand(bridgeCmd)
 }
 
@@ -214,12 +197,11 @@ void refresh() {
  * (for "classic"/v1 HTTP API)
  * Iterates over Hue light state commands/states in Hue API v1 format (e.g., ["on": true]) and does
  * a sendEvent for each relevant attribute; intended to be called either when commands are sent
- * to Bridge or if pre-staged attribute is changed and "real" command not yet able to be sent, or
- * to parse/update light states based on data received from Bridge
+ * to Bridge or to parse/update light states based on data received from Bridge
  * @param bridgeMap Map of light states that are or would be sent to bridge OR state as received from
  *  Bridge
  * @param isFromBridge Set to true if this is data read from Hue Bridge rather than intended to be sent
- *  to Bridge; if true, will ignore differences for prestaged attributes if switch state is off (TODO: how did new prestaging affect this?)
+ *  to Bridge; TODO: see if still needed after removal of pseudo-prestaging features
  */
 void createEventsFromMapV1(Map bridgeCommandMap, Boolean isFromBridge = false, Set<String> keysToIgnoreIfSSEEnabledAndNotFromBridge=listKeysToIgnoreIfSSEEnabledAndNotFromBridge) {
    if (!bridgeCommandMap) {

@@ -39,7 +39,6 @@
 #include RMoRobert.CoCoHue_Common_Lib
 #include RMoRobert.CoCoHue_Bri_Lib
 #include RMoRobert.CoCoHue_Flash_Lib
-#include RMoRobert.CoCoHue_Prestage_Lib
 
 import groovy.transform.Field
 import hubitat.scheduling.AsyncResponse
@@ -61,7 +60,6 @@ metadata {
       capability "Refresh"
       capability "Switch"
       capability "SwitchLevel"
-      capability "LevelPreset"
       capability "ChangeLevel"
       capability "Light"
 
@@ -75,7 +73,6 @@ metadata {
    preferences {
       input name: "transitionTime", type: "enum", description: "", title: "Transition time", options:
          [[0:"ASAP"],[400:"400ms"],[500:"500ms"],[1000:"1s"],[1500:"1.5s"],[2000:"2s"],[5000:"5s"]], defaultValue: 400
-      if (levelStaging) input name: "levelStaging", type: "bool", description: "DEPRECATED. Please use new presetLevel() command instead. May be removed in future.", title: "Enable level pseudo-prestaging", defaultValue: false
       input name: "levelChangeRate", type: "enum", description: "", title: '"Start level change" rate', options:
          [["slow":"Slow"],["medium":"Medium"],["fast":"Fast (default)"]], defaultValue: "fast"
       input name: "updateGroups", type: "bool", description: "", title: "Update state of groups immediately when bulb state changes",
@@ -124,10 +121,6 @@ void on(Number transitionTime = null) {
       scaledRate = (transitionTime * 10) as Integer
       bridgeCmd << ["transitiontime": scaledRate]
    }
-   Map prestagedCmds = getPrestagedCommands()
-   if (prestagedCmds) {
-      bridgeCmd = prestagedCmds + bridgeCmd
-   }
    sendBridgeCommand(bridgeCmd)
 }
 
@@ -141,8 +134,6 @@ void off(Number transitionTime = null) {
    else {
       bridgeCmd = ["on": false, "transitiontime": scaledRate]
    }
-   // Shouldn't need to do (on() would clear and should have been turned on in meantime), but some users may want to:
-   //clearPrestagedCommands()
    sendBridgeCommand(bridgeCmd)
 }
 
@@ -153,12 +144,11 @@ void refresh() {
 /**
  * Iterates over Hue light state commands/states in Hue format (e.g., ["on": true]) and does
  * a sendEvent for each relevant attribute; intended to be called either when commands are sent
- * to Bridge or if pre-staged attribute is changed and "real" command not yet able to be sent, or
- * to parse/update light states based on data received from Bridge
+ * to Bridge or to parse/update light states based on data received from Bridge
  * @param bridgeMap Map of light states that are or would be sent to bridge OR state as received from
  *  Bridge
  * @param isFromBridge Set to true if this is data read from Hue Bridge rather than intended to be sent
- *  to Bridge; if true, will ignore differences for prestaged attributes if switch state is off (TODO: how did new prestaging affect this?)
+ *  to Bridge; TODO: see if still needed now that pseudo-prestaging removed?
  */
 void createEventsFromMapV1(Map bridgeCommandMap, Boolean isFromBridge = false, Set<String> keysToIgnoreIfSSEEnabledAndNotFromBridge=listKeysToIgnoreIfSSEEnabledAndNotFromBridge) {
    if (!bridgeCommandMap) {
@@ -210,7 +200,7 @@ void createEventsFromMapV1(Map bridgeCommandMap, Boolean isFromBridge = false, S
 }
 
 /**
- * (for "new"/v2/EventSocket [SSE] API; not documented and subject to change)
+ * (for V2 API)
  * Iterates over Hue light state states in Hue API v2 format (e.g., "on={on=true}") and does
  * a sendEvent for each relevant attribute; intended to be called when EventSocket data
  * received for device (as an alternative to polling)

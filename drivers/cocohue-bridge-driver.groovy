@@ -14,10 +14,10 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2024-08-19
+ *  Last modified: 2024-08-22
  *
  *  Changelog:
- *  v5.0    -  Use API v2 by default, remove deprecated features
+ *  v5.0    - Use API v2 by default, remove deprecated features
  *  v4.2.1  - Add scene on/off state reporting with v2 API
  *  v4.2    - Improved eventstream reconnection logic
  *  v4.1.4  - Improved error handling, fix missing battery for motion sensors
@@ -55,7 +55,7 @@ import groovy.transform.Field
 
 @Field static final Integer debugAutoDisableMinutes = 30
 
-// These are as reported by V1 API
+// These are as reported by V1 API and are also set to the same text based on device capabilities advertised in V2 API:
 @Field static final Map<String,String> bulbTypes = [
    "extended color light":     "CoCoHue RGBW Bulb",
    "color light":              "CoCoHue RGBW Bulb",  // eventually should make this one RGB
@@ -71,8 +71,10 @@ metadata {
       capability "Actuator"
       capability "Refresh"
       capability "Initialize"
+      
       command "connectEventStream"
       command "disconnectEventStream"
+      command "refreshV1" // can be used to force V1 API refresh even if using V2 otherwise
 
       attribute "status", "STRING"
       attribute "eventStreamStatus", "STRING"
@@ -199,6 +201,7 @@ void parse(String description) {
             if (dataEntryMap.type == "update") {
                dataEntryMap.data?.each { updateEntryMap ->
                   //log.trace "--> map = ${updateEntryMap}"
+                  // TODO: Convert this to look for V2 API ID (we know is V2 since only eventstream would come into parse() method)
                   String fullId = updateEntryMap.id_v1
                   String hueId
                   if (fullId != null) {
@@ -227,7 +230,6 @@ void parse(String description) {
                               dev.createEventsFromMapV2(updateEntryMap)
                            }
                            else {
-                              // try button; should eventually switch to v2 for all of this...
                               if (updateEntryMap.owner?.rid) dev = parent.getChildDevice("${device.deviceNetworkId}/Button/${updateEntryMap.owner.rid}")
                               if (dev != null) {
                                  dev.createEventsFromMapV2(updateEntryMap)
@@ -252,35 +254,43 @@ void parse(String description) {
 }
 
 void refresh() {
-   // TODO: How to determine v1 or v2?  For now...
-   Boolean apiV1 = false
    if (logEnable) log.debug "refresh()"
    Map<String,String> data = parent.getBridgeData()
-   Map params
-   // TODO: Change
-   if (apiV1 == true) {
-      params = [
+   try {
+      if (data.apiVersion == APIV1 || data.apiVersion == null) {
+         refreshV1()
+      }
+      else {
+         Map params = [
+            uri: "https://${data.ip}",
+            path: "/clip/v2/resource",
+            headers: ["hue-application-key": data.username],
+            contentType: "application/json",
+            timeout: 15,
+            ignoreSSLIssues: true
+         ]
+         asynchttpGet("parseStatesV2", params)
+      }
+   }
+   catch (Exception ex) {
+      log.error "Error in refresh(): $ex"
+   }
+}
+
+void refreshV1() {
+   if (logEnable) log.debug "refreshV1()"
+   Map<String,String> data = parent.getBridgeData()
+   try {
+      Map params = [
          uri: data.fullHost,
          path: "/api/${data.username}/",
          contentType: 'application/json',
          timeout: 15
       ]
+      asynchttpGet("parseStatesV1", params)
    }
-   else {
-      params = [
-         uri: "https://${data.ip}",
-         path: "/clip/v2/resource",
-         headers: ["hue-application-key": data.username],
-         contentType: "application/json",
-         timeout: 15,
-         ignoreSSLIssues: true
-   ]
-   }
-   try {
-      // TODO: How to determine v1 or v2?
-      asynchttpGet((apiV1 == true) ? "parseStatesV1" : "parseStatesV2", params)
-   } catch (Exception ex) {
-      log.error "Error in refresh: $ex"
+   catch (Exception ex) {
+      log.error "Error in refreshV1(): $ex"
    }
 }
 
@@ -301,30 +311,29 @@ String determineLightType(Map data) {
    else return "UNKNOWN"
 }
 
-/** Callback method that handles full Bridge refresh. Eventually delegated to individual
- *  methods below.
+/** Callback method that handles full Bridge refresh for V2 API. Eventually delegated to
+ *  individual methods below.
  */
-private void parseStatesV2(AsyncResponse resp, Map data) { 
+void parseStatesV2(AsyncResponse resp, Map data) { 
    if (logEnable) log.debug "parseStatesV2: States from Bridge received. Now parsing..."
    if (checkIfValidResponse(resp)) {
       //TODO: Check that all are updated for v2 (in progress!)
       // Lights:
-      List<Map> lightsData = resp.json.data.findAll { it.type == "light"}
+      List<Map> lightsData = resp.json.data.findAll { it.type == "light" }
       // Groups (and Rooms and Zones):
-      List<Map> roomsData = resp.json.data.findAll { it.type == "room"}  // probably needed? check if needed here...
-      List<Map> zonesData = resp.json.data.findAll { it.type == "zone"}  // probably needed? check if needed here...
-      List<Map> groupsData = resp.json.data.findAll { it.type == "grouped_light"}
+      List<Map> roomsData = resp.json.data.findAll { it.type == "room" }  // probably needed? check if needed here...
+      List<Map> zonesData = resp.json.data.findAll { it.type == "zone" }  // probably needed? check if needed here...
+      List<Map> groupsData = resp.json.data.findAll { it.type == "grouped_light" }
       // Scenes:
-      List<Map> scenesData = resp.json.data.findAll { it.type == "scene"}
+      List<Map> scenesData = resp.json.data.findAll { it.type == "scene" }
       // Motion sensors (motion, temperature, lux, battery):
-      List<Map> motionData = resp.json.data.findAll { it.type == "motion"}
-      List<Map> temperatureData = resp.json.data.findAll { it.type == "temperature"}
-      List<Map> illuminanceData = resp.json.data.findAll { it.type == "light_level"}
-      List<Map> batteryData = resp.json.data.findAll { it.type == "device_power"}
+      List<Map> motionData = resp.json.data.findAll { it.type == "motion" }
+      List<Map> temperatureData = resp.json.data.findAll { it.type == "temperature" }
+      List<Map> illuminanceData = resp.json.data.findAll { it.type == "light_level" }
+      List<Map> batteryData = resp.json.data.findAll { it.type == "device_power" }
       // TODO: batteryData could also be useful for buttons/remotes?
       // Probably does not make sense to parse other button events now (only in real time)
       // Check if anything else?
-
       parseLightStatesV2(lightsData)
       parseGroupStatesV2(groupsData)
       parseSceneStatesV2(scenesData)
@@ -336,11 +345,10 @@ private void parseStatesV2(AsyncResponse resp, Map data) {
    }
 }
 
-
-/** Callback method that handles full Bridge refresh. Eventually delegated to individual
- *  methods below. For Hue V1 API.
+/** Callback method that handles full Bridge refresh for V1 API. Eventually delegated to
+ *  individual methods below. For Hue V1 API.
  */
-private void parseStatesV1(AsyncResponse resp, Map data) { 
+void parseStatesV1(AsyncResponse resp, Map data) { 
    if (logEnable) log.debug "parseStatesV1() - States from Bridge received. Now parsing..."
    if (checkIfValidResponse(resp)) {
       parseLightStatesV1(resp.json.lights)
@@ -349,7 +357,7 @@ private void parseStatesV1(AsyncResponse resp, Map data) {
    }
 }
 
-private void parseLightStatesV2(List lightsJson) {
+void parseLightStatesV2(List lightsJson) {
    if (logEnable) log.debug "parseLightStatesV2()"
    // Uncomment this line if asked to for debugging (or you're curious):
    //log.debug "lightsJson = $lightsJson"
@@ -373,7 +381,7 @@ private void parseLightStatesV2(List lightsJson) {
    }
 }
 
-private void parseLightStatesV1(Map lightsJson) {
+void parseLightStatesV1(Map lightsJson) {
    if (logEnable) log.debug "parseLightStatesV1()"
    // Uncomment this line if asked to for debugging (or you're curious):
    //log.debug "lightsJson = $lightsJson"
@@ -391,7 +399,7 @@ private void parseLightStatesV1(Map lightsJson) {
    }
 }
 
-private void parseGroupStatesV2(List groupsJson) {
+void parseGroupStatesV2(List groupsJson) {
    if (logEnable) log.debug "parseGroupStatesV2()"
    // Uncomment this line if asked to for debugging (or you're curious):
    //log.debug "groupsJson = $groupsJson"
@@ -415,7 +423,7 @@ private void parseGroupStatesV2(List groupsJson) {
    }
 }
 
-private void parseGroupStatesV1(Map groupsJson) {
+void parseGroupStatesV1(Map groupsJson) {
    if (logEnable) log.debug "parseGroupStatesV1()"
    // Uncomment this line if asked to for debugging (or you're curious):
    //log.debug "groupsJson = $groupsJson"
@@ -440,7 +448,7 @@ private void parseGroupStatesV1(Map groupsJson) {
    }
 }
 
-private void parseSceneStatesV2(List scenesJson) {
+void parseSceneStatesV2(List scenesJson) {
    if (logEnable) log.debug "parseSceneStatesV2()"
    // Uncomment this line if asked to for debugging (or you're curious):
    //log.debug "scenesJson = $scenesJson"
@@ -464,7 +472,7 @@ private void parseSceneStatesV2(List scenesJson) {
    }
 }
 
-private void parseMotionSensorStatesV2(List sensorJson) {
+void parseMotionSensorStatesV2(List sensorJson) {
    if (logEnable) log.debug "parseLightStates()"
    // Uncomment this line if asked to for debugging (or you're curious):
    //log.debug "sensorJson = $sensorJson"

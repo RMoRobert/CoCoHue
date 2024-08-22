@@ -57,7 +57,6 @@
 #include RMoRobert.CoCoHue_HueSat_Lib
 #include RMoRobert.CoCoHue_Flash_Lib
 #include RMoRobert.CoCoHue_Effect_Lib
-#include RMoRobert.CoCoHue_Prestage_Lib
 
 import groovy.transform.Field
 import hubitat.scheduling.AsyncResponse
@@ -90,7 +89,6 @@ metadata {
       capability "Refresh"
       capability "Switch"
       capability "SwitchLevel"
-      capability "LevelPreset"
       capability "ChangeLevel"
       capability "Light"
       capability "ColorMode"
@@ -99,14 +97,7 @@ metadata {
       command "flash"
       command "flashOnce"
       command "flashOff"
-
-      // Not (yet?) standard, but hopefully will be standardized soon (and similar to this--as analagous to LevelPreset as possible):
-      command "presetColorTemperature", [[name:"Color temperature*",type:"NUMBER", description:"Color temperature to prestage", constraints:["NUMBER"]]]
-      command "presetColor", [[name:"Color Map*", type:"JSON_OBJECT", description:"Color to prestage (Map with keys: hue, saturation, value; also accepts JSON object for better UI compatibility, subject to change)"]]
-      attribute "colorTemperaturePreset", "number"
-      attribute "huePreset", "number"
-      attribute "saturationPreset", "number"
-      
+   
       attribute "effect", "string"
       attribute "reachable", "string"
    }
@@ -124,8 +115,6 @@ metadata {
       // Note: the following setting does not apply to SSE, which should update the group state immediately regardless:
       input name: "updateBulbs", type: "bool", description: "", title: "Update member bulb states immediately when group state changes",
          defaultValue: true
-      if (colorStaging) input name: "colorStaging", type: "bool", description: "DEPRECATED. Please use new prestaging commands instead. May be removed in future.", title: "Enable color pseudo-prestaging", defaultValue: false
-      if (levelStaging) input name: "levelStaging", type: "bool", description: "DEPRECATED. Please use new presetLevel() command instead. May be removed in future.", title: "Enable level pseudo-prestaging", defaultValue: false 
       input name: "updateScenes", type: "bool", description: "", title: "Mark all GroupScenes for this group as off when group device turns off",
          defaultValue: true
       input name: "logEnable", type: "bool", title: "Enable debug logging", defaultValue: true
@@ -174,10 +163,6 @@ void on(Number transitionTime = null) {
       scaledRate = (transitionTime * 10) as Integer
       bridgeCmd << ["transitiontime": scaledRate]
    }
-   Map prestagedCmds = getPrestagedCommands()
-   if (prestagedCmds) {
-      bridgeCmd = prestagedCmds + bridgeCmd
-   }
    sendBridgeCommand(bridgeCmd)
 }
 
@@ -199,12 +184,11 @@ void refresh() {
  * (for "classic"/v1 HTTP API)
  * Iterates over Hue light state commands/states in Hue v1 format (e.g., ["on": true]) and does
  * a sendEvent for each relevant attribute; intended to be called either when commands are sent
- * to Bridge or if pre-staged attribute is changed and "real" command not yet able to be sent, or
- * to parse/update light states based on data received from Bridge
+ * to Bridge or to parse/update light states based on data received from Bridge
  * @param bridgeMap Map of light states that are or would be sent to bridge OR state as received from
  *  Bridge
  * @param isFromBridge Set to true if this is data read from Hue Bridge rather than intended to be sent
- *  to Bridge; if true, will ignore differences for prestaged attributes if switch state is off (TODO: how did new prestaging affect this?)
+ *  to Bridge; TODO: see if still needed now that pseudo-prestaging removed
  */
 void createEventsFromMapV1(Map bridgeCommandMap, Boolean isFromBridge = false, Set<String> keysToIgnoreIfSSEEnabledAndNotFromBridge=listKeysToIgnoreIfSSEEnabledAndNotFromBridge) {
    if (!bridgeCommandMap) {
@@ -336,7 +320,7 @@ void createEventsFromMapV1(Map bridgeCommandMap, Boolean isFromBridge = false, S
 }
 
 /**
- * (for "new"/v2/EventSocket [SSE] API; not documented and subject to change)
+ * (for V2 API)
  * Iterates over Hue light state states in Hue API v2 format (e.g., "on={on=true}") and does
  * a sendEvent for each relevant attribute; intended to be called when EventSocket data
  * received for device (as an alternative to polling)
