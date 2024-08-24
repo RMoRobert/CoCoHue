@@ -200,45 +200,58 @@ void parse(String description) {
             //log.trace "--> DATA = ${dataEntryMap}"
             if (dataEntryMap.type == "update") {
                dataEntryMap.data?.each { updateEntryMap ->
-                  //log.trace "--> map = ${updateEntryMap}"
-                  // TODO: Convert this to look for V2 API ID (we know is V2 since only eventstream would come into parse() method)
-                  String fullId = updateEntryMap.id_v1
-                  String hueId
-                  if (fullId != null) {
-                     switch (fullId) {
-                        case { it.startsWith("/lights/") }:
-                           hueId = fullId.split("/")[-1]
-                           DeviceWrapper dev = parent.getChildDevice("${device.deviceNetworkId}/Light/${hueId}")
-                           if (dev != null) dev.createEventsFromMapV2(updateEntryMap)
+                  log.trace "--> map = ${updateEntryMap}"
+                  String idV1 = updateEntryMap.id_v1?.split("/")[-1]
+                  String idV2 = updateEntryMap.id
+                  String idV1Num
+                  DeviceWrapper dev
+                  log.error updateEntryMap.type
+                  log.warn updateEntryMap.owner?.rtype
+        
+                  if (idV2 != null) {
+                     switch (updateEntryMap.type) {
+                        case "light":
+                           dev = parent.getChildDevice("${device.deviceNetworkId}/Light/${idV2}")
+                           if (dev == null) dev = parent.getChildDevice("${device.deviceNetworkId}/Light/${idV1}")
                            break
-                        case { it.startsWith("/groups/") }:
-                            hueId = fullId.split("/")[-1]
-                           DeviceWrapper dev = parent.getChildDevice("${device.deviceNetworkId}/Group/${hueId}")
-                           if (dev != null) dev.createEventsFromMapV2(updateEntryMap)
+                        case "grouped_light":  // does this one actually happpen?
+                        case "room":
+                        case "zone":
+                        case "bridge_home":
+                           dev = parent.getChildDevice("${device.deviceNetworkId}/Group/${idV2}")
+                           if (dev == null)  dev = parent.getChildDevice("${device.deviceNetworkId}/Group/${idV1}")
                            break
-                        case { it.startsWith("/scenes/") }:
-                            hueId = fullId.split("/")[-1]
-                            DeviceWrapper dev = parent.getChildDevice("${device.deviceNetworkId}/Scene/${hueId}")
-                            if (dev != null) dev.createEventsFromMapV2(updateEntryMap)
-                        case { it.startsWith("/sensors/") }:
-                           hueId = fullId.split("/")[-1]
-                           DeviceWrapper dev = parent.getChildDevices().find { DeviceWrapper dev ->
-                              hueId in dev.deviceNetworkId.tokenize('/')[-1].tokenize('|') &&
-                              dev.deviceNetworkId.startsWith("${device.deviceNetworkId}/Sensor/")  // shouldn't be necessary but gave me a Light ID once in testing for a sensor, so?!
-                           }
-                           if (dev != null) {
-                              dev.createEventsFromMapV2(updateEntryMap)
-                           }
-                           else {
-                              if (updateEntryMap.owner?.rid) dev = parent.getChildDevice("${device.deviceNetworkId}/Button/${updateEntryMap.owner.rid}")
-                              if (dev != null) {
-                                 dev.createEventsFromMapV2(updateEntryMap)
+                        case "scene":
+                           dev = parent.getChildDevice("${device.deviceNetworkId}/Scene/${idV2}")
+                           if (dev == null)  dev = parent.getChildDevice("${device.deviceNetworkId}/Scene/${idV1}")
+                           break
+                        case "motion":
+                        case "temperature":
+                        case "light_level": //todo: test or check is correct?
+                           String ownerId = updateEntryMap.owner?.rid
+                           dev = parent.getChildDevice("${device.deviceNetworkId}/Sensor/${ownerId}")
+                           if (dev == null) {
+                              // or for now also check V1 sensor ID
+                              dev = parent.getChildDevices().find { DeviceWrapper d ->
+                                 idV1 in d.deviceNetworkId.tokenize('/')[-1].tokenize('|') &&
+                                 d.deviceNetworkId.startsWith("${device.deviceNetworkId}/Sensor/")  // shouldn't be necessary but gave me a Light ID once in testing for a sensor, so?!
                               }
                            }
                            break
+                        case "button":
+                        case "relative_rotary": // todo: test!
+                           String ownerId = updateEntryMap.owner?.rid
+                           dev = parent.getChildDevice("${device.deviceNetworkId}/Sensor/${ownerId}")
+                           break
+                        case "device_power": // could be motion sensor or button
+                           dev = parent.getChildDevice("${device.deviceNetworkId}/Sensor/${ownerId}")
+                           if (dev == null) parent.getChildDevice("${device.deviceNetworkId}/Button/${ownerId}")
+                           break
                         default:
-                           if (logEnable) log.debug "skipping Hue v1 ID: $fullId"
+                           if (logEnable) log.debug "skipping Hue v1 ID: $idV1"
                      }
+                     // If child device found, send map to it for parsing:
+                     if (dev != null) dev.createEventsFromMapV2(updateEntryMap)
                   }
                }
             }

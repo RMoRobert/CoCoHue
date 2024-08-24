@@ -60,7 +60,7 @@ private Boolean checkIfValidResponse(hubitat.scheduling.AsyncResponse resp) {
       if (isOK == true) parent.setBridgeOnlineStatus(true)
    }
    else {
-      log.warn "Error communiating with Hue Bridge: HTTP ${resp?.status}"
+      log.warn "Error communicating with Hue Bridge: HTTP ${resp?.status}"
       isOK = false
    }
    return isOK

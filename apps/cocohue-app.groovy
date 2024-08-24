@@ -126,60 +126,15 @@ void updated() {
    log.debug "updated()"
    logDebug "Updated with settings: ${settings}"
    initialize()
-   // Upgrade pre-CoCoHue-4.0 DNIs to match new DNI format (CCH/AppID, not CCH/BridgeMacAbbrev)
-   if (getChildDevices().any { DeviceWrapper dev -> dev.deviceNetworkId.startsWith("CCH/${state.bridgeID}/") }) {
-      getChildDevices().each { DeviceWrapper d ->
-         if (d.deviceNetworkId.startsWith("CCH/${state.bridgeID}") && !(d.deviceNetworkId.startsWith("CCH/${state.bridgeID}/Sensor"))) {
-            String newDNI = d.deviceNetworkId.replace("CCH/${state.bridgeID}", "CCH/${app.getId()}")
-            log.debug("Updating ${d.displayName} DNI from ${d.deviceNetworkId} to $newDNI")
-            d.setDeviceNetworkId(newDNI)
-         }
-      }
-    // Upgrade pre-CoCoHue-5.0 DNIs to match new DNI format
-    // TODO!
-    // Also: update preference names for debug and desc logging automatically? Possibly also eventstream settings
-   }
-   // Upgrade pre-CoCoHue-4.0 motion sensor DNIs to match new DNI format (Hue v1 IDs, separated by pipe character; not IEEE/MAC)
-   updgradePre4DNIs()
+   // Upgrade pre-CoCoHue-5.0 DNIs to match new DNI format (will only change if using V2)
+   upgradePre5v1DNIs()
 }
 
 /** Upgrades pre-CoCoHue-5.0 DNIs from v1 API to match 5.x/V2 API format (v2 Hue IDs, not v1)
   * Should do ONLY if know Bridge is capable of supporting v2 API
 */
 void upgradePre5v1DNIs() {
-
-}
-
-/** Upgrades pre-CoCoHue-4.0 sensor DNIs to match 4.x DNI format (Hue IDs, separated by pipe char; not IEEE/MAC).
-  * Can consider removing at some point if want to require upgrades from 4.0 or newer only...
-*/
-void updgradePre4DNIs() {
-   if (getChildDevices().any { DeviceWrapper dev ->
-    (dev.deviceNetworkId.startsWith("CCH/${state.bridgeID}/Sensor/") || dev.deviceNetworkId.startsWith("CCH/${app.getId()}/Sensor/")) &&
-    dev.deviceNetworkId.tokenize('/')[-1].contains(":") // if is MAC address-lookinh
-   }) {
-      DeviceWrapper bridge = getChildDevice("CCH/${app.getId()}")
-      if (bridge == null) {
-         bridge = getChildDevice("CCH/${state.bridgeID}")
-         if (bridge == null) {
-            log.error "Bridge device not found."
-         }
-      }
-      bridge.getAllSensorsV1()
-      pauseExecution(6000) // should work (wait 6s), though there's probably a more reliable way to time (async callback?)...
-      Map sensorCache = bridge.getAllSensorsCache()
-      sensorCache.each { String mac, Map value ->
-         DeviceWrapper dev = getChildDevice("CCH/${app.getId()}/Sensor/${mac}") ?: getChildDevice("CCH/${state.bridgeID}/Sensor/${mac}")
-         if (dev != null) {
-            log.debug "Updating DNI for ${dev.displayName} to CoCoHue 4.0 format (old DNI = ${dev.deviceNetworkId})"
-            List ids = value.ids.sort()
-            String newLastPart = ids.join("|")
-            dev.setDeviceNetworkId("CCH/${app.getId()}/Sensor/${newLastPart}")
-            log.debug "Set DNI for ${dev.displayName} to CCH/${app.getId()}/${newLastPart}"
-         }
-         log.debug "dev was $dev"
-      }
-   }
+  // TODO!
 }
 
 void initialize() {
@@ -582,7 +537,7 @@ def pageManageBridge() {
 
 def pageSelectLights() {
    DeviceWrapper bridge = getChildDevice("CCH/${app.getId()}")
-   bridge.getAllBulbsV1()
+   state.useV2 ? bridge.getAllBulbsV2() : bridge.getAllBulbsV1()
    List arrNewBulbs = []
    Map bulbCache = bridge.getAllBulbsCache()
    List<DeviceWrapper> unclaimedBulbs = getChildDevices().findAll { it.deviceNetworkId.startsWith("CCH/${app.getId()}/Light/") }
@@ -659,7 +614,7 @@ def pageSelectLights() {
 
 def pageSelectGroups() {
    DeviceWrapper bridge = getChildDevice("CCH/${app.getId()}")
-   bridge.getAllGroupsV1()
+   state.useV2 ? bridge.getAllGroupsV2() : bridge.getAllGroupsV1()
    List arrNewGroups = []
    Map groupCache = bridge.getAllGroupsCache()
    List<DeviceWrapper> unclaimedGroups = getChildDevices().findAll { it.deviceNetworkId.startsWith("CCH/${app.getId()}/Group/") }
@@ -737,7 +692,7 @@ def pageSelectGroups() {
 
 def pageSelectScenes() {
    DeviceWrapper bridge = getChildDevice("CCH/${app.getId()}")
-   bridge.getAllScenesV1()
+   state.useV2 ? bridge.getAllScenesV2() : bridge.getAllScenesV1()
    List arrNewScenes = []
    Map sceneCache = bridge.getAllScenesCache()
    Map groupCache = bridge.getAllGroupsCache()
@@ -834,7 +789,7 @@ def pageSelectScenes() {
 
 def pageSelectMotionSensors() {
    DeviceWrapper bridge = getChildDevice("CCH/${app.getId()}")
-   bridge.getAllSensorsV1()
+   state.useV2 ? bridge.getAllSensorsV2() : bridge.getAllSensorsV1()
    List arrNewSensors = []
    Map sensorCache = bridge.getAllSensorsCache()
    List<DeviceWrapper> unclaimedSensors = getChildDevices().findAll { it.deviceNetworkId.startsWith("CCH/${app.getId()}/Sensor/") }
@@ -1019,7 +974,7 @@ void createNewSelectedBulbDevices() {
       }
    }
    bridge.clearBulbsCache()
-   bridge.getAllBulbsV1()
+   state.useV2 ? bridge.getAllBulbsV2() : bridge.getAllBulbsV1()
    app.removeSetting("newBulbs")
 }
 
@@ -1049,7 +1004,7 @@ void createNewSelectedGroupDevices() {
       }
    }    
    bridge.clearGroupsCache()
-   bridge.getAllGroupsV1()
+   state.useV2 ? bridge.getAllGroupsV2() : bridge.getAllGroupsV1()
    bridge.refresh()
    app.removeSetting("newGroups")
 }
@@ -1111,7 +1066,7 @@ void createNewSelectedSensorDevices() {
       }
    }    
    bridge.clearSensorsCache()
-   bridge.getAllSensorsV1()
+   state.useV2 ? bridge.getAllSensorsV2() : bridge.getAllSensorsV1()
    bridge.refresh()
    app.removeSetting("newSensors")
 }
