@@ -171,12 +171,12 @@ void initialize() {
       if (bridge != null) {
          bridge.connectEventStream()
          String bridgeSwVersion = bridge.getDataValue("swversion")
-         if (bridgeSwVersion.isInteger() && Integer.parseInt(bridgeSwVersion) >= minV2SwVersion) {
-            state.useV2 = true
-         }
-         else if (bridgeSwVersion == null) {
+         if (bridgeSwVersion == null) {
             sendBridgeInfoRequest()
             runIn(20, "initialize") // re-check version after has time to fetch in case upgrading from old version without this value
+         }
+         else if (bridgeSwVersion.isInteger() && Integer.parseInt(bridgeSwVersion) >= minV2SwVersion) {
+            state.useV2 = true
          }
       }
    }
@@ -419,7 +419,10 @@ def pageLinkBridge() {
                }
          }
          else {
-               if (!state.bridgeLinked) {
+               if (getChildDevice("CCH/${app.getId()}")) {
+                  state.bridgeLinked = true
+               }
+               if (!state.bridgeLinked || !getChildDevice("CCH/${app.getId()}")) {
                   log.debug "Bridge authorized. Requesting information from Bridge and creating Hue Bridge device on Hubitat..."
                   paragraph "Bridge authorized. Requesting information from Bridge and creating Hue Bridge device on Hubitat..."
                   if (settings["useSSDP"]) sendBridgeInfoRequest()
@@ -440,7 +443,7 @@ def pageLinkBridge() {
                }
          }
          // Hack-y way to hide/show Next button if still waiting:
-         if ((state.authTryCount >= authMaxTries) || (state.bridgeLinked && state.bridgeAuthorized)) {
+         if ((state.authTryCount >= authMaxTries) || (state.bridgeAuthorized && getChildDevice("CCH/${app.getId()}"))) {
             paragraph "<script>\$('button[name=\"_action_next\"]').show()</script>"
          }
          else {
@@ -503,7 +506,7 @@ def pageManageBridge() {
                description: "", page: "pageSelectScenes")
          href(name: "hrefSelectMotionSensors", title: "Select Motion Sensors",
                description: "", page: "pageSelectMotionSensors")
-         href(name: "hrefSelectButtons", title: "Select Button Devices (experimental)",
+         href(name: "hrefSelectButtons", title: "Select Button Devices",
                description: "", page: "pageSelectButtons")
       }
       section("Advanced Options", hideable: true, hidden: true) {
@@ -1195,6 +1198,7 @@ void sendBridgeInfoRequest(Map options) {
  * and obtains MAC address for use in creating Bridge DNI and device name
  */
 void parseBridgeInfoResponse(resp, Map data) {
+   resp?.properties.each { log.warn it }
    logDebug "parseBridgeInfoResponse(resp?.data = ${resp?.data}, data = $data)"
    Map body
    try {
@@ -1269,7 +1273,7 @@ void parseBridgeInfoResponse(resp, Map data) {
       else { // Bridge already added, so likely added with discovery; check if IP changed
          logDebug "  Bridge already added; seaching if Bridge matches MAC $bridgeMAC"
          if (bridgeMAC == state.bridgeMAC && bridgeMAC != null) { // found a match for this Bridge, so update IP:
-            if (data.ip && settings.useSSDP) {
+            if (data?.ip && settings.useSSDP) {
                state.ipAddress = data.ip
                logDebug "  Bridge MAC matched. Setting IP as ${state.ipAddress}"
             }

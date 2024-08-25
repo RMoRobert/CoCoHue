@@ -102,17 +102,34 @@ void parse(String description) {
 }
 
 /**
- * Parses Hue Bridge scene ID number out of Hubitat DNI for use with Hue API calls
- * Hubitat DNI is created in format "CCH/BridgeMACAbbrev/Scenes/HueSceneID", so just
- * looks for number after third "/" character
+ * Parses V1 Hue Bridge scene ID number out of Hubitat DNI for use with Hue V1 API calls
+ * Hubitat DNI is created in format "CCH/BridgeMACAbbrev/Scene/HueDeviceID", so just
+ * looks for number after third "/" character; or try state if DNI is V2 format (avoid if posssible,
+ *  as Hue is likely to deprecate V1 ID data in future)
  */
-String getHueDeviceNumber() {
+String getHueDeviceIdV1() {
+   String id = device.deviceNetworkId.split("/")[3]
+   if (id.length() > 32) { // max length of last part of V1 IDs per V2 API regex spec
+      id = state.id_v1?.split("/")[-1]
+      if (state.id_v1 == null) {
+         log.warn "Attempting to retrieve V1 ID but not in DNI or state."
+      }
+   }
+   return id
+}
+
+/**
+ * Parses V2 Hue Bridge device ID out of Hubitat DNI for use with Hue V2 API calls
+ * Hubitat DNI is created in format "CCH/BridgeMACAbbrev/Scene/HueDeviceID", so just
+ * looks for string after third "/" character
+ */
+String getHueDeviceIdV2() {
    return device.deviceNetworkId.split("/")[3]
 }
 
 void on() {
    Map<String,String> data = parent.getBridgeData()
-   Map cmd = ["scene": getHueDeviceNumber()]
+   Map cmd = ["scene": getHueDeviceIdV1()]
    Map params = [
       uri: data.fullHost,
       path: "/api/${data.username}/groups/0/action",
@@ -120,7 +137,7 @@ void on() {
       body: cmd,
       timeout: 15
       ]
-   asynchttpPut("parseSendCommandResponse", params, [attribute: 'switch', value: 'on'])
+   asynchttpPut("parseSendCommandResponseV1", params, [attribute: 'switch', value: 'on'])
    if (settings["onRefresh"] == "1000" || settings["onRefresh"] == "5000") {
       parent.runInMillis(settings["onRefresh"] as Integer, "refreshBridge")
    }
@@ -150,7 +167,7 @@ void off() {
                body: cmd,
                timeout: 15
          ]
-         asynchttpPut("parseSendCommandResponse", params, [attribute: 'switch', value: 'off'])
+         asynchttpPut("parseSendCommandResponseV1", params, [attribute: 'switch', value: 'off'])
          if (logEnable) log.debug "Command sent to Bridge: $cmd"
       }
    } else if (state.type == "LightScene") {
@@ -175,7 +192,7 @@ void off() {
                body: cmd,
                timeout: 15
             ]
-            asynchttpPut("parseSendCommandResponse", params)
+            asynchttpPut("parseSendCommandResponseV1", params)
             if (logEnable) log.debug "Command sent to Bridge: $cmd"
          }
       }
@@ -217,12 +234,12 @@ void createEventsFromMapV2(Map data) {
 }
 
 /** 
-  * Parses response from Bridge (or not) after sendBridgeCommand. Updates device state if
+  * Parses response from Bridge (or not) after sendBridgeCommandV1. Updates device state if
   * appears to have been successful.
   * @param resp Async HTTP response object
   * @param data Map with keys 'attribute' and 'value' containing event data to send if successful (e.g., [attribute: 'switch', value: 'off'])
   */
-void parseSendCommandResponse(AsyncResponse resp, Map data) {
+void parseSendCommandResponseV1(AsyncResponse resp, Map data) {
    if (logEnable) log.debug "Response from Bridge: ${resp.status}; data from app = $data"
    if (checkIfValidResponse(resp) && data?.attribute != null && data?.value != null) {
       if (logEnable) log.debug "  Bridge response valid; running creating events"
@@ -259,7 +276,7 @@ void refresh() {
    Map<String,String> data = parent.getBridgeData()
    Map sceneParams = [
       uri: data.fullHost,
-      path: "/api/${data.username}/scenes/${getHueDeviceNumber()}",
+      path: "/api/${data.username}/scenes/${getHueDeviceIdV1()}",
       contentType: 'application/json',
       timeout: 15
       ]

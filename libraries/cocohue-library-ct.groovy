@@ -36,7 +36,7 @@ void setColorTemperature(Number colorTemperature, Number level = null, Number tr
    if (prestagedCmds) {
       bridgeCmd = prestagedCmds + bridgeCmd
    }
-   sendBridgeCommand(bridgeCmd)
+   sendBridgeCommandV1(bridgeCmd)
 }
 
 // Not a standard command (yet?), but I hope it will get implemented as such soon in

@@ -2,6 +2,7 @@
 // For use with CoCoHue drivers (not app)
 
 /**
+ * 1.0.4 - Add common bridgeAsyncGetV2() method (goal to reduce individual driver code)
  * 1.0.3 - Add APIV1 and APIV2 "constants"
  * 1.0.2  - HTTP error handling tweaks
  */
@@ -78,3 +79,27 @@ void doSendEvent(String eventName, eventValue, String eventUnit=null, Boolean fo
       else sendEvent(name: eventName, value: eventValue, descriptionText: descriptionText) 
    }
 }
+
+// HTTP methods (might be better to split into separate library if not needed for some?)
+
+/** Performs asynchttpGet() to Bridge using data retrieved from parent app or as passed in
+  * @param callbackMethod Callback method
+  * @param clipV2Path The Hue V2 API path (without '/clip/v2', automatically prepended), e.g. '/resource' or '/resource/light'
+  * @param bridgeData Bridge data from parent getBridgeData() call, or will call this method on parent if null
+  * @param data Extra data to pass as optional third (data) parameter to asynchtttpGet() method
+  */
+void bridgeAsyncGetV2(String callbackMethod, String clipV2Path, Map<String,String> bridgeData = null, Map data = null) {
+   if (bridgeData == null) {
+      bridgeData = parent.getBridgeData()
+   }
+   Map params = [
+      uri: "https://${bridgeData.ip}",
+      path: "/clip/v2${clipV2Path}",
+      headers: ["hue-application-key": bridgeData.username],
+      contentType: "application/json",
+      timeout: 15,
+      ignoreSSLIssues: true
+   ]
+   asynchttpGet(callbackMethod, params, data)
+}
+

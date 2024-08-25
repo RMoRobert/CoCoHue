@@ -79,22 +79,13 @@ void parse(String description) {
    log.warn("Running unimplemented parse for: '${description}'")
 }
 
-/**
- * Parses Hue Bridge scene ID number out of Hubitat DNI for use with Hue API calls
- * Hubitat DNI is created in format "CCH/AppId/Button/v2ApiId", so just
- * looks for string after third "/" character
- */
-String getHueDeviceNumber() {
-   return device.deviceNetworkId.split("/")[3]
-}
-
 /** 
-  * Parses response from Bridge (or not) after sendBridgeCommand. Updates device state if
+  * Parses response from Bridge (or not) after sendBridgeCommandV1. Updates device state if
   * appears to have been successful.
   * @param resp Async HTTP response object
   * @param data Map with keys 'attribute' and 'value' containing event data to send if successful (e.g., [attribute: 'switch', value: 'off'])
   */
-void parseSendCommandResponse(AsyncResponse resp, Map data) {
+void parseSendCommandResponseV1(AsyncResponse resp, Map data) {
    if (logEnable) log.debug "Response from Bridge: ${resp.status}; data from app = $data"
    // TODO: Rethink for buttons...
    if (checkIfValidResponse(resp) && data?.attribute != null && data?.value != null) {

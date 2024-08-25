@@ -106,11 +106,28 @@ void parse(String description) {
 }
 
 /**
- * Parses Hue Bridge device ID number out of Hubitat DNI for use with Hue API calls
+ * Parses V1 Hue Bridge device ID number out of Hubitat DNI for use with Hue V1 API calls
  * Hubitat DNI is created in format "CCH/BridgeMACAbbrev/Light/HueDeviceID", so just
- * looks for number after third "/" character
+ * looks for number after third "/" character; or try state if DNI is V2 format (avoid if posssible,
+ *  as Hue is likely to deprecate V1 ID data in future)
  */
-String getHueDeviceNumber() {
+String getHueDeviceIdV1() {
+   String id = device.deviceNetworkId.split("/")[3]
+   if (id.length() > 32) { // max length of last part of V1 IDs per V2 API regex spec, though never seen anything non-numeric longer than 2 (or 3?)...
+      id = state.id_v1?.split("/")[-1]
+      if (state.id_v1 == null) {
+         log.warn "Attempting to retrieve V1 ID but not in DNI or state."
+      }
+   }
+   return id
+}
+
+/**
+ * Parses V2 Hue Bridge device ID out of Hubitat DNI for use with Hue V2 API calls
+ * Hubitat DNI is created in format "CCH/BridgeMACAbbrev/Light/HueDeviceID", so just
+ * looks for string after third "/" character
+ */
+String getHueDeviceIdV2() {
    return device.deviceNetworkId.split("/")[3]
 }
 
@@ -121,7 +138,7 @@ void on(Number transitionTime = null) {
       scaledRate = (transitionTime * 10) as Integer
       bridgeCmd << ["transitiontime": scaledRate]
    }
-   sendBridgeCommand(bridgeCmd)
+   sendBridgeCommandV1(bridgeCmd)
 }
 
 void off(Number transitionTime = null) {
@@ -134,7 +151,7 @@ void off(Number transitionTime = null) {
    else {
       bridgeCmd = ["on": false, "transitiontime": scaledRate]
    }
-   sendBridgeCommand(bridgeCmd)
+   sendBridgeCommandV1(bridgeCmd)
 }
 
 void refresh() {
@@ -240,8 +257,8 @@ void createEventsFromMapV2(Map data) {
  * @param createHubEvents Will iterate over Bridge command map and do sendEvent for all
  *        affected device attributes (e.g., will send an "on" event for "switch" if ["on": true] in map)
  */
-void sendBridgeCommand(Map commandMap, Boolean createHubEvents=true) {
-   if (logEnable == true) log.debug "sendBridgeCommand($commandMap)"
+void sendBridgeCommandV1(Map commandMap, Boolean createHubEvents=true) {
+   if (logEnable == true) log.debug "sendBridgeCommandV1($commandMap)"
    if (commandMap == null || commandMap == [:]) {
       if (logEnable == true) log.debug "Commands not sent to Bridge because command map null or empty"
       return
@@ -249,28 +266,28 @@ void sendBridgeCommand(Map commandMap, Boolean createHubEvents=true) {
    Map<String,String> data = parent.getBridgeData()
    Map params = [
       uri: data.fullHost,
-      path: "/api/${data.username}/lights/${getHueDeviceNumber()}/state",
+      path: "/api/${data.username}/lights/${getHueDeviceIdV1()}/state",
       contentType: 'application/json',
       body: commandMap,
       timeout: 15
    ]
-   asynchttpPut("parseSendCommandResponse", params, createHubEvents ? commandMap : null)
+   asynchttpPut("parseSendCommandResponseV1", params, createHubEvents ? commandMap : null)
    if (logEnable == true) log.debug "-- Command sent to Bridge! --"
 }
 
 /** 
-  * Parses response from Bridge (or not) after sendBridgeCommand. Updates device state if
+  * Parses response from Bridge (or not) after sendBridgeCommandV1. Updates device state if
   * appears to have been successful.
   * @param resp Async HTTP response object
   * @param data Map of commands sent to Bridge if specified to create events from map
   */
-void parseSendCommandResponse(AsyncResponse resp, Map data) {
+void parseSendCommandResponseV1(AsyncResponse resp, Map data) {
    if (logEnable == true) log.debug "Response from Bridge: ${resp.status}"
    if (checkIfValidResponse(resp) && data) {
       if (logEnable == true) log.debug "  Bridge response valid; creating events from data map"
       createEventsFromMapV1(data)
       if ((data.containsKey("on") || data.containsKey("bri")) && settings["updateGroups"]) {
-         parent.updateGroupStatesFromBulb(data, getHueDeviceNumber())
+         parent.updateGroupStatesFromBulb(data, getHueDeviceIdV1())
       }
    }
    else {

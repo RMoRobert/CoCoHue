@@ -19,13 +19,13 @@ void startLevelChange(String direction) {
    Map cmd = ["bri": (direction == "up" ? 254 : 1),
             "transitiontime": ((settings["levelChangeRate"] == "fast" || !settings["levelChangeRate"]) ?
                                  30 : (settings["levelChangeRate"] == "slow" ? 60 : 45))]
-   sendBridgeCommand(cmd, false) 
+   sendBridgeCommandV1(cmd, false) 
 }
 
 void stopLevelChange() {
    if (logEnable == true) log.debug "stopLevelChange()..."
    Map cmd = ["bri_inc": 0]
-   sendBridgeCommand(cmd, false) 
+   sendBridgeCommandV1(cmd, false) 
 }
 
 void setLevel(value) {
@@ -60,7 +60,7 @@ void setLevel(Number value, Number rate) {
    if (prestagedCmds) {
       bridgeCmd = prestagedCmds + bridgeCmd
    }
-   sendBridgeCommand(bridgeCmd)
+   sendBridgeCommandV1(bridgeCmd)
 }
 
 void setLevel(value, rate) {

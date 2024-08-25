@@ -201,13 +201,13 @@ void parse(String description) {
             if (dataEntryMap.type == "update") {
                dataEntryMap.data?.each { updateEntryMap ->
                   log.trace "--> map = ${updateEntryMap}"
-                  String idV1 = updateEntryMap.id_v1?.split("/")[-1]
+                  String idV1
+                  if (updateEntryMap.id_v1 != null) idV1 = updateEntryMap.id_v1.split("/")[-1]
                   String idV2 = updateEntryMap.id
                   String idV1Num
                   DeviceWrapper dev
-                  log.error updateEntryMap.type
-                  log.warn updateEntryMap.owner?.rtype
-        
+                  log.warn "type = ${updateEntryMap.type}"
+                  log.warn " &nbsp; owner.rtype = ${updateEntryMap.owner?.rtype}"
                   if (idV2 != null) {
                      switch (updateEntryMap.type) {
                         case "light":
@@ -230,7 +230,7 @@ void parse(String description) {
                         case "light_level": //todo: test or check is correct?
                            String ownerId = updateEntryMap.owner?.rid
                            dev = parent.getChildDevice("${device.deviceNetworkId}/Sensor/${ownerId}")
-                           if (dev == null) {
+                           if (dev == null && idV1 != null) {
                               // or for now also check V1 sensor ID
                               dev = parent.getChildDevices().find { DeviceWrapper d ->
                                  idV1 in d.deviceNetworkId.tokenize('/')[-1].tokenize('|') &&
@@ -241,7 +241,7 @@ void parse(String description) {
                         case "button":
                         case "relative_rotary": // todo: test!
                            String ownerId = updateEntryMap.owner?.rid
-                           dev = parent.getChildDevice("${device.deviceNetworkId}/Sensor/${ownerId}")
+                           dev = parent.getChildDevice("${device.deviceNetworkId}/Button/${ownerId}")
                            break
                         case "device_power": // could be motion sensor or button
                            dev = parent.getChildDevice("${device.deviceNetworkId}/Sensor/${ownerId}")
@@ -274,15 +274,7 @@ void refresh() {
          refreshV1()
       }
       else {
-         Map params = [
-            uri: "https://${data.ip}",
-            path: "/clip/v2/resource",
-            headers: ["hue-application-key": data.username],
-            contentType: "application/json",
-            timeout: 15,
-            ignoreSSLIssues: true
-         ]
-         asynchttpGet("parseStatesV2", params)
+         bridgeAsyncGetV2("parseStatesV2", "/resource", data)
       }
    }
    catch (Exception ex) {
@@ -577,16 +569,7 @@ void parseGetAllBulbsResponseV1(resp, data) {
 void getAllBulbsV2() {
    if (logEnable) log.debug "Getting bulb list from Bridge..."
    //clearBulbsCache()
-   Map<String,String> data = parent.getBridgeData()
-   Map params = [
-      uri: "https://${data.ip}",
-      path: "/clip/v2/resource/light",
-      headers: ["hue-application-key": data.username],
-      contentType: "application/json",
-      timeout: 15,
-      ignoreSSLIssues: true
-   ]
-   asynchttpGet("parseGetAllBulbsResponseV2", params)
+   bridgeAsyncGetV2("parseGetAllBulbsResponseV2", "/resource/light")
 }
 
 void parseGetAllBulbsResponseV2(resp, Map data=null) {
@@ -821,16 +804,7 @@ void getAllScenesV2() {
    if (logEnable) log.debug "getAllScenesV2()"
    getAllGroupsV2() // so can get room names, etc.
    //clearScenesCache()
-   Map<String,String> data = parent.getBridgeData()
-   Map params = [
-      uri: "https://${data.ip}",
-      path: "/clip/v2/resource/scene",
-      headers: ["hue-application-key": data.username],
-      contentType: "application/json",
-      timeout: 15,
-      ignoreSSLIssues: true
-   ]
-   asynchttpGet("parseGetAllScenesResponseV2", params)
+   bridgeAsyncGetV2("parseGetAllScenesResponseV2", "/resource/scene")
 }
 
 void parseGetAllScenesResponseV2(resp, Map data=null) {
@@ -921,17 +895,8 @@ private void parseGetAllSensorsResponseV1(resp, data) {
 
 void getAllSensorsV2() {
    if (logEnable) log.debug "getAllSensorsV2()"
-   getAllGroupsV1() // so can get room names, etc.
+   //getAllGroupsV1() // so can get room names, etc.
    //clearScenesCache()
-   Map<String,String> data = parent.getBridgeData()
-   Map devParams = [
-      uri: "https://${data.ip}",
-      path: "/clip/v2/resource/device",
-      headers: ["hue-application-key": data.username],
-      contentType: "application/json",
-      timeout: 15,
-      ignoreSSLIssues: true
-   ]
    // Seem to be able to get everything needed for discovery from /devices? Would need this for refresh/polling...
    // Map motionParams = [
    //    uri: "https://${data.ip}",
@@ -941,6 +906,7 @@ void getAllSensorsV2() {
    //    timeout: 15,
    //    ignoreSSLIssues: true
    // ]
+   bridgeAsyncGetV2("parseGetAllSensorsResponseV2", "/resource/device", data)
    asynchttpGet("parseGetAllSensorsResponseV2", devParams)
 }
 

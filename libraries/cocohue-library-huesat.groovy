@@ -40,7 +40,7 @@ void setColor(Map value) {
    if (prestagedCmds) {
       bridgeCmd = prestagedCmds + bridgeCmd
    }
-   sendBridgeCommand(bridgeCmd)
+   sendBridgeCommandV1(bridgeCmd)
 }
 
 // Really a hack to get this usable from the admin UI since you can only have one COLOR_MAP input, which
@@ -96,7 +96,7 @@ void setHue(value) {
    if (prestagedCmds) {
       bridgeCmd = prestagedCmds + bridgeCmd
    }
-   sendBridgeCommand(bridgeCmd)
+   sendBridgeCommandV1(bridgeCmd)
 }
 
 void setSaturation(value) {
@@ -117,7 +117,7 @@ void setSaturation(value) {
    if (prestagedCmds) {
       bridgeCmd = prestagedCmds + bridgeCmd
    }
-   sendBridgeCommand(bridgeCmd)
+   sendBridgeCommandV1(bridgeCmd)
 }
 
 Integer scaleHueToBridge(hubitatHue) {

@@ -17,7 +17,7 @@ void setEffect(String effect) {
 
 void setEffect(Number id) {
    if (logEnable == true) log.debug "setEffect($id)"
-   sendBridgeCommand(["effect": (id == 1 ? "colorloop" : "none"), "on": true])
+   sendBridgeCommandV1(["effect": (id == 1 ? "colorloop" : "none"), "on": true])
 }
 
 void setNextEffect() {

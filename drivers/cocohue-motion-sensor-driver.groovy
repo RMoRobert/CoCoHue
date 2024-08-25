@@ -83,6 +83,7 @@ void parse(String description) {
  * Returns MAC address portion of "uniqueid" for device (maximimal form is AA:BB:CC:DD:EE:FF:00:11-XX-YYYY,
  * where -XX or -XX-YYYY indicate additional endpoints/sensors on same device), which should be last part
  * of DNI
+ * //TODO: Update to use owner ID instead?
  */
 String getHueDeviceMAC() {
    return device.deviceNetworkId.split("/")[3]
