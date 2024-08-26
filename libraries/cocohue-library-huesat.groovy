@@ -36,10 +36,6 @@ void setColor(Map value) {
       bridgeCmd = ["on": true, "hue": newHue, "sat": newSat, "transitiontime": scaledRate]
    }
    if (newBri) bridgeCmd << ["bri": newBri]
-   Map prestagedCmds = getPrestagedCommands()
-   if (prestagedCmds) {
-      bridgeCmd = prestagedCmds + bridgeCmd
-   }
    sendBridgeCommandV1(bridgeCmd)
 }
 
@@ -92,10 +88,6 @@ void setHue(value) {
    Integer newHue = scaleHueToBridge(value)
    Integer scaledRate = ((transitionTime != null ? transitionTime.toBigDecimal() : defaultLevelTransitionTime) / 100).toInteger()
    Map bridgeCmd = ["on": true, "hue": newHue, "transitiontime": scaledRate]
-   Map prestagedCmds = getPrestagedCommands()
-   if (prestagedCmds) {
-      bridgeCmd = prestagedCmds + bridgeCmd
-   }
    sendBridgeCommandV1(bridgeCmd)
 }
 
@@ -113,10 +105,6 @@ void setSaturation(value) {
    Integer newSat = scaleSatToBridge(value)
    Integer scaledRate = ((transitionTime != null ? transitionTime.toBigDecimal() : 1000) / 100).toInteger()
    Map bridgeCmd = ["on": true, "sat": newSat, "transitiontime": scaledRate]
-   Map prestagedCmds = getPrestagedCommands()
-   if (prestagedCmds) {
-      bridgeCmd = prestagedCmds + bridgeCmd
-   }
    sendBridgeCommandV1(bridgeCmd)
 }
 

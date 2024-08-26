@@ -32,10 +32,6 @@ void setColorTemperature(Number colorTemperature, Number level = null, Number tr
    if (level) {
       bridgeCmd << ["bri": scaleBriToBridge(level)]
    }
-   Map prestagedCmds = getPrestagedCommands()
-   if (prestagedCmds) {
-      bridgeCmd = prestagedCmds + bridgeCmd
-   }
    sendBridgeCommandV1(bridgeCmd)
 }
 

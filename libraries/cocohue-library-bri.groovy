@@ -56,10 +56,6 @@ void setLevel(Number value, Number rate) {
       "bri": newLevel,
       "transitiontime": scaledRate
    ]
-   Map prestagedCmds = getPrestagedCommands()
-   if (prestagedCmds) {
-      bridgeCmd = prestagedCmds + bridgeCmd
-   }
    sendBridgeCommandV1(bridgeCmd)
 }
 

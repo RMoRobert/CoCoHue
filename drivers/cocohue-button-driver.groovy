@@ -17,8 +17,8 @@
  *  Last modified: 2024-07-30
  *
  *  Changelog:
- *  v5.0   - Use API v2 by default, remove deprecated features
- *  v4.2    -  Library updates, prep for more v2 API
+ *  v5.0     - Use API v2 by default, remove deprecated features
+ *  v4.2     -  Library updates, prep for more v2 API
  *  v4.1.5   - Improve button command compatibility
  *  v4.1.4   - Improved HTTP error handling
  *  v4.1.2   - Add relative_rotary support (Hue Tap Dial, etc.)
