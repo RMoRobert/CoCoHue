@@ -75,7 +75,7 @@ metadata {
          [[0:"ASAP"],[400:"400ms"],[500:"500ms"],[1000:"1s"],[1500:"1.5s"],[2000:"2s"],[5000:"5s"]], defaultValue: 400
       input name: "levelChangeRate", type: "enum", description: "", title: '"Start level change" rate', options:
          [["slow":"Slow"],["medium":"Medium"],["fast":"Fast (default)"]], defaultValue: "fast"
-      input name: "updateGroups", type: "bool", description: "", title: "Update state of groups immediately when bulb state changes",
+      input name: "updateGroups", type: "bool", description: "", title: "Update state of groups immediately when bulb state changes  (applicable only if not using V2 API/eventstream)",
          defaultValue: false
       input name: "logEnable", type: "bool", title: "Enable debug logging", defaultValue: true
       input name: "txtEnable", type: "bool", title: "Enable descriptionText logging", defaultValue: true

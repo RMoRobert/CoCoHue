@@ -54,13 +54,13 @@ metadata {
    }
 
    preferences {
-      input name: "onPropagation", type: "enum", title: "Scene \"on\"/\"off\" behavior: when this scene is activated...",
+      input name: "onPropagation", type: "enum", title: "Scene \"on\"/\"off\" behavior: when this scene is activated... (applicable only if not using V2 API/eventstream)",
          options: [["none": "Do not manipulate other scene device states"],
                    ["groupScenesOff": "Mark other scenes for this group as off (if GroupScene)"],
                    ["allScenesOff": "Mark all other CoCoHue scenes as off"],
                    ["autoOff": "Automatically mark as off in 5 seconds"]],
          defaultValue: "groupScenesOff"
-      input name: "onRefresh", type: "enum", title: "Bridge refresh on activation/deactivation: when this scene is activated or deactivated by a Hubitat command...",
+      input name: "onRefresh", type: "enum", title: "Bridge refresh on activation/deactivation: when this scene is activated or deactivated by a Hubitat command...  (suggested only if not using V2 API/eventstream and depend on status)",
          options: [["none": "Do not refresh Bridge"],
                    ["1000": "Refresh Bridge device in 1s"],
                    ["5000": "Refresh Bridge device in 5s"]],

@@ -65,7 +65,7 @@ metadata {
    preferences {
       input name: "logEnable", type: "bool", title: "Enable debug logging", defaultValue: true
       input name: "txtEnable", type: "bool", title: "Enable descriptionText logging", defaultValue: true
-      input name: "updateGroups", type: "bool", description: "", title: "Update state of groups immediately when plug state changes", defaultValue: false
+      input name: "updateGroups", type: "bool", description: "", title: "Update state of groups immediately when plug state changes (applicable only if not using V2 API/eventstream)", defaultValue: false
    }
 }
 
