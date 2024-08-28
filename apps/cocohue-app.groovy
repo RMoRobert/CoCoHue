@@ -134,7 +134,60 @@ void updated() {
   * Should do ONLY if know Bridge is capable of supporting v2 API
 */
 void upgradePre5v1DNIs() {
-  // TODO!
+   logDebug "upgradePre5v1DNIs()"
+   Map<String,String> bridgeData = getBridgeData()
+   Map params = [
+      uri: "https://${bridgeData.ip}",
+      path: "/clip/v2/resource",
+      headers: ["hue-application-key": bridgeData.username],
+      contentType: "application/json",
+      timeout: 15,
+      ignoreSSLIssues: true
+   ]
+   logDebug "Sending V2 API call to Bridge /resources endpoint..."
+   asynchttpGet("upgradePre5v1DNIsResponseHandler", params)
+}
+
+void upgradePre5v1DNIsResponseHandler(AsyncResponse resp, data=null) {
+   logDebug "upgradePre5v1DNIsResponseHandler()"
+   if (resp.status == 200 && !(resp.error) && resp.json?.data) {
+      logDebug "Parsing data from Bridge /resources endpoint..."
+      // Lights:
+      List<Map> lightsData = resp.json.data.findAll { it.type == "light" } // lights
+      List<Map> roomsData = resp.json.data.findAll { it.type == "room" }   // rooms (groups)
+      List<Map> zonesData = resp.json.data.findAll { it.type == "zone" }   // zones (groups)
+      List<Map> groupsData = resp.json.data.findAll { it.type == "grouped_light" } // "pure" groups (groups)
+      List<Map> scenesData = resp.json.data.findAll { it.type == "scene" } // scenes
+      List<Map> motionData = resp.json.data.findAll { it.type == "motion" } // motion for motion sensorsor motion sensors
+      List<Map> temperatureData = resp.json.data.findAll { it.type == "temperature" } // temperature for motion sensors
+      List<Map> illuminanceData = resp.json.data.findAll { it.type == "light_level" } // lux for motion sensors (all three of above have separate V1 IDs)
+      // Don't need this for motion or button since was coupled with other data in V1:
+      //List<Map> batteryData = resp.json.data.findAll { it.type == "device_power" }
+      // Not doing buttons because have always been created using only V2 ID
+      lightsData.each { Map hueData ->
+         String id = hueData.id 
+         String id_v1 = hueData.id_v1
+         if (id_v1 != null) {
+            id_v1 = id_v1 - "/lights/"
+            DeviceWrapper dev = getChildDevice("CCH/${app.getId()}/Light/${id_v1}")
+            if (dev != null) {
+               String newDNI = dev.deviceNetworkId.replace("/Light/${id_v1}", "/Light/${id}")
+               logDebug "Found Hubitat device ${dev.displayName} for Hue V1 ID ${id_v1}. Changing DNI from ${dev.deviceNetworkId} to ${newDNI}..."
+               dev.setDeviceNetworkId(newDNI)
+            }
+            else {
+               logDebug "No Hubitat device found for Hue device ${hueData.metadata?.name} with ID V1 ${id_v1} and ID V2 {$id}; skipping."
+            }
+         }
+         else {
+            logDebug "Unable to convert device ${hueData.metadata?.name} with V2 id $id because no V1 ID found in Hue Bridge response"
+         }
+      }
+      // TODO: groups, scenes, sensors! See if can make code above reusable for all three...
+   }
+   else {
+      log.warn "Unable to upgrade to V2 DNIs. HTTP ${resp.status}. Error(s): ${resp.error}. Data: ${resp.data}"
+   }
 }
 
 void initialize() {
@@ -154,7 +207,7 @@ void initialize() {
          unschedule("periodicSendDiscovery")
       }
       subscribe(location, "systemStart", hubRestartHandler)
-      if (state.bridgeAuthorized) sendBridgeDiscoveryCommand() // do discovery if user clicks "Done"
+      if (state.bridgeAuthorized) sendBridgeDiscoveryCommandIfSSDPEnabled() // do discovery if user clicks "Done"
    }
    else {
       unsubscribe("ssdpHandler")
@@ -188,7 +241,7 @@ void initialize() {
 }
 
 void scheduleRefresh() {
-   if (logEnable) log.debug "scheduleRefresh()"
+   logDebug "scheduleRefresh()"
    Integer pollInt = Integer.parseInt(settings["pollInterval"] ?: "0")
    // If change polling options in UI, may need to modify some of these cases:
    switch (pollInt) {
@@ -239,13 +292,13 @@ void sendBridgeDiscoveryCommand() {
 void sendBridgeDiscoveryCommandIfSSDPEnabled(Boolean checkIfRecent=true) {
    logDebug("sendBridgeDiscoveryCommandIfSSDPEnabled($checkIfRecent)")
    if (settings.useSSDP != false) {
-      if (checkIfRecent) {
+      if (checkIfRecent == true) {
          Long lastDiscoThreshold = 300000 // Start with 5 minutes
          if (state.failedDiscos >= 3 && state.failedDiscos < 4) lastDiscoThreshold = 600000 // start trying every 5 min
          else if (state.failedDiscos >= 4 && state.failedDiscos < 6) lastDiscoThreshold = 1200000 // gradually increase interval if keeps failing...
          else if (state.failedDiscos >= 6 && state.failedDiscos < 18) lastDiscoThreshold = 3600000 // 1 hour now
          else lastDiscoThreshold =  7200000 // cap at 2 hr if been more than ~12 hr without Bridge
-         if (!(state.lastDiscoCommand) || (now() -  state.lastDiscoCommand >= lastDiscoThreshold)) {
+         if (!(state.lastDiscoCommand) || (now() - state.lastDiscoCommand >= lastDiscoThreshold)) {
             sendBridgeDiscoveryCommand()
          }
       }
@@ -276,11 +329,12 @@ def pageFirstPage() {
    if (app.getInstallationState() == "INCOMPLETE") {
       // Shouldn't happen with installOnOpen: true, but just in case...
       dynamicPage(name: "pageIncomplete", uninstall: true, install: true) {
-      section() {
-         paragraph "Please select \"Done\" to install CoCoHue.<br>Then, re-open to set up your Hue Bridge."
+         section() {
+            paragraph "Please select \"Done\" to install CoCoHue.<br>Then, re-open to set up your Hue Bridge."
+         }
       }
    }
-   } else {
+   else {
       if (state.bridgeLinked) {
          return pageManageBridge()
       }
@@ -536,6 +590,7 @@ def pageManageBridge() {
          input name: "boolCustomLabel", type: "bool", title: "Customize the name of this CoCoHue app instance", defaultValue: false, submitOnChange: true
          if (settings.boolCustomLabel) label title: "Custom name for this app", required: false
          input name: "logEnable", type: "bool", title: "Enable debug logging", defaultValue: true
+         input name: "testUpgrade", type: "button", title: "TEST 5.x Upgrade (REMOVE ME!)", submitOnChange: false
       }
    }
 }
@@ -1124,7 +1179,6 @@ void sendUsernameRequest(String protocol="http", Integer port=null) {
       contentType: 'text/xml',
       timeout: 15
    ]
-   log.warn params = params
    asynchttpPost("parseUsernameResponse", params, null)
 }
 
@@ -1198,7 +1252,7 @@ void sendBridgeInfoRequest(Map options) {
  * and obtains MAC address for use in creating Bridge DNI and device name
  */
 void parseBridgeInfoResponse(resp, Map data) {
-   resp?.properties.each { log.warn it }
+   //resp?.properties.each { log.trace it }
    logDebug "parseBridgeInfoResponse(resp?.data = ${resp?.data}, data = $data)"
    Map body
    try {
@@ -1306,7 +1360,7 @@ void ssdpHandler(evt) {
    else {
       logDebug "In ssdpHandler() but unable to parse LAN message from event: $evt?.description"
    }
-   //log.warn parsedMap
+   //log.trace parsedMap
 }
 
 private String convertHexToIP(hex) {
@@ -1524,6 +1578,9 @@ void appButtonHandler(btn) {
          break
       case "btnDiscoBridgeRefresh":
          sendBridgeDiscoveryCommand()
+         break
+      case "testUpgrade":
+         upgradePre5v1DNIs()
          break
       default:
          log.warn "Unhandled app button press: $btn"
