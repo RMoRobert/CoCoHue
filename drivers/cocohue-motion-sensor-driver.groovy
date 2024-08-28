@@ -14,7 +14,7 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2024-08-07
+ *  Last modified: 2024-08-27
  *
  *  Changelog:
  *  v5.0   - Use API v2 by default, remove deprecated features
@@ -160,7 +160,7 @@ void createEventsFromMapV2(Map data) {
             eventName = "illuminance"
             eventValue = Math.round(10 ** (((value.light_level as Integer)-1)/10000))
             eventUnit = "lux"
-            if (device.currentValue(eventName) != eventValue) doSendEvent(eventName, eventValue, eventUnit)
+            if (device.currentValue(eventName) != eventValue) doSendEvent(eventName, eventValue as Integer, eventUnit)
             break
          case "temperature":
             eventName = "temperature"
@@ -170,11 +170,17 @@ void createEventsFromMapV2(Map data) {
             eventUnit = "°${location.temperatureScale}"
             if (device.currentValue(eventName) != eventValue) doSendEvent(eventName, eventValue as BigDecimal, eventUnit)
             break
+         case "power_state":
+            eventName = "battery"
+            eventValue = value.battery_level
+            eventUnit = "%"
+            if (eventValue != null && device.currentValue(eventName) != eventValue) doSendEvent(eventName, eventValue as Integer, eventUnit)
+            break
          case "id_v1":
             if (state.id_v1 != value) state.id_v1 = value
             break
          default:
-            if (logEnable == true) "not handling: $key: $value"
+            if (logEnable == true) log.debug "not handling: $key: $value"
       }
    }
 }

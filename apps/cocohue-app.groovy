@@ -21,7 +21,7 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2024-08-22
+ *  Last modified: 2024-08-27
 
  *  Changelog:
  *  v5.0   - Use API v2 by default, remove deprecated features
@@ -504,10 +504,12 @@ def pageManageBridge() {
                description: "", page: "pageSelectGroups")
          href(name: "hrefSelectScenes", title: "Select Scenes",
                description: "", page: "pageSelectScenes")
-         href(name: "hrefSelectMotionSensors", title: "Select Motion Sensors",
-               description: "", page: "pageSelectMotionSensors")
-         href(name: "hrefSelectButtons", title: "Select Button Devices",
-               description: "", page: "pageSelectButtons")
+         if (state.useV2) {
+            href(name: "hrefSelectMotionSensors", title: "Select Motion Sensors",
+                  description: "", page: "pageSelectMotionSensors")
+            href(name: "hrefSelectButtons", title: "Select Button Devices",
+                  description: "", page: "pageSelectButtons")
+         }
       }
       section("Advanced Options", hideable: true, hidden: true) {
          href(name: "hrefReAddBridge", title: "Edit Bridge IP, re-authorize, or re-discover...",
@@ -792,35 +794,35 @@ def pageSelectScenes() {
 
 def pageSelectMotionSensors() {
    DeviceWrapper bridge = getChildDevice("CCH/${app.getId()}")
-   state.useV2 ? bridge.getAllSensorsV2() : bridge.getAllSensorsV1()
+   if (!state.useV2) log.warn "Attempting to retrieve sensor list, but app not configured to use V2 API. Verify this setting."
+   bridge.getAllSensorsV2()
    List arrNewSensors = []
    Map sensorCache = bridge.getAllSensorsCache()
    List<DeviceWrapper> unclaimedSensors = getChildDevices().findAll { it.deviceNetworkId.startsWith("CCH/${app.getId()}/Sensor/") }
-   dynamicPage(name: "pageSelectMotionSensors", refreshInterval: sensorCache ? 0 : 6, uninstall: true, install: false, nextPage: "pageManageBridge") {
+   dynamicPage(name: "pageSelectMotionSensors", refreshInterval: sensorCache ? null : 6, uninstall: true, install: false, nextPage: "pageManageBridge") {
       Map addedSensors = [:]  // To be populated with sensors user has added, matched by Hue ID
       if (!bridge) {
          log.error "No Bridge device found"
          return
       }
       if (sensorCache) {
-         sensorCache.each { cachedSensor ->
-            List ids = cachedSensor.value.ids?.sort() // sort numerically in case aren't (though usually retrieved from Bridge as such)
-            String lastPart = ids.join("|") // DNI format is like CCH/BridgeID/Sensor/1|2|3, where 1, 2, and 3 are the Hue IDs for various components of this sensor
-            DeviceWrapper sensorChild = unclaimedSensors.find { s -> s.deviceNetworkId == "CCH/${app.getId()}/Sensor/${lastPart}" }
+         sensorCache.sort { it.value }
+         sensorCache.each { cachedSensor -> // key = id, value = name
+            DeviceWrapper sensorChild = unclaimedSensors.find { s -> s.deviceNetworkId == "CCH/${app.getId()}/Sensor/${cachedSensor.key}" }
             if (sensorChild) {
-               addedSensors.put(lastPart, [hubitatName: sensorChild.name, hubitatId: sensorChild.id, hueName: cachedSensor.value?.name])
+               addedSensors.put(cachedSensor.key, [hubitatName: sensorChild.name, hubitatId: sensorChild.id, hueName: cachedSensor.value])
                unclaimedSensors.removeElement(sensorChild)
             } else {
                Map newSensor = [:]
-               // eventually becomes input for setting/dropdown; Map format is [MAC: DisplayName]
-               newSensor << [(cachedSensor.key): (cachedSensor.value.name)]
+               // eventually becomes input for setting/dropdown; Map format is [id: displayName]
+               newSensor << [(cachedSensor.key): (cachedSensor.value)]
                arrNewSensors << newSensor
             }
          }
-         arrNewSensors = arrNewSensors.sort { a, b ->
-            // Sort by sensor name (default would be hue ID)
-            a.entrySet().iterator().next()?.value <=> b.entrySet().iterator().next()?.value
-         }
+         // arrNewSensors = arrNewSensors.sort { a, b ->
+         //    // Sort by sensor name (default would be hue ID)
+         //    a.entrySet().iterator().next()?.value <=> b.entrySet().iterator().next()?.value
+         // }
          addedSensors = addedSensors.sort { it.value.hubitatName }
       }
       if (!sensorCache) {
@@ -831,9 +833,6 @@ def pageSelectMotionSensors() {
       }
       else {
          section("Manage Sensors") {
-            if (!(state.useV2)) {
-               paragraph "NOTE: Without \"push\" updates (EventStream/SSE) enabled, motion sensor changes are updated only when the Bridge is polled, per your CoCoHue configuration options (or a manual \"Refresh\" on the Bridge device). <b>It is not recommended to rely on Hue motion sensors for time-sensitve motion-based automations on Hubitat in this configuration</b> when used via the Hue Bridge. For example, some motion events may be missed entirely if the duration of activity lasts less than the polling interval, but there will be a delay before activity in any case."
-            }
             input name: "newSensors", type: "enum", title: "Select Hue motion sensors to add:",
                   multiple: true, options: arrNewSensors
             paragraph ""
@@ -1048,29 +1047,30 @@ void createNewSelectedSensorDevices() {
    String driverName = "CoCoHue Motion Sensor"
    DeviceWrapper bridge = getChildDevice("CCH/${app.getId()}")
    if (bridge == null) log.error("Unable to find Bridge device")
-   Map<String,Map> sensorCache = bridge?.getAllSensorsCache()
-   settings["newSensors"].each { String mac ->
-      Map cachedSensor = sensorCache.get(mac)
-      if (cachedSensor) {
+   Map<String,String> sensorCache = bridge?.getAllSensorsCache()
+   log.trace "sensorCache = $sensorCache"
+   settings.newSensors.each { String id ->
+      String name = sensorCache.get(id)
+      if (name) {
+         log.trace "name = $name"
          //try {
-            logDebug "Creating new device for Hue sensor ${mac}: (${cachedSensor})"
-            List ids = cachedSensor.ids?.sort() // sort numerically in case aren't (though usually retrieved from Bridge as such)
-            String lastPart = ids.join("|") // DNI format is like CCH/BridgeID/Sensor/1|2|3, where 1, 2, and 3 are the Hue IDs for various components of this sensor
-            String devDNI = "CCH/${app.getId()}/Sensor/${lastPart}"
-            Map devProps = [name: cachedSensor.name]
+            log.trace "id = $id"
+            logDebug "Creating new device for Hue sensor ${id}: (${name})"
+            String devDNI = "CCH/${app.getId()}/Sensor/${id}"
+            Map devProps = [name: name]
             addChildDevice(childNamespace, driverName, devDNI, devProps)
-
          //}
          //catch (Exception ex) {
-           // log.error "Unable to create new sensor device for $mac: $ex"
+           // log.error "Unable to create new sensor device for $id: $ex"
          //}
       } else {
-         log.error "Unable to create new device for sensor $mac: MAC not found in Hue Bridge cache"
+         log.error "Unable to create new device for sensor $id: ID not found in Hue Bridge cache"
       }
-   }    
+   }
    bridge.clearSensorsCache()
-   state.useV2 ? bridge.getAllSensorsV2() : bridge.getAllSensorsV1()
-   bridge.refresh()
+   // do we need to do this?
+   //bridge.getAllSensorsV2()
+   //bridge.refresh()
    app.removeSetting("newSensors")
 }
 

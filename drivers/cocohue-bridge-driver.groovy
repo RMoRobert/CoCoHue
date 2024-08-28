@@ -14,7 +14,7 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2024-08-25
+ *  Last modified: 2024-08-27
  *
  *  Changelog:
  *  v5.0    - Use API v2 by default, remove deprecated features
@@ -333,9 +333,13 @@ void parseStatesV2(AsyncResponse resp, Map data) {
       List<Map> scenesData = resp.json.data.findAll { it.type == "scene" }
       // Motion sensors (motion, temperature, lux, battery):
       List<Map> motionData = resp.json.data.findAll { it.type == "motion" }
+      //log.trace "motion = $motionData"
       List<Map> temperatureData = resp.json.data.findAll { it.type == "temperature" }
+      //log.trace  "ill = $illuminanceData"
       List<Map> illuminanceData = resp.json.data.findAll { it.type == "light_level" }
+      //log.trace "ll = $illuminanceData"
       List<Map> batteryData = resp.json.data.findAll { it.type == "device_power" }
+      //log.trace "batt = $batteryData"
       // TODO: batteryData could also be useful for buttons/remotes?
       // Probably does not make sense to parse other button events now (only in real time)
       // Check if anything else?
@@ -478,9 +482,9 @@ void parseSceneStatesV2(List scenesJson) {
 }
 
 void parseMotionSensorStatesV2(List sensorJson) {
-   if (logEnable) log.debug "parseLightStates()"
+   if (logEnable) log.debug "parseMotionSensorStatesV2()"
    // Uncomment this line if asked to for debugging (or you're curious):
-   //log.debug "sensorJson = $sensorJson"
+   log.debug "sensorJson = $sensorJson"
    try {
       sensorJson.each { Map data ->
          String id = data.owner.rid // use owner ID for sensor to keep same physical devices together more easily 
@@ -839,64 +843,10 @@ void clearScenesCache() {
 }
 
 // ------------ SENSORS (Motion/etc.) ------------
-
-/** Requests list of all sensors from Hue Bridge; updates
- *  allSensors in state when finished. (Filters down to only Hue
- *  Motion sensors.) Intended to be called during sensor discovery in app.
- */
-void getAllSensorsV1() {
-   if (logEnable) log.debug "Getting sensor list from Bridge..."
-   Map<String,String> data = parent.getBridgeData()
-   Map params = [
-      uri: data.fullHost,
-      path: "/api/${data.username}/sensors",
-      contentType: "application/json",
-      timeout: 15
-   ]
-   asynchttpGet("parseGetAllSensorsResponseV1", params)
-}
-
-private void parseGetAllSensorsResponseV1(resp, data) {
-   if (logEnable) log.debug "Parsing all sensors response..."
-   if (checkIfValidResponse(resp)) {
-      try {
-         Map allSensors = [:]
-         resp.json.each { key, val ->
-            if (val.type == "ZLLPresence" || val.type == "ZLLLightLevel" || val.type == "ZLLTemperature") {
-               String mac = val?.uniqueid?.substring(0,23)
-               if (mac != null) {
-                  if (!(allSensors[mac])) allSensors[mac] = [:]
-                  if (allSensors[mac]?.ids) allSensors[mac].ids.add(key)
-                  else allSensors[mac].ids = [key]
-               }
-               if (allSensors[mac].name) {
-                  // The ZLLPresence endpoint appears to be the one carrying the user-defined name
-                  if (val.type == "ZLLPresence") allSensors[mac].name = val.name
-               }
-               else {
-                  //...but get the other names if none has been set, just in case
-                  allSensors[mac].name = val.name
-               }
-            }
-         }
-         Map<String,Map> hueMotionSensors = [:]
-         allSensors.each { key, value ->
-            // Hue  Motion sensors should have all three types, so just further filtering:
-            if (value.ids?.size >= 3) hueMotionSensors << [(key): value]
-         }
-         state.allSensors = hueMotionSensors
-         if (logEnable) log.debug "  All sensors received from Bridge: $hueMotionSensors"
-      }
-      catch (Exception ex) {
-         log.error "Error parsing all sensors response: ${ex}"   
-      }
-   }
-}
+// No V1 for these
 
 void getAllSensorsV2() {
    if (logEnable) log.debug "getAllSensorsV2()"
-   //getAllGroupsV1() // so can get room names, etc.
-   //clearScenesCache()
    // Seem to be able to get everything needed for discovery from /devices? Would need this for refresh/polling...
    // Map motionParams = [
    //    uri: "https://${data.ip}",
@@ -906,8 +856,7 @@ void getAllSensorsV2() {
    //    timeout: 15,
    //    ignoreSSLIssues: true
    // ]
-   bridgeAsyncGetV2("parseGetAllSensorsResponseV2", "/resource/device", data)
-   asynchttpGet("parseGetAllSensorsResponseV2", devParams)
+   bridgeAsyncGetV2("parseGetAllSensorsResponseV2", "/resource/device")
 }
 
 void parseGetAllSensorsResponseV2(resp, Map data=null) {
@@ -946,6 +895,7 @@ void clearSensorsCache() {
 }
 
 // ------------ BUTTONS ------------
+// no V1 for these
 
 /** Requests list of all button devices from Hue Bridge; updates
  *  allButtons in state when finished. Intended to be called
