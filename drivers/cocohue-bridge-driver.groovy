@@ -493,7 +493,7 @@ void parseMotionSensorStatesV2(List sensorJson) {
          if (dev == null) {
                dev = parent.getChildDevices().find { DeviceWrapper d ->
                   d.deviceNetworkId.startsWith("${device.deviceNetworkId}/Sensor/") &&
-                  id_v1 in d.deviceNetworkId.tokenize('/')[3].tokenize('|')
+                  id_v1 in d.deviceNetworkId.tokenize('/')[-1].tokenize('|')
                }
             if (dev != null) log.warn "Device ${dev.displayName} with Hue V1 ID $id_v1 and V2 ID $id never converted to V2 DNI format"
          }
@@ -518,7 +518,7 @@ private void parseMotionSensorStatesV1(Map sensorsJson) {
           val.type == "ZHAPresence" || val.type == "ZHALightLevel" || val.type == "ZHATemperature") {
             DeviceWrapper sensorDev = parent.getChildDevices().findAll { DeviceWrapper it ->
                it.deviceNetworkId.startsWith("${device.deviceNetworkId}/Sensor/") &&
-               (key as String) in it.deviceNetworkId.tokenize('/')[3].tokenize('|')
+               (key as String) in it.deviceNetworkId.tokenize('/')[-1].tokenize('|')
             }[0]
             if (sensorDev != null) {
                sensorDev.createEventsFromMapV1(val.state)

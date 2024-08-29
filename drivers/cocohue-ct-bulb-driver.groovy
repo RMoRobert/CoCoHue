@@ -118,12 +118,12 @@ void parse(String description) {
 /**
  * Parses V1 Hue Bridge device ID number out of Hubitat DNI for use with Hue V1 API calls
  * Hubitat DNI is created in format "CCH/BridgeMACAbbrev/Light/HueDeviceID", so just
- * looks for number after third "/" character; or try state if DNI is V2 format (avoid if posssible,
+ * looks for number after last "/" character; or try state if DNI is V2 format (avoid if posssible,
  *  as Hue is likely to deprecate V1 ID data in future)
  */
 String getHueDeviceIdV1() {
-   String id = device.deviceNetworkId.split("/")[3]
-   if (id.length() > 32) { // max length of last part of V1 IDs per V2 API regex spec, though never seen anything non-numeric longer than 2 (or 3?)...
+   String id = device.deviceNetworkId.split("/")[-1]
+   if (id.length() > 32) { // max length of last part of V1 IDs per V2 API regex spec, though never seen anything non-numeric longer than 2 (or 3?) for non-scenes
       id = state.id_v1?.split("/")[-1]
       if (state.id_v1 == null) {
          log.warn "Attempting to retrieve V1 ID but not in DNI or state."
@@ -135,10 +135,10 @@ String getHueDeviceIdV1() {
 /**
  * Parses V2 Hue Bridge device ID out of Hubitat DNI for use with Hue V2 API calls
  * Hubitat DNI is created in format "CCH/BridgeMACAbbrev/Light/HueDeviceID", so just
- * looks for string after third "/" character
+ * looks for string after last "/" character
  */
 String getHueDeviceIdV2() {
-   return device.deviceNetworkId.split("/")[3]
+   return device.deviceNetworkId.split("/")[-1]
 }
 
 void on(Number transitionTime = null) {

@@ -152,18 +152,28 @@ void upgradePre5v1DNIsResponseHandler(AsyncResponse resp, data=null) {
    logDebug "upgradePre5v1DNIsResponseHandler()"
    if (resp.status == 200 && !(resp.error) && resp.json?.data) {
       logDebug "Parsing data from Bridge /resources endpoint..."
-      // Lights:
-      List<Map> lightsData = resp.json.data.findAll { it.type == "light" } // lights
-      List<Map> roomsData = resp.json.data.findAll { it.type == "room" }   // rooms (groups)
-      List<Map> zonesData = resp.json.data.findAll { it.type == "zone" }   // zones (groups)
-      List<Map> groupsData = resp.json.data.findAll { it.type == "grouped_light" } // "pure" groups (groups)
-      List<Map> scenesData = resp.json.data.findAll { it.type == "scene" } // scenes
-      List<Map> motionData = resp.json.data.findAll { it.type == "motion" } // motion for motion sensorsor motion sensors
-      List<Map> temperatureData = resp.json.data.findAll { it.type == "temperature" } // temperature for motion sensors
-      List<Map> illuminanceData = resp.json.data.findAll { it.type == "light_level" } // lux for motion sensors (all three of above have separate V1 IDs)
+
+      // -- Get all relevant device data from API response: --
+      List<Map> lightsData = resp.json.data.findAll { it.type == "light" } ?: [:] // lights
+      List<Map> roomsData = resp.json.data.findAll { it.type == "room" } ?: [:]  // rooms (groups)
+      List<Map> zonesData = resp.json.data.findAll { it.type == "zone" } ?: [:]    // zones (groups)
+      List<Map> groupsData = resp.json.data.findAll { it.type == "grouped_light" } ?: [:]  // "pure" groups (groups)
+      List<Map> scenesData = resp.json.data.findAll { it.type == "scene" } ?: [:]  // scenes
+      List<Map> motionData = resp.json.data.findAll { it.type == "motion" } ?: [:]  // motion for motion sensorsor motion sensors
+      List<Map> temperatureData = resp.json.data.findAll { it.type == "temperature" } ?: [:]  // temperature for motion sensors
+      List<Map> illuminanceData = resp.json.data.findAll { it.type == "light_level" } ?: [:]  // lux for motion sensors (all three of above have separate V1 IDs)
       // Don't need this for motion or button since was coupled with other data in V1:
       //List<Map> batteryData = resp.json.data.findAll { it.type == "device_power" }
       // Not doing buttons because have always been created using only V2 ID
+
+      // -- Now, look up each Hubitat device and perform DNI conversion if found on Hue --
+      final List<Map<String,String>> conversionKeys = [
+         // Format is ["V1 DNI Infix": "id_v1 prefix in V2 API data"]
+         ["Light": "/lights/"],
+         ["Group": "/groups/"],
+         ["Scene": "/scenes/"]
+      ]
+      // converting lights, groups, and scens are all pretty similar:
       lightsData.each { Map hueData ->
          String id = hueData.id 
          String id_v1 = hueData.id_v1
@@ -172,18 +182,79 @@ void upgradePre5v1DNIsResponseHandler(AsyncResponse resp, data=null) {
             DeviceWrapper dev = getChildDevice("CCH/${app.getId()}/Light/${id_v1}")
             if (dev != null) {
                String newDNI = dev.deviceNetworkId.replace("/Light/${id_v1}", "/Light/${id}")
-               logDebug "Found Hubitat device ${dev.displayName} for Hue V1 ID ${id_v1}. Changing DNI from ${dev.deviceNetworkId} to ${newDNI}..."
+               logDebug "Found Hubitat device ${dev.displayName} for Hue light with V1 ID ${id_v1}. Changing DNI from ${dev.deviceNetworkId} to ${newDNI}..."
                dev.setDeviceNetworkId(newDNI)
             }
             else {
-               logDebug "No Hubitat device found for Hue device ${hueData.metadata?.name} with ID V1 ${id_v1} and ID V2 {$id}; skipping."
+               logDebug "No Hubitat device found for Hue light ${hueData.metadata?.name} with ID V1 ${id_v1} and ID V2 ${id}; skipping."
             }
          }
          else {
-            logDebug "Unable to convert device ${hueData.metadata?.name} with V2 id $id because no V1 ID found in Hue Bridge response"
+            logDebug "Unable to convert light ${hueData.metadata?.name} with V2 id $id because no V1 ID found in Hue Bridge response"
          }
       }
-      // TODO: groups, scenes, sensors! See if can make code above reusable for all three...
+      (roomsData + zonesData + groupsData).each { Map hueData ->
+         String id = hueData.id 
+         String id_v1 = hueData.id_v1
+         if (id_v1 != null) {
+            id_v1 = id_v1 - "/groups/"
+            DeviceWrapper dev = getChildDevice("CCH/${app.getId()}/Group/${id_v1}")
+            if (dev != null) {
+               String newDNI = dev.deviceNetworkId.replace("/Group/${id_v1}", "/Group/${id}")
+               logDebug "Found Hubitat device ${dev.displayName} for Hue group with V1 ID ${id_v1}. Changing DNI from ${dev.deviceNetworkId} to ${newDNI}..."
+               dev.setDeviceNetworkId(newDNI)
+            }
+            else {
+               logDebug "No Hubitat device found for Hue group ${hueData.metadata?.name} with ID V1 ${id_v1} and ID V2 {$id}; skipping."
+            }
+         }
+         else {
+            logDebug "Unable to convert group ${hueData.metadata?.name} with V2 id $id because no V1 ID found in Hue Bridge response"
+         }
+      }
+      scenesData.each { Map hueData ->
+         String id = hueData.id 
+         String id_v1 = hueData.id_v1
+         if (id_v1 != null) {
+            id_v1 = id_v1 - "/scenes/"
+            DeviceWrapper dev = getChildDevice("CCH/${app.getId()}/Scene/${id_v1}")
+            if (dev != null) {
+               String newDNI = dev.deviceNetworkId.replace("/Scene/${id_v1}", "/Scene/${id}")
+               logDebug "Found Hubitat device ${dev.displayName} for Hue scene with V1 ID ${id_v1}. Changing DNI from ${dev.deviceNetworkId} to ${newDNI}..."
+               dev.setDeviceNetworkId(newDNI)
+            }
+            else {
+               logDebug "No Hubitat device found for Hue scene ${hueData.metadata?.name} with ID V1 ${id_v1} and ID V2 ${id}; skipping."
+            }
+         }
+         else {
+            logDebug "Unable to convert scene ${hueData.metadata?.name} with V2 id $id because no V1 ID found in Hue Bridge response"
+         }
+      }
+      // converting sensors is a bit different (old DNis had three Hue V1 IDs separated by '|' character, e.g., CCH/123/Sensor/31|32|33)
+      motionData.each { Map hueData ->
+         String id = hueData.id 
+         String id_v1 = hueData.id_v1
+         if (id_v1 != null) {
+            id_v1 = id_v1 - "/sensors/"
+               DeviceWrapper dev = getChildDevices().find { DeviceWrapper d ->
+                  d.deviceNetworkId.startsWith("CCH/${app.getId()}/Sensor/") &&
+                  id_v1 in d.deviceNetworkId.tokenize('/')[-1].tokenize('|')
+               }
+            if (dev != null) {
+               String lastPart = dev.deviceNetworkId.tokenize('/')[-1]
+               String newDNI = dev.deviceNetworkId.replace("/Sensor/${lastPart}", "/Sensor/${id}")
+               logDebug "Found Hubitat device ${dev.displayName} for Hue sensor with V1 ID ${id_v1}. Changing DNI from ${dev.deviceNetworkId} to ${newDNI}..."
+               dev.setDeviceNetworkId(newDNI)
+            }
+            else {
+               logDebug "No Hubitat device found for Hue sensor ${hueData.metadata?.name} with ID V1 ${id_v1} and ID V2 ${id}; skipping."
+            }
+         }
+         else {
+            logDebug "Unable to convert sensor ${hueData.metadata?.name} with V2 id $id because no V1 ID found in Hue Bridge response"
+         }
+      }
    }
    else {
       log.warn "Unable to upgrade to V2 DNIs. HTTP ${resp.status}. Error(s): ${resp.error}. Data: ${resp.data}"

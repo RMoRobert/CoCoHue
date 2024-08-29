@@ -80,13 +80,12 @@ void parse(String description) {
 }
 
 /**
- * Returns MAC address portion of "uniqueid" for device (maximimal form is AA:BB:CC:DD:EE:FF:00:11-XX-YYYY,
- * where -XX or -XX-YYYY indicate additional endpoints/sensors on same device), which should be last part
- * of DNI
- * //TODO: Update to use owner ID instead?
+ * Parses V2 Hue Bridge device ID out of Hubitat DNI for use with Hue V2 API calls
+ * Hubitat DNI is created in format "CCH/BridgeMACAbbrev/Sensor/HueDeviceID", so just
+ * looks for string after last "/" character
  */
-String getHueDeviceMAC() {
-   return device.deviceNetworkId.split("/")[3]
+String getHueDeviceIdV2() {
+   return device.deviceNetworkId.split("/")[-1]
 }
 
 /**
