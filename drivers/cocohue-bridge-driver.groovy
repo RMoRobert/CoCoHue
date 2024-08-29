@@ -206,8 +206,6 @@ void parse(String description) {
                   String idV2 = updateEntryMap.id
                   String idV1Num
                   DeviceWrapper dev
-                  log.warn "type = ${updateEntryMap.type}"
-                  log.warn " &nbsp; owner.rtype = ${updateEntryMap.owner?.rtype}"
                   if (idV2 != null) {
                      switch (updateEntryMap.type) {
                         case "light":
