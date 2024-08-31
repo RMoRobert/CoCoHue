@@ -16,9 +16,6 @@ library (
    namespace: "RMoRobert"
 )
 
-@Field static final String APIV1 = "V1"
-@Field static final String APIV2 = "V2"
-
 void debugOff() {
    log.warn "Disabling debug logging"
    device.updateSetting("logEnable", [value:"false", type:"bool"])

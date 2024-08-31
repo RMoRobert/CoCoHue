@@ -14,7 +14,7 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2024-08-29
+ *  Last modified: 2024-08-31
  *
  *  Changelog:
  *  v5.0    - Use API v2 by default, remove deprecated features
@@ -40,6 +40,7 @@
  */ 
 
 #include RMoRobert.CoCoHue_Common_Lib
+#include RMoRobert.CoCoHue_Constants_Lib
 
 import groovy.json.JsonSlurper
 import hubitat.scheduling.AsyncResponse
@@ -685,6 +686,9 @@ void getAllGroupsV2() {
    asynchttpGet("parseGetAllGroupsOrRoomsOrZonesResponseV2", paramsGroupedLights, [type: "grouped_light"])
    asynchttpGet("parseGetAllGroupsOrRoomsOrZonesResponseV2", paramsRooms, [type: "room"])
    asynchttpGet("parseGetAllGroupsOrRoomsOrZonesResponseV2", paramsZones, [type: "zone"])
+
+
+   bridgeAsyncGetV2("parseGetAllButtonsResponseV2", "/resource/device")
 }
 
 void parseGetAllGroupsOrRoomsOrZonesResponseV2(resp, Map<String,String> data) {
@@ -923,16 +927,8 @@ void getAllButtonsV1() {
 void getAllButtonsV2() {
    if (logEnable) log.debug "getAllButtonsV2()"
    //clearButtonsCache()
-   Map<String,String> data = parent.getBridgeData()
-   Map params = [
-      uri: "https://${data.ip}",
-      path: "/clip/v2/resource/device",
-      headers: ["hue-application-key": data.username],
-      contentType: "application/json",
-      timeout: 15,
-      ignoreSSLIssues: true
-   ]
    asynchttpGet("parseGetAllButtonsResponseV2", params)
+   bridgeAsyncGetV2("parseGetAllButtonsResponseV2", "/resource/device")
 }
 
 void parseGetAllButtonsResponseV2(resp, data) {

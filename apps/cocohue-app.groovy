@@ -21,7 +21,7 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2024-08-30
+ *  Last modified: 2024-08-31
 
  *  Changelog:
  *  v5.0   - Use API v2 by default, remove deprecated features
@@ -113,9 +113,9 @@ void installed() {
 void uninstalled() {
    log.debug "uninstalled()"
    if (!(settings.deleteDevicesOnUninstall == false)) {
-      logDebug "Deleting child devices of this CoCoHue instance..."
+      if (logEnable == true) log.debug "Deleting child devices of this CoCoHue instance..."
       List<String> DNIs = getChildDevices().collect { it.deviceNetworkId }
-      logDebug "  Preparing to delete devices with DNIs: $DNIs"
+      if (logEnable == true) log.debug "  Preparing to delete devices with DNIs: $DNIs"
       DNIs.each { String dni ->
          deleteChildDevice(dni)
       }
@@ -124,7 +124,7 @@ void uninstalled() {
 
 void updated() {
    log.debug "updated()"
-   logDebug "Updated with settings: ${settings}"
+   if (logEnable == true) log.debug "Updated with settings: ${settings}"
    initialize()
    // Upgrade pre-CoCoHue-5.0 DNIs to match new DNI format (will only change if using V2 and hasn't been done yet)
    upgradeCCHv1DNIsToV2()
@@ -138,7 +138,7 @@ void updated() {
   * Should do ONLY if know Bridge is capable of supporting v2 API
 */
 void upgradeCCHv1DNIsToV2() {
-   logDebug "upgradeV1DnisToV2()"
+   if (logEnable == true) log.debug "upgradeV1DnisToV2()"
    if (state.useV2 && (!(state.updatedTo) || state.updatedTo < currentSchemaVersion)) {
       Map<String,String> bridgeData = getBridgeData()
       Map params = [
@@ -149,18 +149,18 @@ void upgradeCCHv1DNIsToV2() {
          timeout: 15,
          ignoreSSLIssues: true
       ]
-      logDebug "Starting Hue V2 API DNI updates. Sending V2 API call to Bridge /resources endpoint..."
+      if (logEnable == true) log.debug "Starting Hue V2 API DNI updates. Sending V2 API call to Bridge /resources endpoint..."
       asynchttpGet("upgradeCCHv1DNIsToV2ResponseHandler", params)
    }
    else {
-      logDebug "Not configured to use Hue V2 API, so not upgrading DNIs to V2 API format."
+      if (logEnable == true) log.debug "Not configured to use Hue V2 API, so not upgrading DNIs to V2 API format."
    }
 }
 
 void upgradeCCHv1DNIsToV2ResponseHandler(AsyncResponse resp, data=null) {
-   logDebug "upgradeCCHv1DNIsToV2ResponseHandler()"
+   if (logEnable == true) log.debug "upgradeCCHv1DNIsToV2ResponseHandler()"
    if (resp.status == 200 && !(resp.error) && resp.json?.data) {
-      logDebug "Parsing data from Bridge /resources endpoint..."
+      if (logEnable == true) log.debug "Parsing data from Bridge /resources endpoint..."
 
       // -- Get all relevant device data from API response: --
       List<Map> lightsData = resp.json.data.findAll { it.type == "light" } ?: [:] // lights
@@ -191,15 +191,15 @@ void upgradeCCHv1DNIsToV2ResponseHandler(AsyncResponse resp, data=null) {
             DeviceWrapper dev = getChildDevice("${DNI_PREFIX}/${app.id}/Light/${id_v1}")
             if (dev != null) {
                String newDNI = dev.deviceNetworkId.replace("/Light/${id_v1}", "/Light/${id}")
-               logDebug "Found Hubitat device ${dev.displayName} for Hue light with V1 ID ${id_v1}. Changing DNI from ${dev.deviceNetworkId} to ${newDNI}..."
+               if (logEnable == true) log.debug "Found Hubitat device ${dev.displayName} for Hue light with V1 ID ${id_v1}. Changing DNI from ${dev.deviceNetworkId} to ${newDNI}..."
                dev.setDeviceNetworkId(newDNI)
             }
             else {
-               logDebug "No Hubitat device found for Hue light ${hueData.metadata?.name} with ID V1 ${id_v1} and ID V2 ${id}; skipping."
+               if (logEnable == true) log.debug "No Hubitat device found for Hue light ${hueData.metadata?.name} with ID V1 ${id_v1} and ID V2 ${id}; skipping."
             }
          }
          else {
-            logDebug "Unable to convert light ${hueData.metadata?.name} with V2 id $id because no V1 ID found in Hue Bridge response"
+            if (logEnable == true) log.debug "Unable to convert light ${hueData.metadata?.name} with V2 id $id because no V1 ID found in Hue Bridge response"
          }
       }
       (roomsData + zonesData + groupsData).each { Map hueData ->
@@ -210,15 +210,15 @@ void upgradeCCHv1DNIsToV2ResponseHandler(AsyncResponse resp, data=null) {
             DeviceWrapper dev = getChildDevice("${DNI_PREFIX}/${app.id}/Group/${id_v1}")
             if (dev != null) {
                String newDNI = dev.deviceNetworkId.replace("/Group/${id_v1}", "/Group/${id}")
-               logDebug "Found Hubitat device ${dev.displayName} for Hue group with V1 ID ${id_v1}. Changing DNI from ${dev.deviceNetworkId} to ${newDNI}..."
+               if (logEnable == true) log.debug "Found Hubitat device ${dev.displayName} for Hue group with V1 ID ${id_v1}. Changing DNI from ${dev.deviceNetworkId} to ${newDNI}..."
                dev.setDeviceNetworkId(newDNI)
             }
             else {
-               logDebug "No Hubitat device found for Hue group ${hueData.metadata?.name} with ID V1 ${id_v1} and ID V2 {$id}; skipping."
+               if (logEnable == true) log.debug "No Hubitat device found for Hue group ${hueData.metadata?.name} with ID V1 ${id_v1} and ID V2 {$id}; skipping."
             }
          }
          else {
-            logDebug "Unable to convert group ${hueData.metadata?.name} with V2 id $id because no V1 ID found in Hue Bridge response"
+            if (logEnable == true) log.debug "Unable to convert group ${hueData.metadata?.name} with V2 id $id because no V1 ID found in Hue Bridge response"
          }
       }
       scenesData.each { Map hueData ->
@@ -229,15 +229,15 @@ void upgradeCCHv1DNIsToV2ResponseHandler(AsyncResponse resp, data=null) {
             DeviceWrapper dev = getChildDevice("${DNI_PREFIX}/${app.id}/Scene/${id_v1}")
             if (dev != null) {
                String newDNI = dev.deviceNetworkId.replace("/Scene/${id_v1}", "/Scene/${id}")
-               logDebug "Found Hubitat device ${dev.displayName} for Hue scene with V1 ID ${id_v1}. Changing DNI from ${dev.deviceNetworkId} to ${newDNI}..."
+               if (logEnable == true) log.debug "Found Hubitat device ${dev.displayName} for Hue scene with V1 ID ${id_v1}. Changing DNI from ${dev.deviceNetworkId} to ${newDNI}..."
                dev.setDeviceNetworkId(newDNI)
             }
             else {
-               logDebug "No Hubitat device found for Hue scene ${hueData.metadata?.name} with ID V1 ${id_v1} and ID V2 ${id}; skipping."
+               if (logEnable == true) log.debug "No Hubitat device found for Hue scene ${hueData.metadata?.name} with ID V1 ${id_v1} and ID V2 ${id}; skipping."
             }
          }
          else {
-            logDebug "Unable to convert scene ${hueData.metadata?.name} with V2 id $id because no V1 ID found in Hue Bridge response"
+            if (logEnable == true) log.debug "Unable to convert scene ${hueData.metadata?.name} with V2 id $id because no V1 ID found in Hue Bridge response"
          }
       }
       // converting sensors is a bit different (old DNis had three Hue V1 IDs separated by '|' character, e.g., CCH/123/Sensor/31|32|33)
@@ -253,15 +253,15 @@ void upgradeCCHv1DNIsToV2ResponseHandler(AsyncResponse resp, data=null) {
             if (dev != null) {
                String lastPart = dev.deviceNetworkId.tokenize('/')[-1]
                String newDNI = dev.deviceNetworkId.replace("/Sensor/${lastPart}", "/Sensor/${id}")
-               logDebug "Found Hubitat device ${dev.displayName} for Hue sensor with V1 ID ${id_v1}. Changing DNI from ${dev.deviceNetworkId} to ${newDNI}..."
+               if (logEnable == true) log.debug "Found Hubitat device ${dev.displayName} for Hue sensor with V1 ID ${id_v1}. Changing DNI from ${dev.deviceNetworkId} to ${newDNI}..."
                dev.setDeviceNetworkId(newDNI)
             }
             else {
-               logDebug "No Hubitat device found for Hue sensor with ID V1 ${id_v1} and ID V2 ${id}; skipping."
+               if (logEnable == true) log.debug "No Hubitat device found for Hue sensor with ID V1 ${id_v1} and ID V2 ${id}; skipping."
             }
          }
          else {
-            logDebug "Unable to convert sensor with V2 id $id because no V1 ID found in Hue Bridge response"
+            if (logEnable == true) log.debug "Unable to convert sensor with V2 id $id because no V1 ID found in Hue Bridge response"
          }
       }
    }
@@ -287,7 +287,7 @@ void convertBuiltInIntegrationStatesToNew() {
          return
       }
       log.trace "proceeding more..."
-      logDebug "Converting pre-2.3.9 built-in integration configuration to new built-in integration configuration..."
+      if (logEnable == true) log.debug "Converting pre-2.3.9 built-in integration configuration to new built-in integration configuration..."
       state.remove("bridgeRefreshCount")
       state.remove("bridges")
       state.remove("bulbHash")
@@ -339,20 +339,20 @@ void convertBuiltInIntegrationStatesToNew() {
             // Group (DNI format = hueGroup:<appId>/<HueV1D>, e.g., hueGroup:12:89)
             String groupIdV1 = ogDev.deviceNetworkId.split("/")[-1]
             String newDniV1 = "${DNI_PREFIX}/${app.id}/Group/${groupIdV1}"
-            logDebug "Converting child device for group ID V1 $groupIdV1 to $newDniV1"
+            if (logEnable == true) log.debug "Converting child device for group ID V1 $groupIdV1 to $newDniV1"
             ogDev.setDeviceNetworkId(newDniV1)
          }
          else if (ogDev.deviceNetworkId.contains("/")) {
             // Light (DNI format = <appId>/<HueV1D>, e.g., 12/3)
             String lightIdV1 = ogDev.deviceNetworkId.split("/")[-1]
             String newDniV1 = "${DNI_PREFIX}/${app.id}/Light/${lightIdV1}"
-            logDebug "Converting child device for light ID V1 $lightIdV1 to $newDniV1"
+            if (logEnable == true) log.debug "Converting child device for light ID V1 $lightIdV1 to $newDniV1"
             ogDev.setDeviceNetworkId(newDniV1)
          }
          else {
             // Bridge (DNI = MAC, no separators, e.g., 001788201234)
             try {
-               logDebug "Converting child bridge device DNI of ${ogDev.deviceNetworkId} to ${DNI_PREFIX}/${app.id}"
+               if (logEnable == true) log.debug "Converting child bridge device DNI of ${ogDev.deviceNetworkId} to ${DNI_PREFIX}/${app.id}"
                ogDev.setDeviceNetworkId("${DNI_PREFIX}/${app.id}")
             }
             catch (Exception ex) {
@@ -386,13 +386,13 @@ void initialize() {
    state.remove("discoveredBridges")
    if (settings.useSSDP == true || settings["useSSDP"] == null) {
       if (settings["keepSSDP"] != false) {
-         logDebug "Subscribing to SSDP..."
+         if (logEnable == true) log.debug "Subscribing to SSDP..."
          subscribe(location, "ssdpTerm.urn:schemas-upnp-org:device:basic:1", "ssdpHandler")
          schedule("${Math.round(Math.random() * 59)} ${Math.round(Math.random() * 59)} 6 ? * * *",
                "periodicSendDiscovery")
       }
       else {
-         logDebug "Not subscribing to SSDP..."
+         if (logEnable == true) log.debug "Not subscribing to SSDP..."
          unsubscribe("ssdpHandler")
          unschedule("periodicSendDiscovery")
       }
@@ -431,40 +431,40 @@ void initialize() {
 }
 
 void scheduleRefresh() {
-   logDebug "scheduleRefresh()"
+   if (logEnable == true) log.debug "scheduleRefresh()"
    Integer pollInt = (settings.pollInterval instanceof Number) ? (settings.pollInterval as Integer) : (Integer.parseInt(settings.pollInterval ?: "0"))
    // If change polling options in UI, may need to modify some of these cases:
    switch (pollInt) {
       case 0:
-         logDebug "Polling disabled; not scheduling"
+         if (logEnable == true) log.debug "Polling disabled; not scheduling"
          break
       case 1..59:
-         logDebug "Scheduling polling every ${pollInt} seconds"
+         if (logEnable == true) log.debug "Scheduling polling every ${pollInt} seconds"
          schedule("${Math.round(Math.random() * pollInt)}/${pollInt} * * ? * * *", "refreshBridge")
          break
       case 60..119:
-         logDebug "Scheduling polling every 1 minute"
+         if (logEnable == true) log.debug "Scheduling polling every 1 minute"
          runEvery1Minute("refreshBridge")
          break
       case 120..179:
-         logDebug "Scheduling polling every 2 minutes"
+         if (logEnable == true) log.debug "Scheduling polling every 2 minutes"
          schedule("${Math.round(Math.random() * 59)} */2 * ? * * *", "refreshBridge")
          runEvery2Minutes("refreshBridge")
          break
       case 180..299:
-         logDebug "Scheduling polling every 3 minutes"
+         if (logEnable == true) log.debug "Scheduling polling every 3 minutes"
          schedule("${Math.round(Math.random() * 59)} */3 * ? * * *", "refreshBridge")
          break
       case 300..1799:
-         logDebug "Scheduling polling every 5 minutes"
+         if (logEnable == true) log.debug "Scheduling polling every 5 minutes"
          runEvery5Minutes("refreshBridge")
          break
       case 1800..3599:
-         logDebug "Scheduling polling every 30 minutes"
+         if (logEnable == true) log.debug "Scheduling polling every 30 minutes"
          runEvery30Minutes("refreshBridge")
          break
       default:
-         logDebug "Scheduling polling every hour"
+         if (logEnable == true) log.debug "Scheduling polling every hour"
          runEvery1Hour("refreshBridge")
    }
 }
@@ -480,7 +480,7 @@ void sendBridgeDiscoveryCommand() {
     changed
 */
 void sendBridgeDiscoveryCommandIfSSDPEnabled(Boolean checkIfRecent=true) {
-   logDebug("sendBridgeDiscoveryCommandIfSSDPEnabled($checkIfRecent)")
+   if (logEnable == true) log.debug("sendBridgeDiscoveryCommandIfSSDPEnabled($checkIfRecent)")
    if (settings.useSSDP != false) {
       if (checkIfRecent == true) {
          Long lastDiscoThreshold = 300000 // Start with 5 minutes
@@ -535,14 +535,14 @@ def pageFirstPage() {
 }
 
 def pageAddBridge() {
-   logDebug "pageAddBridge()..."
+   if (logEnable == true) log.debug "pageAddBridge()..."
    Integer discoMaxTries = 60
    if (settings.boolReauthorize) {
       state.remove("bridgeAuthorized")
       app.removeSetting("boolReauthorize")
    }
    if (settings.useSSDP != false && state.discoTryCount < 5) {
-      logDebug "Subscribing to and sending SSDP discovery..."
+      if (logEnable == true) log.debug "Subscribing to and sending SSDP discovery..."
       subscribe(location, "ssdpTerm.urn:schemas-upnp-org:device:basic:1", ssdpHandler)
       sendBridgeDiscoveryCommand()
    }  
@@ -599,12 +599,12 @@ def pageAddBridge() {
 }
 
 def pageReAddBridge() {
-   logDebug "pageReAddBridge()..."
+   if (logEnable == true) log.debug "pageReAddBridge()..."
    state.authRefreshInterval = 5
    state.discoTryCount = 0
    state.authTryCount = 0
    if (settings.useSSDP == true || settings.useSSDP == null && state.discoTryCount < 5) {
-      logDebug "Subscribing to and sending SSDP discovery..."
+      if (logEnable == true) log.debug "Subscribing to and sending SSDP discovery..."
       subscribe(location, "ssdpTerm.urn:schemas-upnp-org:device:basic:1", "ssdpHandler")
       sendBridgeDiscoveryCommand()
    }
@@ -625,10 +625,10 @@ def pageReAddBridge() {
 }
 
 def pageLinkBridge() {
-   logDebug "Beginning brdige link process..."
+   if (logEnable == true) log.debug "Beginning brdige link process..."
    String ipAddress = (settings.useSSDP != false) ? settings.selectedDiscoveredBridge : settings.bridgeIP
    state.ipAddress = ipAddress
-   logDebug "  IP address = ${state.ipAddress}"
+   if (logEnable == true) log.debug "  IP address = ${state.ipAddress}"
    Integer authMaxTries = 35
    if (!(settings.useSSDP == false)) {
       if (!(settings.selectedDiscoveredBridge)) {
@@ -673,7 +673,7 @@ def pageLinkBridge() {
                   else sendBridgeInfoRequest(ip: settings.bridgeIP ?: state.ipAddress, port: settings.customPort as Integer ?: null)
                }
                else {
-                  logDebug("Bridge already linked; skipping Bridge device creation")
+                  if (logEnable == true) log.debug("Bridge already linked; skipping Bridge device creation")
                   if (state.bridgeLinked && state.bridgeAuthorized) {
                      state.remove('discoveredBridges')
                      state.remove('authRefreshInterval')
@@ -699,23 +699,23 @@ def pageLinkBridge() {
 
 def pageManageBridge() {
    if (settings["newBulbs"]) {
-      logDebug "New bulbs selected. Creating..."
+      if (logEnable == true) log.debug "New bulbs selected. Creating..."
       createNewSelectedBulbDevices()
    }
    if (settings["newGroups"]) {
-      logDebug "New groups selected. Creating..."
+      if (logEnable == true) log.debug "New groups selected. Creating..."
       createNewSelectedGroupDevices()
    }
    if (settings["newScenes"]) {
-      logDebug "New scenes selected. Creating..."
+      if (logEnable == true) log.debug "New scenes selected. Creating..."
       createNewSelectedSceneDevices()
    }
    if (settings["newSensors"]) {
-      logDebug "New sensors selected. Creating..."
+      if (logEnable == true) log.debug "New sensors selected. Creating..."
       createNewSelectedSensorDevices()
    }
    if (settings["newButtons"]) {
-      logDebug "New button devices selected. Creating..."
+      if (logEnable == true) log.debug "New button devices selected. Creating..."
       createNewSelectedButtonDevices()
    }
    // General cleanup in case left over from discovery:
@@ -1205,7 +1205,7 @@ void createNewSelectedBulbDevices() {
       Map b = bulbCache.get(it)
       if (b) {
          try {
-            logDebug "Creating new device for Hue light ${it} (${b.name})"
+            if (logEnable == true) log.debug "Creating new device for Hue light ${it} (${b.name})"
             String devDriver = driverMap[b.type.toLowerCase()] ?: driverMap["DEFAULT"]
             String devDNI = "${DNI_PREFIX}/${app.id}/Light/${it}"
             Map devProps = [name: (settings["boolAppendBulb"] ? b.name + " (Hue Bulb)" : b.name)]
@@ -1235,7 +1235,7 @@ void createNewSelectedGroupDevices() {
       def g = groupCache.get(it)
       if (g) {
          try {
-            logDebug("Creating new device for Hue group ${it} (${g.name})")
+            if (logEnable == true) log.debug("Creating new device for Hue group ${it} (${g.name})")
             String devDNI = "${DNI_PREFIX}/${app.id}/Group/${it}"
             Map devProps = [name: (settings["boolAppendGroup"] ? g.name + " (Hue Group)" : g.name)]
             addChildDevice(NAMESPACE, driverName, devDNI, devProps)
@@ -1266,7 +1266,7 @@ void createNewSelectedSceneDevices() {
       Map sc = sceneCache.get(it)
       if (sc) {
          try {
-               logDebug "Creating new device for Hue group ${it} (state.sceneFullNames?.get(it) ?: sc.name)"
+               if (logEnable == true) log.debug "Creating new device for Hue group ${it} (state.sceneFullNames?.get(it) ?: sc.name)"
                String devDNI = "${DNI_PREFIX}/${app.id}/Scene/${it}"
                Map devProps = [name: (state.sceneFullNames?.get(it) ?: sc.name)]
                addChildDevice(NAMESPACE, driverName, devDNI, devProps)
@@ -1298,7 +1298,7 @@ void createNewSelectedSensorDevices() {
          log.trace "name = $name"
          //try {
             log.trace "id = $id"
-            logDebug "Creating new device for Hue sensor ${id}: (${name})"
+            if (logEnable == true) log.debug "Creating new device for Hue sensor ${id}: (${name})"
             String devDNI = "${DNI_PREFIX}/${app.id}/Sensor/${id}"
             Map devProps = [name: name]
             addChildDevice(NAMESPACE, driverName, devDNI, devProps)
@@ -1329,7 +1329,7 @@ void createNewSelectedButtonDevices() {
       Map b = buttonCache.get(it)
       if (b) {
          try {
-            logDebug "Creating new device for Hue button device ${it} (${b.name})"
+            if (logEnable == true) log.debug "Creating new device for Hue button device ${it} (${b.name})"
             String devDNI = "${DNI_PREFIX}/${app.id}/Button/${it}"
             Map devProps = [name: b.name]
             DeviceWrapper d = addChildDevice(NAMESPACE, devDriver, devDNI, devProps)
@@ -1354,7 +1354,7 @@ void createNewSelectedButtonDevices() {
  *  presses link button on Bridge
  */
 void sendUsernameRequest(String protocol="http", Integer port=null) {
-   logDebug "sendUsernameRequest()... (IP = ${state.ipAddress})"
+   if (logEnable == true) log.debug "sendUsernameRequest()... (IP = ${state.ipAddress})"
    String locationNameNormalized = location.name?.replaceAll("\\P{InBasic_Latin}", "_").take(13) // Cap at first 13 characters (possible 30-char total limit?)
    String userDesc = locationNameNormalized ? "Hubitat CoCoHue#${locationNameNormalized}" : "Hubitat CoCoHue"
    String ip = state.ipAddress
@@ -1376,13 +1376,13 @@ void sendUsernameRequest(String protocol="http", Integer port=null) {
  */
 void parseUsernameResponse(resp, data) {
    def body = resp.json
-   logDebug "Attempting to request Hue Bridge API key/username; result = ${body}"
+   if (logEnable == true) log.debug "Attempting to request Hue Bridge API key/username; result = ${body}"
    if (body.success != null) {
       if (body.success[0] != null) {
          if (body.success[0].username) {
                state.username = body.success[0].username
                state.bridgeAuthorized = true
-               logDebug "Bridge authorized!"
+               if (logEnable == true) log.debug "Bridge authorized!"
          }
       }
    }
@@ -1404,7 +1404,7 @@ void parseUsernameResponse(resp, data) {
  *  @param options Possible values: createBridge (default true), protocol (default "https"), ip, port
  */
 void sendBridgeInfoRequest(Map options) {
-   logDebug "sendBridgeInfoRequest()"
+   if (logEnable == true) log.debug "sendBridgeInfoRequest()"
    String fullHost
    if (options?.port) {
       fullHost = "${options.protocol ?: 'https'}://${options.ip ?: state.ipAddress}:${options.port}"
@@ -1441,17 +1441,17 @@ void sendBridgeInfoRequest(Map options) {
  */
 void parseBridgeInfoResponse(resp, Map data) {
    //resp?.properties.each { log.trace it }
-   logDebug "parseBridgeInfoResponse(resp?.data = ${resp?.data}, data = $data)"
+   if (logEnable == true) log.debug "parseBridgeInfoResponse(resp?.data = ${resp?.data}, data = $data)"
    Map body
    try {
       body = resp.json
    }
    catch (Exception ex) {
-      logDebug "  Responding device likely not a Hue Bridge: $ex"
+      if (logEnable == true) log.debug "  Responding device likely not a Hue Bridge: $ex"
       return
       // if (!(data.haveAttemptedV1)) {
       //    // try again with V1 API in case is V1 Bridge or old firmware on V2:
-      //    logDebug "  Retrying with V1 API"
+      //    if (logEnable == true) log.debug "  Retrying with V1 API"
       //    data.haveAttemptedV1 = true
       //    sendBridgeInfoRequest(data)
       // }
@@ -1465,7 +1465,7 @@ void parseBridgeInfoResponse(resp, Map data) {
    DeviceWrapper bridgeDevice = getChildDevice("${DNI_PREFIX}/${app.id}") ?: getChildDevice("${DNI_PREFIX}/${app.id}")
 
    if (data?.createBridge) {
-      logDebug "    Attempting to create Hue Bridge device for $bridgeMAC"
+      if (logEnable == true) log.debug "    Attempting to create Hue Bridge device for $bridgeMAC"
       if (!bridgeMAC) {
          log.error "    Unable to retrieve MAC address for Bridge. Exiting before creation attempt."
          return
@@ -1505,18 +1505,18 @@ void parseBridgeInfoResponse(resp, Map data) {
    }
    else { // createBridge = false, so either in discovery (so add to list instead) or received as part of regular app operation (so check if IP address changed if using Bridge discovery)
       if (!(state.bridgeLinked)) { // so in discovery
-         logDebug "  Adding Bridge with MAC $bridgeMAC ($friendlyBridgeName) to list of discovered Bridges"
+         if (logEnable == true) log.debug "  Adding Bridge with MAC $bridgeMAC ($friendlyBridgeName) to list of discovered Bridges"
          if (!state.discoveredBridges) state.discoveredBridges = []
          if (!(state.discoveredBridges.any { it.containsKey(data?.ip) } )) {
             state.discoveredBridges.add([(data.ip): "${friendlyBridgeName} - ${bridgeMAC}"])
          }
       }
       else { // Bridge already added, so likely added with discovery; check if IP changed
-         logDebug "  Bridge already added; seaching if Bridge matches MAC $bridgeMAC"
+         if (logEnable == true) log.debug "  Bridge already added; seaching if Bridge matches MAC $bridgeMAC"
          if (bridgeMAC == state.bridgeMAC && bridgeMAC != null) { // found a match for this Bridge, so update IP:
             if (data?.ip && settings.useSSDP) {
                state.ipAddress = data.ip
-               logDebug "  Bridge MAC matched. Setting IP as ${state.ipAddress}"
+               if (logEnable == true) log.debug "  Bridge MAC matched. Setting IP as ${state.ipAddress}"
             }
             String dataSwversion = bridgeDevice.getDataValue("swversion")
             if (dataSwversion != swVersion && swVersion) bridgeDevice.updateDataValue("swversion", swVersion)
@@ -1524,7 +1524,7 @@ void parseBridgeInfoResponse(resp, Map data) {
          }
          else {
             state.failedDiscos= state.failedDiscos ? state.failedDiscos += 1 : 1
-            logDebug "  No matching Bridge MAC found for ${state.bridgeMAC}. failedDiscos = ${state.failedDiscos}"
+            if (logEnable == true) log.debug "  No matching Bridge MAC found for ${state.bridgeMAC}. failedDiscos = ${state.failedDiscos}"
          }
       }
    }
@@ -1537,15 +1537,15 @@ void ssdpHandler(evt) {
       String ip = "${convertHexToIP(parsedMap?.networkAddress)}"
       String ssdpPath = parsedMap.ssdpPath
       if (ip) {
-         logDebug "Device at $ip responded to SSDP; sending info request to see if is Hue Bridge"
+         if (logEnable == true) log.debug "Device at $ip responded to SSDP; sending info request to see if is Hue Bridge"
          sendBridgeInfoRequest(ip: ip)
       }
       else {
-         logDebug "In ssdpHandler() but unable to obtain IP address from device response: $parsedMap"
+         if (logEnable == true) log.debug "In ssdpHandler() but unable to obtain IP address from device response: $parsedMap"
       }
    }
    else {
-      logDebug "In ssdpHandler() but unable to parse LAN message from event: $evt?.description"
+      if (logEnable == true) log.debug "In ssdpHandler() but unable to parse LAN message from event: $evt?.description"
    }
    //log.trace parsedMap
 }
@@ -1562,7 +1562,7 @@ private String convertHexToIP(hex) {
  * called by child devices so they can send commands to the Hue Bridge API using info
  */
 Map<String,String> getBridgeData(String protocol="http", Integer port=null) {
-   logDebug "Running getBridgeData()..."
+   if (logEnable == true) log.debug "getBridgeData()"
    if (!state.ipAddress && settings.bridgeIP && !(settings.useSSDP)) state.ipAddress = settings.bridgeIP // seamless upgrade from v1.x
    if (!state.username || !state.ipAddress) log.error "Missing username or IP address from Bridge"
    Integer thePort = port
@@ -1586,7 +1586,7 @@ Map<String,String> getBridgeData(String protocol="http", Integer port=null) {
  * refresh but could be used if user- or app-initiated (e.g., if SSE-based refresh to handle odd cases)
  */
 private void refreshBridge(Map<String,Boolean> options = [reschedule: false]) {
-   logDebug "refreshBridge(reschedule = $reschedule)"
+   if (logEnable == true) log.debug "refreshBridge(reschedule = $reschedule)"
    DeviceWrapper bridge = getChildDevice("${DNI_PREFIX}/${app.id}")
    if (!bridge) {
       log.error "No Bridge device found; could not refresh/poll"
@@ -1602,7 +1602,7 @@ private void refreshBridge(Map<String,Boolean> options = [reschedule: false]) {
  * re-schedule next periodic refresh (if enabled) to extend polling interval so this "counts" as such
 */
 private void refreshBridgeWithDealay() {
-   logDebug "refreshBridgeWithDealay"
+   if (logEnable == true) log.debug "refreshBridgeWithDealay"
    DeviceWrapper bridge = getChildDevice("${DNI_PREFIX}/${app.id}")
    if (!bridge) {
       log.error "No Bridge device found; could not refresh"
@@ -1624,7 +1624,7 @@ void setBridgeOnlineStatus(setToOnline=true) {
       return
    }
    String value = setToOnline ? 'Online' : 'Offline'
-   logDebug("  Setting Bridge status to ${value}...")
+   if (logEnable == true) log.debug("  Setting Bridge status to ${value}...")
    if (bridge.currentValue("status") != value) bridge.doSendEvent("status", value)
 }
 
@@ -1637,7 +1637,7 @@ void setBridgeOnlineStatus(setToOnline=true) {
  *  @param isAllGroup Set to true if is "All Hue Lights" group (group 0); ids (ignored) can be null in this case. Defaults to false.
  */
  void updateMemberBulbStatesFromGroup(Map states, List ids, Boolean isAllGroup=false) {
-   logDebug "Updating member bulb states after group device change... (ids = $ids, isAllGroup = $isAllGroup)"
+   if (logEnable == true) log.debug "Updating member bulb states after group device change... (ids = $ids, isAllGroup = $isAllGroup)"
    if (!isAllGroup) {
       ids?.each {
          DeviceWrapper dev = getChildDevice("${DNI_PREFIX}/${app.id}/Light/${it}")
@@ -1647,7 +1647,7 @@ void setBridgeOnlineStatus(setToOnline=true) {
       List<DeviceWrapper> devList = getChildDevices().findAll { it.getDeviceNetworkId().startsWith("${DNI_PREFIX}/${app.id}/Light/") }
       // Update other gropus even though they aren't "bulbs":
       devList += getChildDevices().findAll { it.getDeviceNetworkId().startsWith("${DNI_PREFIX}/${app.id}/Group/") && !(it.getDeviceNetworkId() == "${DNI_PREFIX}/${app.id}/Group/0") }
-      //logDebug("Updating states for: $devList")
+      //if (logEnable == true) log.debug("Updating states for: $devList")
       devList.each { it.createEventsFromMapV1(states, false) }
    }    
  }
@@ -1661,11 +1661,11 @@ void setBridgeOnlineStatus(setToOnline=true) {
   *  @param id Hue bulb ID to search all groups for (will update group if bulb found in group)
   */
  void updateGroupStatesFromBulb(Map states, id) {
-   logDebug "Searching for group devices containing bulb $id to update group state after bulb state change..."
+   if (logEnable == true) log.debug "Searching for group devices containing bulb $id to update group state after bulb state change..."
    List matchingGroupDevs = []
    getChildDevices()?.findAll({it.getDeviceNetworkId()?.startsWith("${DNI_PREFIX}/${app.id}/Group/")})?.each {
       if (it.getMemberBulbIDs()?.contains(id) || it.getDeviceNetworkId() == "${DNI_PREFIX}/${app.id}/Group/0") {
-         logDebug("Bulb $id found in group ${it.toString()}. Updating states.")
+         if (logEnable == true) log.debug("Bulb $id found in group ${it.toString()}. Updating states.")
          matchingGroupDevs.add(it)
       }
    }
@@ -1685,7 +1685,7 @@ void setBridgeOnlineStatus(setToOnline=true) {
   * @param excludeDNI Intended to be DNI of the calling scene; will exclude this from search since should remain on
  */
 void updateSceneStateToOffForGroup(String groupID, String excludeDNI=null) {
-   logDebug "Searching for scene devices matching group $groupID and excluding DNI $excludeDNI"
+   if (logEnable == true) log.debug "Searching for scene devices matching group $groupID and excluding DNI $excludeDNI"
    List<DeviceWrapper> sceneDevs = []
    if (groupID == "0") {
       sceneDevs = getChildDevices()?.findAll({it.getDeviceNetworkId()?.startsWith("${DNI_PREFIX}/${app.id}/Scene/") &&
@@ -1696,7 +1696,7 @@ void updateSceneStateToOffForGroup(String groupID, String excludeDNI=null) {
                                  it.getDeviceNetworkId() != excludeDNI &&
                                  it.getGroupID() == groupID})
    }
-   logDebug "updateSceneStateToOffForGroup matching scenes: $sceneDevs"
+   if (logEnable == true) log.debug "updateSceneStateToOffForGroup matching scenes: $sceneDevs"
    sceneDevs.each { sc ->
 		   if (sc.currentValue("switch") != "off") sc.doSendEvent("switch", "off")
    }
@@ -1709,7 +1709,7 @@ void updateSceneStateToOffForGroup(String groupID, String excludeDNI=null) {
  * @param Instance of CoCoHue Group device on which to check member bulb states
  */
 Boolean getIsAnyGroupMemberBulbOn(groupDevice) {
-   logDebug "Determining whether any group member bulbs on for group $groupDevice"
+   if (logEnable == true) log.debug "Determining whether any group member bulbs on for group $groupDevice"
    Boolean retVal = false
    if (groupDevice) {
       List<DeviceWrapper> memberBulbDevs = []
@@ -1723,7 +1723,7 @@ Boolean getIsAnyGroupMemberBulbOn(groupDevice) {
          }
       }
       Boolean anyOn = memberBulbDevs.any { it.currentValue('switch') == 'on' }
-      logDebug "Determined if any group member bulb on: $anyOn"
+      if (logEnable == true) log.debug "Determined if any group member bulb on: $anyOn"
       return anyOn
    }
 }
@@ -1734,7 +1734,7 @@ Boolean getIsAnyGroupMemberBulbOn(groupDevice) {
  *  to changes.
  */
 void setEventStreamOpenStatus(Boolean isOnline) {
-   logDebug "setEventStreamOpenStatus($isOnline)"
+   if (logEnable == true) log.debug "setEventStreamOpenStatus($isOnline)"
    state.eventStreamOpenStatus = isOnline
 }
 
@@ -1752,7 +1752,7 @@ Boolean getEventStreamEnabledSetting() {
  *  so do not have to ask Bridge each time want to know. Intended to be called by light/group/etc. devices when need to know.
  */
 Boolean getEventStreamOpenStatus() {
-   logDebug "getEventStreamOpenStatus (returning ${state.eventStreamOpenStatus})"
+   if (logEnable == true) log.debug "getEventStreamOpenStatus (returning ${state.eventStreamOpenStatus})"
    return (state.eventStreamOpenStatus == true) ? true : false
 }
 
@@ -1771,8 +1771,4 @@ void appButtonHandler(btn) {
       default:
          log.warn "Unhandled app button press: $btn"
    }
-}
-
-private void logDebug(str) {
-   if (!(settings.logEnable == false)) log.debug(str)
 }
