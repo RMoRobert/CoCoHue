@@ -276,14 +276,17 @@ void upgradeCCHv1DNIsToV2ResponseHandler(AsyncResponse resp, data=null) {
   * no user is upgrading from old/built-in Hue app (pre-platform 2.4.0):
  */
 void convertBuiltInIntegrationStatesToNew() {
+   log.trace "convertBuiltInIntegrationStatesToNew..."
    if (!state.updatedTo || state.updatedTo < currentSchemaVersion) { 
       if (state.bridgeHost) {  // basic heuristic to determine if was built-in integration (uses this state name to track Bridge IP; CoCoHue did not)
+         log.trace "proceeding..."
          // nothing -- want to upgrade
       }
       else {
          if (logEnable) "Not attempting conversion from pre-2.3.9 built-in integration because existing install does not appear to have been built-in integration"
          return
       }
+      log.trace "proceeding more..."
       logDebug "Converting pre-2.3.9 built-in integration configuration to new built-in integration configuration..."
       state.remove("bridgeRefreshCount")
       state.remove("bridges")
@@ -313,23 +316,36 @@ void convertBuiltInIntegrationStatesToNew() {
          state.remove("bridgeHost")
       }
       if (settings.pollOptions) {
-         app.updateSetting("pollInterval", [type: "enum", value: settings.pollOptions])
+         Long newPollInt
+         if (settings.pollOptions == "d") {
+            newPollInt = 0 // "d" was disabled in original built-in app
+         }
+         else {
+            try {
+               newPollInt = (settings.pollOptions instanceof Long) ? settings.pollOptions : (Long.parseLong(settings.pollOptions) * 60)
+               if (newPollInt == 0) newPollInt = 10 // 0 was 10 seconds in original built-in app
+            }
+            catch (Exception ex) {
+               newPollInt = 60
+            }
+         }
+         app.updateSetting("pollInterval", [type: "number", value: newPollInt])
          app.removeSetting("pollOptions")
       }
-
+      log.trace "dni conversion prep"
       // Convert DNIs from original built-in to CoCoHue format:
       getChildDevices().each { DeviceWrapper ogDev ->
          if (ogDev.deviceNetworkId.startsWith("hueGroup:")) {
             // Group (DNI format = hueGroup:<appId>/<HueV1D>, e.g., hueGroup:12:89)
             String groupIdV1 = ogDev.deviceNetworkId.split("/")[-1]
-            String newDniV1 = "${DNI_PREFIX}/Group/${groupIdV1}"
+            String newDniV1 = "${DNI_PREFIX}/${app.id}/Group/${groupIdV1}"
             logDebug "Converting child device for group ID V1 $groupIdV1 to $newDniV1"
             ogDev.setDeviceNetworkId(newDniV1)
          }
          else if (ogDev.deviceNetworkId.contains("/")) {
             // Light (DNI format = <appId>/<HueV1D>, e.g., 12/3)
             String lightIdV1 = ogDev.deviceNetworkId.split("/")[-1]
-            String newDniV1 = "${DNI_PREFIX}/Light/${lightIdV1}"
+            String newDniV1 = "${DNI_PREFIX}/${app.id}/Light/${lightIdV1}"
             logDebug "Converting child device for light ID V1 $lightIdV1 to $newDniV1"
             ogDev.setDeviceNetworkId(newDniV1)
          }
@@ -344,6 +360,7 @@ void convertBuiltInIntegrationStatesToNew() {
             }
          }
       }
+      app.updateSetting("useEventStream", [type: "bool", value: false])
       unschedule()
       // Quick way of keeping track of what CoCoHue version app should be updated to when all is done:
       state.updatedTo = currentSchemaVersion
@@ -415,7 +432,7 @@ void initialize() {
 
 void scheduleRefresh() {
    logDebug "scheduleRefresh()"
-   Integer pollInt = Integer.parseInt(settings["pollInterval"] ?: "0")
+   Integer pollInt = (settings.pollInterval instanceof Number) ? (settings.pollInterval as Integer) : (Integer.parseInt(settings.pollInterval ?: "0"))
    // If change polling options in UI, may need to modify some of these cases:
    switch (pollInt) {
       case 0:
@@ -762,7 +779,6 @@ def pageManageBridge() {
          input name: "boolCustomLabel", type: "bool", title: "Customize the name of this CoCoHue app instance", defaultValue: false, submitOnChange: true
          if (settings.boolCustomLabel) label title: "Custom name for this app", required: false
          input name: "logEnable", type: "bool", title: "Enable debug logging", defaultValue: true
-         input name: "testUpgrade", type: "button", title: "TEST 5.x Upgrade (REMOVE ME!)", submitOnChange: false
       }
    }
 }
@@ -1750,9 +1766,6 @@ void appButtonHandler(btn) {
          break
       case "btnDiscoBridgeRefresh":
          sendBridgeDiscoveryCommand()
-         break
-      case "testUpgrade":
-         upgradeCCHv1DNIsToV2()
          break
       default:
          log.warn "Unhandled app button press: $btn"
