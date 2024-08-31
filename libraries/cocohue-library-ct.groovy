@@ -89,24 +89,8 @@ Integer getScaledCTTransitionTime() {
    return scaledRate
 }
 
-
-// Hubitat-provided ct/name mappings
 void setGenericTempName(temp) {
    if (!temp) return
-   String genericName
-   Integer value = temp.toInteger()
-   if (value <= 2000) genericName = "Sodium"
-   else if (value <= 2100) genericName = "Starlight"
-   else if (value < 2400) genericName = "Sunrise"
-   else if (value < 2800) genericName = "Incandescent"
-   else if (value < 3300) genericName = "Soft White"
-   else if (value < 3500) genericName = "Warm White"
-   else if (value < 4150) genericName = "Moonlight"
-   else if (value <= 5000) genericName = "Horizon"
-   else if (value < 5500) genericName = "Daylight"
-   else if (value < 6000) genericName = "Electronic"
-   else if (value <= 6500) genericName = "Skylight"
-   else if (value < 20000) genericName = "Polar"
-   else genericName = "undefined" // shouldn't happen, but just in case
+   String genericName = convertTemperatureToGenericColorName(temp)
    if (device.currentValue("colorName") != genericName) doSendEvent("colorName", genericName)
 }

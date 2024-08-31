@@ -14,7 +14,7 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2024-08-27
+ *  Last modified: 2024-08-29
  *
  *  Changelog:
  *  v5.0    - Use API v2 by default, remove deprecated features
@@ -102,12 +102,15 @@ void initialize() {
       log.debug "Debug logging will be automatically disabled in ${debugAutoDisableMinutes} minutes"
       runIn(debugAutoDisableMinutes*60, "debugOff")
    }
-   if (parent.getEventStremEnabledSetting()) connectEventStream()
+   if (parent.getEventStreamEnabledSetting()) connectEventStream()
+   // Performing this check here since capability "Initialize" declared and will run on every boot, including after update if hub updated to 2.4.0 or
+   // newer with CoCoHue-based integration app (will check if already done there and have no effect if so):
+   parent.convertBuiltInIntegrationStatesToNew()
 }
 
 void connectEventStream() {
    if (logEnable) log.debug "connectEventStream()"
-   if (parent.getEventStremEnabledSetting() != true) {
+   if (parent.getEventStreamEnabledSetting() != true) {
       log.warn "CoCoHue app is configured not to use EventStream. To reliably use this interface, enable this option in the app."
    }
    Map<String,String> data = parent.getBridgeData()
@@ -130,7 +133,7 @@ void reconnectEventStream(Boolean notIfAlreadyConnected = true) {
    if (device.currentValue("eventStreamStatus") == "connected" && notIfAlreadyConnected) {
       if (logEnable) log.debug "already connected; skipping reconnection"
    }   
-   else if (parent.getEventStremEnabledSetting() != true) {
+   else if (parent.getEventStreamEnabledSetting() != true) {
       if (logEnable) log.debug "skipping reconnection because (parent) app configured not to use EventStream"
    }
    else {
@@ -200,7 +203,7 @@ void parse(String description) {
             //log.trace "--> DATA = ${dataEntryMap}"
             if (dataEntryMap.type == "update") {
                dataEntryMap.data?.each { updateEntryMap ->
-                  log.trace "--> map = ${updateEntryMap}"
+                  //log.trace "--> map = ${updateEntryMap}"
                   String idV1
                   if (updateEntryMap.id_v1 != null) idV1 = updateEntryMap.id_v1.split("/")[-1]
                   String idV2 = updateEntryMap.id
@@ -506,7 +509,9 @@ void parseMotionSensorStatesV2(List sensorJson) {
    }
 }
 
-private void parseMotionSensorStatesV1(Map sensorsJson) {
+// Not used for new installs, but existing may have V1 IDs for sensors from CoCoHue 3.x/4.x, so keeping this V1
+// method around for now just in case:
+void parseMotionSensorStatesV1(Map sensorsJson) {
    if (logEnable) log.debug "Parsing sensor states from Bridge..."
    // Uncomment this line if asked to for debugging (or you're curious):
    // log.trace "sensorsJson = ${groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(sensorsJson))}"

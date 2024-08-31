@@ -14,10 +14,10 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2024-08-27
+ *  Last modified: 2024-08-29
  *
  *  Changelog:
- *  v5.0   - Use API v2 by default, remove deprecated features
+ *  v5.0    - Use API v2 by default, remove deprecated features
  *  v4.2    - Library updates, prep for more v2 API
  *  v4.1.4  - Improved error handling, fix missing battery for motion sensors
  *  v4.0    - Add SSE support for push
@@ -79,14 +79,15 @@ void parse(String description) {
    log.warn("Running unimplemented parse for: '${description}'")
 }
 
-/**
- * Parses V2 Hue Bridge device ID out of Hubitat DNI for use with Hue V2 API calls
- * Hubitat DNI is created in format "CCH/BridgeMACAbbrev/Sensor/HueDeviceID", so just
- * looks for string after last "/" character
- */
-String getHueDeviceIdV2() {
-   return device.deviceNetworkId.split("/")[-1]
-}
+// Not used since never sends commands?
+// /**
+//  * Parses V2 Hue Bridge device ID out of Hubitat DNI for use with Hue V2 API calls
+//  * Hubitat DNI is created in format "CCH/AppID/Sensor/HueDeviceIDv2", so just
+//  * looks for string after last "/" character
+//  */
+// String getHueDeviceIdV2() {
+//    return device.deviceNetworkId.split("/")[-1]
+// }
 
 /**
  * Iterates over Hue sensor state commands/states in Hue format (e.g., ["lightlevel": 25000]) and does
@@ -179,7 +180,7 @@ void createEventsFromMapV2(Map data) {
             if (state.id_v1 != value) state.id_v1 = value
             break
          default:
-            if (logEnable == true) log.debug "not handling: $key: $value"
+            if (logEnable == true) log.debug "not handling: key $key = value $value"
       }
    }
 }
