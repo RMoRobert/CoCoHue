@@ -652,43 +652,15 @@ void parseGetAllGroupsResponseV1(resp, data) {
 
 void getAllGroupsV2() {
    // sends two calls, one to /rooms and one to /zones
-   // uses/grouped_light moslty to get "All Hue Lights" equivalent, as
-   // the /room and /zone endpoints should cover all practical cases
-   // and also get the name and other needed info for display
+   // uses /grouped_light moslty to get "All Hue Lights" equivalent, as the /room and /zone
+   // endpoints should cover all practical cases and also get the name and other needed info for display
    // To use results in parent app: look at state.allRooms and state.allZones (not state.allGroups like v1)
    if (logEnable) log.debug "getAllGroupsV2()"
    //clearBulbsCache()
-   Map<String,String> data = parent.getBridgeData()
-   Map paramsGroupedLights = [
-      uri: "https://${data.ip}",
-      path: "/clip/v2/resource/grouped_light",
-      headers: ["hue-application-key": data.username],
-      contentType: "application/json",
-      timeout: 15,
-      ignoreSSLIssues: true
-   ]
-   Map paramsRooms = [
-      uri: "https://${data.ip}",
-      path: "/clip/v2/resource/room",
-      headers: ["hue-application-key": data.username],
-      contentType: "application/json",
-      timeout: 15,
-      ignoreSSLIssues: true
-   ]
-   Map paramsZones = [
-      uri: "https://${data.ip}",
-      path: "/clip/v2/resource/zone",
-      headers: ["hue-application-key": data.username],
-      contentType: "application/json",
-      timeout: 15,
-      ignoreSSLIssues: true
-   ]
-   asynchttpGet("parseGetAllGroupsOrRoomsOrZonesResponseV2", paramsGroupedLights, [type: "grouped_light"])
-   asynchttpGet("parseGetAllGroupsOrRoomsOrZonesResponseV2", paramsRooms, [type: "room"])
-   asynchttpGet("parseGetAllGroupsOrRoomsOrZonesResponseV2", paramsZones, [type: "zone"])
-
-
-   bridgeAsyncGetV2("parseGetAllButtonsResponseV2", "/resource/device")
+   Map<String,String> bridgeData = parent.getBridgeData()
+   bridgeAsyncGetV2("parseGetAllGroupsOrRoomsOrZonesResponseV2", "/resource/grouped_light", bridgeData, [type: "grouped_light"])
+   bridgeAsyncGetV2("parseGetAllGroupsOrRoomsOrZonesResponseV2", "/resource/room", bridgeData, [type: "room"])
+   bridgeAsyncGetV2("parseGetAllGroupsOrRoomsOrZonesResponseV2", "/resource/zone", bridgeData, [type: "zone"])
 }
 
 void parseGetAllGroupsOrRoomsOrZonesResponseV2(resp, Map<String,String> data) {
@@ -854,7 +826,7 @@ void clearScenesCache() {
 
 void getAllSensorsV2() {
    if (logEnable) log.debug "getAllSensorsV2()"
-   // Seem to be able to get everything needed for discovery from /devices? Would need this for refresh/polling...
+   // Seem to be able to get everything needed for discovery from /devices? Do need this for refresh/polling...
    // Map motionParams = [
    //    uri: "https://${data.ip}",
    //    path: "/clip/v2/resource/motion",
@@ -908,26 +880,9 @@ void clearSensorsCache() {
  *  allButtons in state when finished. Intended to be called
  *  during buttoon discovery in app.
  */
-void getAllButtonsV1() {
-   // TODO: Make this all V2 and remove from V1; only works with V2 anyway...
-   if (logEnable) log.debug "getAllButtonsV1()"
-   //clearButtonsCache()
-   Map<String,String> data = parent.getBridgeData()
-   Map params = [
-      uri: "https://${data.ip}",
-      path: "/clip/v2/resource/device",
-      headers: ["hue-application-key": data.username],
-      contentType: "application/json",
-      timeout: 15,
-      ignoreSSLIssues: true
-   ]
-   asynchttpGet("parseGetAllButtonsResponseV2", params)
-}
-
 void getAllButtonsV2() {
    if (logEnable) log.debug "getAllButtonsV2()"
    //clearButtonsCache()
-   asynchttpGet("parseGetAllButtonsResponseV2", params)
    bridgeAsyncGetV2("parseGetAllButtonsResponseV2", "/resource/device")
 }
 
