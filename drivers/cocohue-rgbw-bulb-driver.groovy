@@ -397,6 +397,7 @@ void createEventsFromMapV2(Map data) {
             eventUnit = null
             if (device.currentValue(eventName) != eventValue) doSendEvent(eventName, eventValue, eventUnit)
             break
+         // TODO: Figure out equivalent of "reachable" in V2 (zigbee_connectivity on owner?)
          case "id_v1":
             if (state.id_v1 != value) state.id_v1 = value
             break

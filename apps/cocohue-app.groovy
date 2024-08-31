@@ -112,14 +112,6 @@ void installed() {
 
 void uninstalled() {
    log.debug "uninstalled()"
-   if (!(settings.deleteDevicesOnUninstall == false)) {
-      if (logEnable == true) log.debug "Deleting child devices of this CoCoHue instance..."
-      List<String> DNIs = getChildDevices().collect { it.deviceNetworkId }
-      if (logEnable == true) log.debug "  Preparing to delete devices with DNIs: $DNIs"
-      DNIs.each { String dni ->
-         deleteChildDevice(dni)
-      }
-   }
 }
 
 void updated() {
@@ -757,7 +749,9 @@ def pageManageBridge() {
       }       
       section("Other Options:") {
          if (!(state.useV2)) {
-            input name: "useEventStream", type: "bool", title: "Prefer V2 Hue API (EventStream/Server-Sent Events for instant status updates) if available. NOTE: Cannot be disabled once enabled.", defaultValue: true
+            input name: "useEventStream", type: "bool", title: "Prefer V2 Hue API (EventStream/Server-Sent Events) if available. NOTE: Cannot be disabled once enabled.", defaultValue: true
+            paragraph "<small>The V2 Hue API allows instant status updates from devices with no polling required. It is available on V2 bridges with firmware starting around late 2021 (though current firmware is recommended) and " +
+               "is necessary to use for sensor and button devices. This setting cannot be disabled once enabled (without restoring a hub backup or if you have not yet selected a Hue Bridge to link with).</small>"
          }
          else {
             paragraph "NOTE: Hue API V2 use is enabled. (This setting cannot be reverted once enabled.)"
@@ -777,8 +771,7 @@ def pageManageBridge() {
             input name: "keepSSDP", type: "bool", title: "Remain subscribed to Bridge discovery requests (recommended to keep enabled if Bridge has dynamic IP address)",
                defaultValue: true
          }
-         if (!state.useV2) input name: "showAllScenes", type: "bool", title: "Allow adding scenes not associated with rooms/zones"
-         input name: "deleteDevicesOnUninstall", type: "bool", title: "Delete devices created by app (Bridge, light, group, and scene) if uninstalled", defaultValue: true
+         if (!state.useV2) input name: "showAllScenes", type: "bool", title: "Allow adding scenes not associated with rooms/zones" // only has effect in when using V1 API (V2 only fetches rooms and zones to start)
       }
    }
 }
