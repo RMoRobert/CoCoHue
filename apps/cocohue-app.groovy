@@ -754,20 +754,10 @@ def pageManageBridge() {
             href(name: "hrefSelectButtons", title: "Select Button Devices",
                   description: "", page: "pageSelectButtons")
          }
-      }
-      section("Advanced Options", hideable: true, hidden: true) {
-         href(name: "hrefReAddBridge", title: "Edit Bridge IP, re-authorize, or re-discover...",
-               description: "", page: "pageReAddBridge")
-         if (settings.useSSDP != false) {
-            input name: "keepSSDP", type: "bool", title: "Remain subscribed to Bridge discovery requests (recommended to keep enabled if Bridge has dynamic IP address)",
-               defaultValue: true
-         }
-         if (!state.useV2) input name: "showAllScenes", type: "bool", title: "Allow adding scenes not associated with rooms/zones"
-         input name: "deleteDevicesOnUninstall", type: "bool", title: "Delete devices created by app (Bridge, light, group, and scene) if uninstalled", defaultValue: true
-      }        
+      }       
       section("Other Options:") {
-         if (!state.bridgeAuthorized || !useEventStream) {
-            input name: "useEventStream", type: "bool", title: "Prefer V2 Hue API (EventStream or Server-Sent Events) if possible. NOTE: Cannot be disabled once enabled (unless Hue Bridge has not yet been added to hub).", defaultValue: true
+         if (!(state.useV2)) {
+            input name: "useEventStream", type: "bool", title: "Prefer V2 Hue API (EventStream/Server-Sent Events for instant status updates) if available. NOTE: Cannot be disabled once enabled.", defaultValue: true
          }
          else {
             paragraph "NOTE: Hue API V2 use is enabled. (This setting cannot be reverted once enabled.)"
@@ -779,6 +769,16 @@ def pageManageBridge() {
          input name: "boolCustomLabel", type: "bool", title: "Customize the name of this CoCoHue app instance", defaultValue: false, submitOnChange: true
          if (settings.boolCustomLabel) label title: "Custom name for this app", required: false
          input name: "logEnable", type: "bool", title: "Enable debug logging", defaultValue: true
+      }
+      section("Advanced Options", hideable: true, hidden: true) {
+         href(name: "hrefReAddBridge", title: "Edit Bridge IP, re-authorize, or re-discover...",
+               description: "", page: "pageReAddBridge")
+         if (settings.useSSDP != false) {
+            input name: "keepSSDP", type: "bool", title: "Remain subscribed to Bridge discovery requests (recommended to keep enabled if Bridge has dynamic IP address)",
+               defaultValue: true
+         }
+         if (!state.useV2) input name: "showAllScenes", type: "bool", title: "Allow adding scenes not associated with rooms/zones"
+         input name: "deleteDevicesOnUninstall", type: "bool", title: "Delete devices created by app (Bridge, light, group, and scene) if uninstalled", defaultValue: true
       }
    }
 }
@@ -799,7 +799,7 @@ def pageSelectLights() {
          bulbCache.each { cachedBulb ->
             DeviceWrapper bulbChild = unclaimedBulbs.find { b -> b.deviceNetworkId == "${DNI_PREFIX}/${app.id}/Light/${cachedBulb.key}" }
             if (bulbChild) {
-               addedBulbs.put(cachedBulb.key, [hubitatName: bulbChild.name, hubitatId: bulbChild.id, hueName: cachedBulb.value?.name])
+               addedBulbs.put(cachedBulb.key, [hubitatName: bulbChild.displayName, hubitatId: bulbChild.id, hueName: cachedBulb.value?.name])
                unclaimedBulbs.removeElement(bulbChild)
             } else {
                Map newBulb = [:]
@@ -876,7 +876,7 @@ def pageSelectGroups() {
          groupCache.each { cachedGroup ->
             DeviceWrapper groupChild = unclaimedGroups.find { grp -> grp.deviceNetworkId == "${DNI_PREFIX}/${app.id}/Group/${cachedGroup.key}" }
             if (groupChild) {
-               addedGroups.put(cachedGroup.key, [hubitatName: groupChild.name, hubitatId: groupChild.id, hueName: cachedGroup.value?.name])
+               addedGroups.put(cachedGroup.key, [hubitatName: groupChild.displayName, hubitatId: groupChild.id, hueName: cachedGroup.value?.name])
                unclaimedGroups.removeElement(groupChild)
             }
             else {
@@ -958,7 +958,7 @@ def pageSelectScenes() {
          sceneCache.each { sc ->
             DeviceWrapper sceneChild = unclaimedScenes.find { scn -> scn.deviceNetworkId == "${DNI_PREFIX}/${app.id}/Scene/${sc.key}" }
             if (sceneChild) {
-               addedScenes.put(sc.key, [hubitatName: sceneChild.name, hubitatId: sceneChild.id, hueName: sc.value?.name])
+               addedScenes.put(sc.key, [hubitatName: sceneChild.displayName, hubitatId: sceneChild.id, hueName: sc.value?.name])
                unclaimedScenes.removeElement(sceneChild)
             }
             else {
@@ -1053,7 +1053,7 @@ def pageSelectMotionSensors() {
          sensorCache.each { cachedSensor -> // key = id, value = name
             DeviceWrapper sensorChild = unclaimedSensors.find { s -> s.deviceNetworkId == "${DNI_PREFIX}/${app.id}/Sensor/${cachedSensor.key}" }
             if (sensorChild) {
-               addedSensors.put(cachedSensor.key, [hubitatName: sensorChild.name, hubitatId: sensorChild.id, hueName: cachedSensor.value])
+               addedSensors.put(cachedSensor.key, [hubitatName: sensorChild.displayName, hubitatId: sensorChild.id, hueName: cachedSensor.value])
                unclaimedSensors.removeElement(sensorChild)
             } else {
                Map newSensor = [:]
@@ -1130,7 +1130,7 @@ def pageSelectButtons() {
          buttonCache.each { cachedButton ->
             DeviceWrapper buttonChild = unclaimedButtons.find { s -> s.deviceNetworkId == "${DNI_PREFIX}/${app.id}/Button/${cachedButton.key}" }
             if (buttonChild) {
-               addedButtons.put(cachedButton.key, [hubitatName: buttonChild.name, hubitatId: buttonChild.id, hueName: cachedButton.value?.name])
+               addedButtons.put(cachedButton.key, [hubitatName: buttonChild.displayName, hubitatId: buttonChild.id, hueName: cachedButton.value?.name])
                unclaimedButtons.removeElement(buttonChild)
             } else {
                Map newButton = [:]
@@ -1742,8 +1742,9 @@ void setEventStreamOpenStatus(Boolean isOnline) {
  *  Returns true if app configured to use EventStream/SSE, else false (proxy since cannot directly access settings from child)
  */
 Boolean getEventStreamEnabledSetting() {
-   // TODO: see if can use state.useV2 instead, or getBridgeData method?
-   return (settings.useEventStream == true) ? true : false
+   // This was the old way of checking, now check if really using instead?:
+   //return (settings.useEventStream == true) ? true : false
+   return state.useV2
 }
 
 /**
