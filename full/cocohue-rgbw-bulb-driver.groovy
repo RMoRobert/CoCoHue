@@ -14,9 +14,10 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2024-07-29
- * 
+ *  Last modified: 2024-08-31
+ *
  *  Changelog:
+ *  v5.0   - Use API v2 by default, remove deprecated features
  *  v4.2    - Library updates, prep for more v2 API
  *  v4.1.8  - Fix for division by zero for unexpected colorTemperature values
  *  v4.1.7  - Fix for unexpected Hubitat event creation when v2 API reports level of 0
@@ -83,14 +84,13 @@ import hubitat.scheduling.AsyncResponse
 @Field static final String xyParsingMode = "ct"
 
 metadata {
-   definition(name: "CoCoHue RGBW Bulb", namespace: "RMoRobert", author: "Robert Morris", importUrl: "https://raw.githubusercontent.com/HubitatCommunity/CoCoHue/master/drivers/cocohue-rgbw-bulb-driver.groovy") {
+   definition(name: DRIVER_NAME_RGBW_BULB, namespace: NAMESPACE, author: "Robert Morris", importUrl: "https://raw.githubusercontent.com/HubitatCommunity/CoCoHue/master/drivers/cocohue-rgbw-bulb-driver.groovy") {
       capability "Actuator"
       capability "ColorControl"
       capability "ColorTemperature"
       capability "Refresh"
       capability "Switch"
       capability "SwitchLevel"
-      capability "LevelPreset"
       capability "ChangeLevel"
       capability "Light"
       capability "ColorMode"
@@ -100,13 +100,6 @@ metadata {
       command "flashOnce"
       command "flashOff"
 
-      // Not (yet?) standard, but hopefully will be standardized soon (and similar to this--as analagous to LevelPreset as possible):
-      command "presetColorTemperature", [[name:"Color temperature*",type:"NUMBER", description:"Color temperature to prestage", constraints:["NUMBER"]]]
-      command "presetColor", [[name:"Color Map*",type:"JSON_OBJECT", description:"Color to prestage (Map with keys: hue, saturation, value; also accepts JSON object for better UI compatibility, subject to change)"]]
-      attribute "colorTemperaturePreset", "number"
-      attribute "huePreset", "number"
-      attribute "saturationPreset", "number"
-      
       attribute "effect", "string"
       attribute "reachable", "string"
    }
@@ -125,17 +118,15 @@ metadata {
          [[(-2): "Hue default/do not specify (recommended; default)"],[(-1): "Use on transition time"],[0:"ASAP"],[200:"200ms"],[400:"400ms (default)"],[500:"500ms"],[1000:"1s"],[1500:"1.5s"],[2000:"2s"],[5000:"5s"]], defaultValue: -1
       */
       input name: "ctTransitionTime", type: "enum", description: "", title: "Color temperature transition time", options:
-         [[(-2): "Hue default/do not specify (default)"],[(-1): "Use level transition time (default)"],[0:"ASAP"],[200:"200ms"],[400:"400ms (default)"],[500:"500ms"],[1000:"1s"],[1500:"1.5s"],[2000:"2s"],[5000:"5s"]], defaultValue: -1
+         [[(-2): "Hue default/do not specify"],[(-1): "Use level transition time (default)"],[0:"ASAP"],[200:"200ms"],[400:"400ms (default)"],[500:"500ms"],[1000:"1s"],[1500:"1.5s"],[2000:"2s"],[5000:"5s"]], defaultValue: -1
       input name: "rgbTransitionTime", type: "enum", description: "", title: "RGB transition time", options:
-         [[(-2): "Hue default/do not specify (default)"],[(-1): "Use level transition time (default)"],[0:"ASAP"],[200:"200ms"],[400:"400ms (default)"],[500:"500ms"],[1000:"1s"],[1500:"1.5s"],[2000:"2s"],[5000:"5s"]], defaultValue: -1
+         [[(-2): "Hue default/do not specify"],[(-1): "Use level transition time (default)"],[0:"ASAP"],[200:"200ms"],[400:"400ms (default)"],[500:"500ms"],[1000:"1s"],[1500:"1.5s"],[2000:"2s"],[5000:"5s"]], defaultValue: -1
       input name: "hiRezHue", type: "bool", title: "Enable hue in degrees (0-360 instead of 0-100)", defaultValue: false
-      if (colorStaging) input name: "colorStaging", type: "bool", description: "DEPRECATED. Please use new prestaging commands instead. May be removed in future.", title: "Enable color pseudo-prestaging", defaultValue: false
-      if (levelStaging) input name: "levelStaging", type: "bool", description: "DEPRECATED. Please use new presetLevel() command instead. May be removed in future.", title: "Enable level pseudo-prestaging", defaultValue: false
       // Note: the following setting does not apply to SSE, which should update the group state immediately regardless:
-      input name: "updateGroups", type: "bool", description: "", title: "Update state of groups immediately when bulb state changes",
+      input name: "updateGroups", type: "bool", description: "", title: "Update state of groups immediately when bulb state changes (applicable only if not using V2 API/eventstream)",
          defaultValue: false
-      input name: "enableDebug", type: "bool", title: "Enable debug logging", defaultValue: true
-      input name: "enableDesc", type: "bool", title: "Enable descriptionText logging", defaultValue: true
+      input name: "logEnable", type: "bool", title: "Enable debug logging", defaultValue: true
+      input name: "txtEnable", type: "bool", title: "Enable descriptionText logging", defaultValue: true
    }
 }
 
@@ -153,7 +144,7 @@ void updated() {
 
 void initialize() {
    log.debug "initialize()"
-   if (enableDebug) {
+   if (logEnable) {
       log.debug "Debug logging will be automatically disabled in ${debugAutoDisableMinutes} minutes"
       runIn(debugAutoDisableMinutes*60, "debugOff")
    }
@@ -165,16 +156,33 @@ void parse(String description) {
 }
 
 /**
- * Parses Hue Bridge device ID number out of Hubitat DNI for use with Hue API calls
+ * Parses V1 Hue Bridge device ID number out of Hubitat DNI for use with Hue V1 API calls
  * Hubitat DNI is created in format "CCH/BridgeMACAbbrev/Light/HueDeviceID", so just
- * looks for number after third "/" character
+ * looks for number after last "/" character; or try state if DNI is V2 format (avoid if posssible,
+ *  as Hue is likely to deprecate V1 ID data in future)
  */
-String getHueDeviceNumber() {
-   return device.deviceNetworkId.split("/")[3]
+String getHueDeviceIdV1() {
+   String id = device.deviceNetworkId.split("/")[-1]
+   if (id.length() > 32) { // max length of last part of V1 IDs per V2 API regex spec, though never seen anything non-numeric longer than 2 (or 3?) for non-scenes
+      id = state.id_v1?.split("/")[-1]
+      if (state.id_v1 == null) {
+         log.warn "Attempting to retrieve V1 ID but not in DNI or state."
+      }
+   }
+   return id
+}
+
+/**
+ * Parses V2 Hue Bridge device ID out of Hubitat DNI for use with Hue V2 API calls
+ * Hubitat DNI is created in format "CCH/BridgeMACAbbrev/Light/HueDeviceID", so just
+ * looks for string after last "/" character
+ */
+String getHueDeviceIdV2() {
+   return device.deviceNetworkId.split("/")[-1]
 }
 
 void on(Number transitionTime = null) {
-   if (enableDebug == true) log.debug "on()"
+   if (logEnable == true) log.debug "on()"
    Map bridgeCmd
    Integer scaledRate = transitionTime != null ? Math.round(transitionTime * 10).toInteger() : getScaledOnTransitionTime()
    if (scaledRate == null) {
@@ -183,15 +191,11 @@ void on(Number transitionTime = null) {
    else {
       bridgeCmd = ["on": true, "transitiontime": scaledRate]
    }
-   Map prestagedCmds = getPrestagedCommands()
-   if (prestagedCmds) {
-      bridgeCmd = prestagedCmds + bridgeCmd
-   }
-   sendBridgeCommand(bridgeCmd)
+   sendBridgeCommandV1(bridgeCmd)
 }
 
 void off(Number transitionTime = null) {
-   if (enableDebug == true) log.debug "off()"
+   if (logEnable == true) log.debug "off()"
    Map bridgeCmd
    Integer scaledRate = transitionTime != null ? Math.round(transitionTime * 10).toInteger() : null
    if (scaledRate == null) {
@@ -200,9 +204,7 @@ void off(Number transitionTime = null) {
    else {
       bridgeCmd = ["on": false, "transitiontime": scaledRate]
    }
-   // Shouldn't need to do (on() would clear and should have been turned on in meantime), but some users may want to:
-   //clearPrestagedCommands()
-   sendBridgeCommand(bridgeCmd)
+   sendBridgeCommandV1(bridgeCmd)
 }
 
 void refresh() {
@@ -213,23 +215,22 @@ void refresh() {
  * (for "classic"/v1 HTTP API)
  * Iterates over Hue light state commands/states in Hue API v1 format (e.g., ["on": true]) and does
  * a sendEvent for each relevant attribute; intended to be called either when commands are sent
- * to Bridge or if pre-staged attribute is changed and "real" command not yet able to be sent, or
- * to parse/update light states based on data received from Bridge
+ * to Bridge or to parse/update light states based on data received from Bridge
  * @param bridgeMap Map of light states that are or would be sent to bridge OR state as received from
  *  Bridge
  * @param isFromBridge Set to true if this is data read from Hue Bridge rather than intended to be sent
- *  to Bridge; if true, will ignore differences for prestaged attributes if switch state is off (TODO: how did new prestaging affect this?)
+ *  to Bridge; TODO: see if still needed after removal of pseudo-prestaging features
  */
-void createEventsFromMap(Map bridgeCommandMap, Boolean isFromBridge = false, Set<String> keysToIgnoreIfSSEEnabledAndNotFromBridge=listKeysToIgnoreIfSSEEnabledAndNotFromBridge) {
+void createEventsFromMapV1(Map bridgeCommandMap, Boolean isFromBridge = false, Set<String> keysToIgnoreIfSSEEnabledAndNotFromBridge=listKeysToIgnoreIfSSEEnabledAndNotFromBridge) {
    if (!bridgeCommandMap) {
-      if (enableDebug == true) log.debug "createEventsFromMap called but map command empty or null; exiting"
+      if (logEnable == true) log.debug "createEventsFromMapV1 called but map command empty or null; exiting"
       return
    }
    Map bridgeMap = bridgeCommandMap
-   if (enableDebug == true) log.debug "Preparing to create events from map${isFromBridge ? ' from Bridge' : ''}: ${bridgeMap}"
+   if (logEnable == true) log.debug "Preparing to create events from map${isFromBridge ? ' from Bridge' : ''}: ${bridgeMap}"
    if (!isFromBridge && keysToIgnoreIfSSEEnabledAndNotFromBridge && parent.getEventStreamOpenStatus() == true) {
       bridgeMap.keySet().removeAll(keysToIgnoreIfSSEEnabledAndNotFromBridge)
-      if (enableDebug == true) log.debug "Map after ignored keys removed: ${bridgeMap}"
+      if (logEnable == true) log.debug "Map after ignored keys removed: ${bridgeMap}"
    }
    String eventName, eventUnit, descriptionText
    def eventValue // could be String or number
@@ -241,7 +242,7 @@ void createEventsFromMap(Map bridgeCommandMap, Boolean isFromBridge = false, Set
       else {
          colorMode = "hs"
       }
-      if (enableDebug == true) log.debug "In XY mode but parsing as CT (colorMode = $colorMode)"
+      if (logEnable == true) log.debug "In XY mode but parsing as CT (colorMode = $colorMode)"
    }
    Boolean isOn = bridgeMap["on"]
    bridgeMap.each {
@@ -277,7 +278,7 @@ void createEventsFromMap(Map bridgeCommandMap, Boolean isFromBridge = false, Set
             eventUnit = "K"
             if (device.currentValue(eventName) != eventValue && eventValue != 0) {
                if (isFromBridge && colorMode == "hs") {
-                  if (enableDebug == true) log.debug "Skipping colorTemperature event creation because light not in ct mode"
+                  if (logEnable == true) log.debug "Skipping colorTemperature event creation because light not in ct mode"
                   break
                }
                doSendEvent(eventName, eventValue, eventUnit)
@@ -297,7 +298,7 @@ void createEventsFromMap(Map bridgeCommandMap, Boolean isFromBridge = false, Set
                doSendEvent(eventName, eventValue, eventUnit)
             }
             if (isFromBridge && colorMode != "hs") {
-                  if (enableDebug == true) log.debug "Skipping colorMode and color name event creation because light not in hs mode"
+                  if (logEnable == true) log.debug "Skipping colorMode and color name event creation because light not in hs mode"
                   break
             }
             setGenericName(eventValue)
@@ -346,13 +347,13 @@ void createEventsFromMap(Map bridgeCommandMap, Boolean isFromBridge = false, Set
 }
 
 /**
- * (for "new"/v2/EventSocket/SSE API)
+ * (for "new"/V2 API, including eventstream data)
  * Iterates over Hue light state states in Hue API v2 format (e.g., "on={on=true}") and does
  * a sendEvent for each relevant attribute; intended to be called when EventSocket data
  * received for device (as an alternative to polling)
  */
-void createEventsFromSSE(Map data) {
-   if (enableDebug == true) log.debug "createEventsFromSSE($data)"
+void createEventsFromMapV2(Map data) {
+   if (logEnable == true) log.debug "createEventsFromMapV2($data)"
    String eventName, eventUnit, descriptionText
    def eventValue // could be String or number
    Boolean hasCT = data.color_temperature?.mirek != null
@@ -374,17 +375,17 @@ void createEventsFromSSE(Map data) {
             break
          case "color": 
             if (!hasCT) {
-               if (enableDebug == true) log.debug "color received (presuming xy, no CT)"
+               if (logEnable == true) log.debug "color received (presuming xy, no CT)"
                // no point in doing this yet--but maybe if can convert XY/HS some day:
                //parent.refreshBridgeWithDealay()
             }
             else {
-               if (enableDebug == true) log.debug "color received but also have CT, so assume CT parsing"
+               if (logEnable == true) log.debug "color received but also have CT, so assume CT parsing"
             }
             break
          case "color_temperature":
             if (!hasCT) {
-               if (enableDebug == true) "ignoring color_temperature because mirek null"
+               if (logEnable == true) "ignoring color_temperature because mirek null"
                return
             }
             eventName = "colorTemperature"
@@ -397,133 +398,212 @@ void createEventsFromSSE(Map data) {
             eventUnit = null
             if (device.currentValue(eventName) != eventValue) doSendEvent(eventName, eventValue, eventUnit)
             break
+         // TODO: Figure out equivalent of "reachable" in V2 (zigbee_connectivity on owner?)
          case "id_v1":
             if (state.id_v1 != value) state.id_v1 = value
             break
          default:
-            if (enableDebug == true) "not handling: $key: $value"
+            if (logEnable == true) "not handling: $key: $value"
       }
    }
 }
 
 /**
- * Sends HTTP PUT to Bridge using the either command map provided
- * @param commandMap Groovy Map (will be converted to JSON) of Hue API commands to send, e.g., [on: true]
+ * Sends HTTP PUT to Bridge using the V1-format map data provided
+ * @param commandMap Groovy Map (will be converted to JSON) of Hue V1 API commands to send, e.g., [on: true]
  * @param createHubEvents Will iterate over Bridge command map and do sendEvent for all
  *        affected device attributes (e.g., will send an "on" event for "switch" if ["on": true] in map)
  */
-void sendBridgeCommand(Map commandMap, Boolean createHubEvents=true) {
-   if (enableDebug == true) log.debug "sendBridgeCommand($commandMap)"
+void sendBridgeCommandV1(Map commandMap, Boolean createHubEvents=true) {
+   if (logEnable == true) log.debug "sendBridgeCommandV1($commandMap)"
    if (commandMap == null || commandMap == [:]) {
-      if (enableDebug == true) log.debug "Commands not sent to Bridge because command map null or empty"
+      if (logEnable == true) log.debug "Commands not sent to Bridge because command map null or empty"
       return
    }
    Map<String,String> data = parent.getBridgeData()
    Map params = [
       uri: data.fullHost,
-      path: "/api/${data.username}/lights/${getHueDeviceNumber()}/state",
+      path: "/api/${data.username}/lights/${getHueDeviceIdV1()}/state",
       contentType: 'application/json',
       body: commandMap,
       timeout: 15
    ]
-   asynchttpPut("parseSendCommandResponse", params, createHubEvents ? commandMap : null)
-   if (enableDebug == true) log.debug "-- Command sent to Bridge! --"
+   asynchttpPut("parseSendCommandResponseV1", params, createHubEvents ? commandMap : null)
+   if (logEnable == true) log.debug "-- Command sent to Bridge! --"
 }
 
 /** 
-  * Parses response from Bridge (or not) after sendBridgeCommand. Updates device state if
+  * Parses response from Bridge (or not) after sendBridgeCommandV1. Updates device state if
   * appears to have been successful.
   * @param resp Async HTTP response object
   * @param data Map of commands sent to Bridge if specified to create events from map
   */
-void parseSendCommandResponse(AsyncResponse resp, Map data) {
-   if (enableDebug == true) log.debug "Response from Bridge: ${resp.status}"
+void parseSendCommandResponseV1(AsyncResponse resp, Map data) {
+   if (logEnable == true) log.debug "Response from Bridge: ${resp.status}"
    if (checkIfValidResponse(resp) && data) {
-      if (enableDebug == true) log.debug "  Bridge response valid; creating events from data map"
-      createEventsFromMap(data)
+      if (logEnable == true) log.debug "  Bridge response valid; creating events from data map"
+      createEventsFromMapV1(data)
       if ((data.containsKey("on") || data.containsKey("bri")) && settings["updateGroups"]) {
-         parent.updateGroupStatesFromBulb(data, getHueDeviceNumber())
+         parent.updateGroupStatesFromBulb(data, getHueDeviceIdV1())
       }
    }
    else {
-      if (enableDebug == true) log.debug "  Not creating events from map because not specified to do or Bridge response invalid"
+      if (logEnable == true) log.debug "  Not creating events from map because not specified to do or Bridge response invalid"
    }
 }
 // ~~~~~ start include (8) RMoRobert.CoCoHue_Common_Lib ~~~~~
-// Version 1.0.2 // library marker RMoRobert.CoCoHue_Common_Lib, line 1
+// Version 1.0.3 // library marker RMoRobert.CoCoHue_Common_Lib, line 1
+// For use with CoCoHue drivers (not app) // library marker RMoRobert.CoCoHue_Common_Lib, line 2
 
-// 1.0.2  - HTTP error handling tweaks // library marker RMoRobert.CoCoHue_Common_Lib, line 3
+/** // library marker RMoRobert.CoCoHue_Common_Lib, line 4
+ * 1.0.4 - Add common bridgeAsyncGetV2() method (goal to reduce individual driver code) // library marker RMoRobert.CoCoHue_Common_Lib, line 5
+ * 1.0.3 - Add APIV1 and APIV2 "constants" // library marker RMoRobert.CoCoHue_Common_Lib, line 6
+ * 1.0.2  - HTTP error handling tweaks // library marker RMoRobert.CoCoHue_Common_Lib, line 7
+ */ // library marker RMoRobert.CoCoHue_Common_Lib, line 8
 
-library ( // library marker RMoRobert.CoCoHue_Common_Lib, line 5
-   base: "driver", // library marker RMoRobert.CoCoHue_Common_Lib, line 6
-   author: "RMoRobert", // library marker RMoRobert.CoCoHue_Common_Lib, line 7
-   category: "Convenience", // library marker RMoRobert.CoCoHue_Common_Lib, line 8
-   description: "For internal CoCoHue use only. Not intended for external use. Contains common code shared by many CoCoHue drivers.", // library marker RMoRobert.CoCoHue_Common_Lib, line 9
-   name: "CoCoHue_Common_Lib", // library marker RMoRobert.CoCoHue_Common_Lib, line 10
-   namespace: "RMoRobert" // library marker RMoRobert.CoCoHue_Common_Lib, line 11
-) // library marker RMoRobert.CoCoHue_Common_Lib, line 12
+library ( // library marker RMoRobert.CoCoHue_Common_Lib, line 10
+   base: "driver", // library marker RMoRobert.CoCoHue_Common_Lib, line 11
+   author: "RMoRobert", // library marker RMoRobert.CoCoHue_Common_Lib, line 12
+   category: "Convenience", // library marker RMoRobert.CoCoHue_Common_Lib, line 13
+   description: "For internal CoCoHue use only. Not intended for external use. Contains common code shared by many CoCoHue drivers.", // library marker RMoRobert.CoCoHue_Common_Lib, line 14
+   name: "CoCoHue_Common_Lib", // library marker RMoRobert.CoCoHue_Common_Lib, line 15
+   namespace: "RMoRobert" // library marker RMoRobert.CoCoHue_Common_Lib, line 16
+) // library marker RMoRobert.CoCoHue_Common_Lib, line 17
 
-void debugOff() { // library marker RMoRobert.CoCoHue_Common_Lib, line 14
-   log.warn "Disabling debug logging" // library marker RMoRobert.CoCoHue_Common_Lib, line 15
-   device.updateSetting("enableDebug", [value:"false", type:"bool"]) // library marker RMoRobert.CoCoHue_Common_Lib, line 16
-} // library marker RMoRobert.CoCoHue_Common_Lib, line 17
+void debugOff() { // library marker RMoRobert.CoCoHue_Common_Lib, line 19
+   log.warn "Disabling debug logging" // library marker RMoRobert.CoCoHue_Common_Lib, line 20
+   device.updateSetting("logEnable", [value:"false", type:"bool"]) // library marker RMoRobert.CoCoHue_Common_Lib, line 21
+} // library marker RMoRobert.CoCoHue_Common_Lib, line 22
 
-/** Performs basic check on data returned from HTTP response to determine if should be // library marker RMoRobert.CoCoHue_Common_Lib, line 19
-  * parsed as likely Hue Bridge data or not; returns true (if OK) or logs errors/warnings and // library marker RMoRobert.CoCoHue_Common_Lib, line 20
-  * returns false if not // library marker RMoRobert.CoCoHue_Common_Lib, line 21
-  * @param resp The async HTTP response object to examine // library marker RMoRobert.CoCoHue_Common_Lib, line 22
-  */ // library marker RMoRobert.CoCoHue_Common_Lib, line 23
-private Boolean checkIfValidResponse(hubitat.scheduling.AsyncResponse resp) { // library marker RMoRobert.CoCoHue_Common_Lib, line 24
-   if (enableDebug == true) log.debug "Checking if valid HTTP response/data from Bridge..." // library marker RMoRobert.CoCoHue_Common_Lib, line 25
-   Boolean isOK = true // library marker RMoRobert.CoCoHue_Common_Lib, line 26
-   if (resp.status < 400) { // library marker RMoRobert.CoCoHue_Common_Lib, line 27
-      if (resp.json == null) { // library marker RMoRobert.CoCoHue_Common_Lib, line 28
-         isOK = false // library marker RMoRobert.CoCoHue_Common_Lib, line 29
-         if (resp.headers == null) log.error "Error: HTTP ${resp.status} when attempting to communicate with Bridge" // library marker RMoRobert.CoCoHue_Common_Lib, line 30
-         else log.error "No JSON data found in response. ${resp.headers.'Content-Type'} (HTTP ${resp.status})" // library marker RMoRobert.CoCoHue_Common_Lib, line 31
-         parent.sendBridgeDiscoveryCommandIfSSDPEnabled(true) // maybe IP changed, so attempt rediscovery  // library marker RMoRobert.CoCoHue_Common_Lib, line 32
-         parent.setBridgeStatus(false) // library marker RMoRobert.CoCoHue_Common_Lib, line 33
-      } // library marker RMoRobert.CoCoHue_Common_Lib, line 34
-      else if (resp.json) { // library marker RMoRobert.CoCoHue_Common_Lib, line 35
-         if (resp.json instanceof List && resp.json[0]?.error) { // library marker RMoRobert.CoCoHue_Common_Lib, line 36
-            // Bridge (not HTTP) error (bad username, bad command formatting, etc.): // library marker RMoRobert.CoCoHue_Common_Lib, line 37
-            isOK = false // library marker RMoRobert.CoCoHue_Common_Lib, line 38
-            log.warn "Error from Hue Bridge: ${resp.json[0].error}" // library marker RMoRobert.CoCoHue_Common_Lib, line 39
-            // Not setting Bridge to offline when light/scene/group devices end up here because could // library marker RMoRobert.CoCoHue_Common_Lib, line 40
-            // be old/bad ID and don't want to consider Bridge offline just for that (but also won't set // library marker RMoRobert.CoCoHue_Common_Lib, line 41
-            // to online because wasn't successful attempt) // library marker RMoRobert.CoCoHue_Common_Lib, line 42
-         } // library marker RMoRobert.CoCoHue_Common_Lib, line 43
-         // Otherwise: probably OK (not changing anything because isOK = true already) // library marker RMoRobert.CoCoHue_Common_Lib, line 44
-      } // library marker RMoRobert.CoCoHue_Common_Lib, line 45
-      else { // library marker RMoRobert.CoCoHue_Common_Lib, line 46
-         isOK = false // library marker RMoRobert.CoCoHue_Common_Lib, line 47
-         log.warn("HTTP status code ${resp.status} from Bridge") // library marker RMoRobert.CoCoHue_Common_Lib, line 48
-         if (resp?.status >= 400) parent.sendBridgeDiscoveryCommandIfSSDPEnabled(true) // maybe IP changed, so attempt rediscovery  // library marker RMoRobert.CoCoHue_Common_Lib, line 49
-         parent.setBridgeStatus(false) // library marker RMoRobert.CoCoHue_Common_Lib, line 50
-      } // library marker RMoRobert.CoCoHue_Common_Lib, line 51
-      if (isOK == true) parent.setBridgeStatus(true) // library marker RMoRobert.CoCoHue_Common_Lib, line 52
-   } // library marker RMoRobert.CoCoHue_Common_Lib, line 53
-   else { // library marker RMoRobert.CoCoHue_Common_Lib, line 54
-      log.warn "Error communiating with Hue Bridge: HTTP ${resp?.status}" // library marker RMoRobert.CoCoHue_Common_Lib, line 55
-      isOK = false // library marker RMoRobert.CoCoHue_Common_Lib, line 56
-   } // library marker RMoRobert.CoCoHue_Common_Lib, line 57
-   return isOK // library marker RMoRobert.CoCoHue_Common_Lib, line 58
-} // library marker RMoRobert.CoCoHue_Common_Lib, line 59
+/** Performs basic check on data returned from HTTP response to determine if should be // library marker RMoRobert.CoCoHue_Common_Lib, line 24
+  * parsed as likely Hue Bridge data or not; returns true (if OK) or logs errors/warnings and // library marker RMoRobert.CoCoHue_Common_Lib, line 25
+  * returns false if not // library marker RMoRobert.CoCoHue_Common_Lib, line 26
+  * @param resp The async HTTP response object to examine // library marker RMoRobert.CoCoHue_Common_Lib, line 27
+  */ // library marker RMoRobert.CoCoHue_Common_Lib, line 28
+private Boolean checkIfValidResponse(hubitat.scheduling.AsyncResponse resp) { // library marker RMoRobert.CoCoHue_Common_Lib, line 29
+   if (logEnable == true) log.debug "Checking if valid HTTP response/data from Bridge..." // library marker RMoRobert.CoCoHue_Common_Lib, line 30
+   Boolean isOK = true // library marker RMoRobert.CoCoHue_Common_Lib, line 31
+   if (resp.status < 400) { // library marker RMoRobert.CoCoHue_Common_Lib, line 32
+      if (resp.json == null) { // library marker RMoRobert.CoCoHue_Common_Lib, line 33
+         isOK = false // library marker RMoRobert.CoCoHue_Common_Lib, line 34
+         if (resp.headers == null) log.error "Error: HTTP ${resp.status} when attempting to communicate with Bridge" // library marker RMoRobert.CoCoHue_Common_Lib, line 35
+         else log.error "No JSON data found in response. ${resp.headers.'Content-Type'} (HTTP ${resp.status})" // library marker RMoRobert.CoCoHue_Common_Lib, line 36
+         parent.sendBridgeDiscoveryCommandIfSSDPEnabled(true) // maybe IP changed, so attempt rediscovery  // library marker RMoRobert.CoCoHue_Common_Lib, line 37
+         parent.setBridgeOnlineStatus(false) // library marker RMoRobert.CoCoHue_Common_Lib, line 38
+      } // library marker RMoRobert.CoCoHue_Common_Lib, line 39
+      else if (resp.json) { // library marker RMoRobert.CoCoHue_Common_Lib, line 40
+         if ((resp.json instanceof List) && resp.json.getAt(0).error) { // library marker RMoRobert.CoCoHue_Common_Lib, line 41
+            // Bridge (not HTTP) error (bad username, bad command formatting, etc.): // library marker RMoRobert.CoCoHue_Common_Lib, line 42
+            isOK = false // library marker RMoRobert.CoCoHue_Common_Lib, line 43
+            log.warn "Error from Hue Bridge: ${resp.json[0].error}" // library marker RMoRobert.CoCoHue_Common_Lib, line 44
+            // Not setting Bridge to offline when light/scene/group devices end up here because could // library marker RMoRobert.CoCoHue_Common_Lib, line 45
+            // be old/bad ID and don't want to consider Bridge offline just for that (but also won't set // library marker RMoRobert.CoCoHue_Common_Lib, line 46
+            // to online because wasn't successful attempt) // library marker RMoRobert.CoCoHue_Common_Lib, line 47
+         } // library marker RMoRobert.CoCoHue_Common_Lib, line 48
+         // Otherwise: probably OK (not changing anything because isOK = true already) // library marker RMoRobert.CoCoHue_Common_Lib, line 49
+      } // library marker RMoRobert.CoCoHue_Common_Lib, line 50
+      else { // library marker RMoRobert.CoCoHue_Common_Lib, line 51
+         isOK = false // library marker RMoRobert.CoCoHue_Common_Lib, line 52
+         log.warn("HTTP status code ${resp.status} from Bridge") // library marker RMoRobert.CoCoHue_Common_Lib, line 53
+         // TODO: Update for mDNS if/when switch: // library marker RMoRobert.CoCoHue_Common_Lib, line 54
+         if (resp?.status >= 400) parent.sendBridgeDiscoveryCommandIfSSDPEnabled(true) // maybe IP changed, so attempt rediscovery  // library marker RMoRobert.CoCoHue_Common_Lib, line 55
+         parent.setBridgeOnlineStatus(false) // library marker RMoRobert.CoCoHue_Common_Lib, line 56
+      } // library marker RMoRobert.CoCoHue_Common_Lib, line 57
+      if (isOK == true) parent.setBridgeOnlineStatus(true) // library marker RMoRobert.CoCoHue_Common_Lib, line 58
+   } // library marker RMoRobert.CoCoHue_Common_Lib, line 59
+   else { // library marker RMoRobert.CoCoHue_Common_Lib, line 60
+      log.warn "Error communicating with Hue Bridge: HTTP ${resp?.status}" // library marker RMoRobert.CoCoHue_Common_Lib, line 61
+      isOK = false // library marker RMoRobert.CoCoHue_Common_Lib, line 62
+   } // library marker RMoRobert.CoCoHue_Common_Lib, line 63
+   return isOK // library marker RMoRobert.CoCoHue_Common_Lib, line 64
+} // library marker RMoRobert.CoCoHue_Common_Lib, line 65
 
-void doSendEvent(String eventName, eventValue, String eventUnit=null, Boolean forceStateChange=false) { // library marker RMoRobert.CoCoHue_Common_Lib, line 61
-   //if (enableDebug == true) log.debug "doSendEvent($eventName, $eventValue, $eventUnit)" // library marker RMoRobert.CoCoHue_Common_Lib, line 62
-   String descriptionText = "${device.displayName} ${eventName} is ${eventValue}${eventUnit ?: ''}" // library marker RMoRobert.CoCoHue_Common_Lib, line 63
-   if (settings.enableDesc == true) log.info(descriptionText) // library marker RMoRobert.CoCoHue_Common_Lib, line 64
-   if (eventUnit) { // library marker RMoRobert.CoCoHue_Common_Lib, line 65
-      if (forceStateChange == true) sendEvent(name: eventName, value: eventValue, descriptionText: descriptionText, unit: eventUnit, isStateChange: true)  // library marker RMoRobert.CoCoHue_Common_Lib, line 66
-      else sendEvent(name: eventName, value: eventValue, descriptionText: descriptionText, unit: eventUnit)  // library marker RMoRobert.CoCoHue_Common_Lib, line 67
-   } else { // library marker RMoRobert.CoCoHue_Common_Lib, line 68
-      if (forceStateChange == true) sendEvent(name: eventName, value: eventValue, descriptionText: descriptionText, isStateChange: true)  // library marker RMoRobert.CoCoHue_Common_Lib, line 69
-      else sendEvent(name: eventName, value: eventValue, descriptionText: descriptionText)  // library marker RMoRobert.CoCoHue_Common_Lib, line 70
-   } // library marker RMoRobert.CoCoHue_Common_Lib, line 71
-} // library marker RMoRobert.CoCoHue_Common_Lib, line 72
+void doSendEvent(String eventName, eventValue, String eventUnit=null, Boolean forceStateChange=false) { // library marker RMoRobert.CoCoHue_Common_Lib, line 67
+   //if (logEnable == true) log.debug "doSendEvent($eventName, $eventValue, $eventUnit)" // library marker RMoRobert.CoCoHue_Common_Lib, line 68
+   String descriptionText = "${device.displayName} ${eventName} is ${eventValue}${eventUnit ?: ''}" // library marker RMoRobert.CoCoHue_Common_Lib, line 69
+   if (settings.txtEnable == true) log.info(descriptionText) // library marker RMoRobert.CoCoHue_Common_Lib, line 70
+   if (eventUnit) { // library marker RMoRobert.CoCoHue_Common_Lib, line 71
+      if (forceStateChange == true) sendEvent(name: eventName, value: eventValue, descriptionText: descriptionText, unit: eventUnit, isStateChange: true)  // library marker RMoRobert.CoCoHue_Common_Lib, line 72
+      else sendEvent(name: eventName, value: eventValue, descriptionText: descriptionText, unit: eventUnit)  // library marker RMoRobert.CoCoHue_Common_Lib, line 73
+   } else { // library marker RMoRobert.CoCoHue_Common_Lib, line 74
+      if (forceStateChange == true) sendEvent(name: eventName, value: eventValue, descriptionText: descriptionText, isStateChange: true)  // library marker RMoRobert.CoCoHue_Common_Lib, line 75
+      else sendEvent(name: eventName, value: eventValue, descriptionText: descriptionText)  // library marker RMoRobert.CoCoHue_Common_Lib, line 76
+   } // library marker RMoRobert.CoCoHue_Common_Lib, line 77
+} // library marker RMoRobert.CoCoHue_Common_Lib, line 78
+
+// HTTP methods (might be better to split into separate library if not needed for some?) // library marker RMoRobert.CoCoHue_Common_Lib, line 80
+
+/** Performs asynchttpGet() to Bridge using data retrieved from parent app or as passed in // library marker RMoRobert.CoCoHue_Common_Lib, line 82
+  * @param callbackMethod Callback method // library marker RMoRobert.CoCoHue_Common_Lib, line 83
+  * @param clipV2Path The Hue V2 API path (without '/clip/v2', automatically prepended), e.g. '/resource' or '/resource/light' // library marker RMoRobert.CoCoHue_Common_Lib, line 84
+  * @param bridgeData Bridge data from parent getBridgeData() call, or will call this method on parent if null // library marker RMoRobert.CoCoHue_Common_Lib, line 85
+  * @param data Extra data to pass as optional third (data) parameter to asynchtttpGet() method // library marker RMoRobert.CoCoHue_Common_Lib, line 86
+  */ // library marker RMoRobert.CoCoHue_Common_Lib, line 87
+void bridgeAsyncGetV2(String callbackMethod, String clipV2Path, Map<String,String> bridgeData = null, Map data = null) { // library marker RMoRobert.CoCoHue_Common_Lib, line 88
+   if (bridgeData == null) { // library marker RMoRobert.CoCoHue_Common_Lib, line 89
+      bridgeData = parent.getBridgeData() // library marker RMoRobert.CoCoHue_Common_Lib, line 90
+   } // library marker RMoRobert.CoCoHue_Common_Lib, line 91
+   Map params = [ // library marker RMoRobert.CoCoHue_Common_Lib, line 92
+      uri: "https://${bridgeData.ip}", // library marker RMoRobert.CoCoHue_Common_Lib, line 93
+      path: "/clip/v2${clipV2Path}", // library marker RMoRobert.CoCoHue_Common_Lib, line 94
+      headers: ["hue-application-key": bridgeData.username], // library marker RMoRobert.CoCoHue_Common_Lib, line 95
+      contentType: "application/json", // library marker RMoRobert.CoCoHue_Common_Lib, line 96
+      timeout: 15, // library marker RMoRobert.CoCoHue_Common_Lib, line 97
+      ignoreSSLIssues: true // library marker RMoRobert.CoCoHue_Common_Lib, line 98
+   ] // library marker RMoRobert.CoCoHue_Common_Lib, line 99
+   asynchttpGet(callbackMethod, params, data) // library marker RMoRobert.CoCoHue_Common_Lib, line 100
+} // library marker RMoRobert.CoCoHue_Common_Lib, line 101
+
 
 // ~~~~~ end include (8) RMoRobert.CoCoHue_Common_Lib ~~~~~
+
+// ~~~~~ start include (73) RMoRobert.CoCoHue_Constants_Lib ~~~~~
+// Version 1.0.0 // library marker RMoRobert.CoCoHue_Constants_Lib, line 1
+
+library ( // library marker RMoRobert.CoCoHue_Constants_Lib, line 3
+   author: "RMoRobert", // library marker RMoRobert.CoCoHue_Constants_Lib, line 4
+   category: "Convenience", // library marker RMoRobert.CoCoHue_Constants_Lib, line 5
+   description: "For internal CoCoHue use only. Not intended for external use. Contains field variables shared by many CoCoHue apps and drivers.", // library marker RMoRobert.CoCoHue_Constants_Lib, line 6
+   name: "CoCoHue_Constants_Lib", // library marker RMoRobert.CoCoHue_Constants_Lib, line 7
+   namespace: "RMoRobert"  // library marker RMoRobert.CoCoHue_Constants_Lib, line 8
+) // library marker RMoRobert.CoCoHue_Constants_Lib, line 9
+
+// -------------------------------------- // library marker RMoRobert.CoCoHue_Constants_Lib, line 11
+// APP AND DRIVER NAMESPACE AND NAMES: // library marker RMoRobert.CoCoHue_Constants_Lib, line 12
+// -------------------------------------- // library marker RMoRobert.CoCoHue_Constants_Lib, line 13
+
+// -- CoCoHue -- // library marker RMoRobert.CoCoHue_Constants_Lib, line 15
+@Field static final String NAMESPACE = "RMoRobert" // library marker RMoRobert.CoCoHue_Constants_Lib, line 16
+@Field static final String APP_NAME = "CoCoHue - Hue Bridge Integration" // library marker RMoRobert.CoCoHue_Constants_Lib, line 17
+
+
+// -- CoCoHue -- // library marker RMoRobert.CoCoHue_Constants_Lib, line 20
+@Field static final String DRIVER_NAME_BRIDGE = "CoCoHue Bridge" // library marker RMoRobert.CoCoHue_Constants_Lib, line 21
+@Field static final String DRIVER_NAME_BUTTON = "CoCoHue Button" // library marker RMoRobert.CoCoHue_Constants_Lib, line 22
+@Field static final String DRIVER_NAME_CT_BULB = "CoCoHue CT Bulb" // library marker RMoRobert.CoCoHue_Constants_Lib, line 23
+@Field static final String DRIVER_NAME_DIMMABLE_BULB = "CoCoHue Dimmable Bulb" // library marker RMoRobert.CoCoHue_Constants_Lib, line 24
+@Field static final String DRIVER_NAME_GROUP = "CoCoHue Group" // library marker RMoRobert.CoCoHue_Constants_Lib, line 25
+@Field static final String DRIVER_NAME_MOTION = "CoCoHue Motion Sensor" // library marker RMoRobert.CoCoHue_Constants_Lib, line 26
+@Field static final String DRIVER_NAME_PLUG = "CoCoHue Plug" // library marker RMoRobert.CoCoHue_Constants_Lib, line 27
+@Field static final String DRIVER_NAME_RGBW_BULB = "CoCoHue RGBW Bulb" // library marker RMoRobert.CoCoHue_Constants_Lib, line 28
+@Field static final String DRIVER_NAME_SCENE = "CoCoHue Scene" // library marker RMoRobert.CoCoHue_Constants_Lib, line 29
+
+// -------------------------------------- // library marker RMoRobert.CoCoHue_Constants_Lib, line 31
+// DNI PREFIX for child devices: // library marker RMoRobert.CoCoHue_Constants_Lib, line 32
+// -------------------------------------- // library marker RMoRobert.CoCoHue_Constants_Lib, line 33
+
+@Field static final String DNI_PREFIX = "CCH"   // "CCH" for CoCoHue // library marker RMoRobert.CoCoHue_Constants_Lib, line 35
+
+// -------------------------------------- // library marker RMoRobert.CoCoHue_Constants_Lib, line 37
+// OTHER: // library marker RMoRobert.CoCoHue_Constants_Lib, line 38
+// -------------------------------------- // library marker RMoRobert.CoCoHue_Constants_Lib, line 39
+
+// Used in app and Bridge driver, may eventually find use in more: // library marker RMoRobert.CoCoHue_Constants_Lib, line 41
+
+@Field static final String APIV1 = "V1" // library marker RMoRobert.CoCoHue_Constants_Lib, line 43
+@Field static final String APIV2 = "V2" // library marker RMoRobert.CoCoHue_Constants_Lib, line 44
+
+// ~~~~~ end include (73) RMoRobert.CoCoHue_Constants_Lib ~~~~~
 
 // ~~~~~ start include (2) RMoRobert.CoCoHue_Bri_Lib ~~~~~
 // Version 1.0.4 // library marker RMoRobert.CoCoHue_Bri_Lib, line 1
@@ -543,26 +623,26 @@ library ( // library marker RMoRobert.CoCoHue_Bri_Lib, line 6
 // "SwitchLevel" commands: // library marker RMoRobert.CoCoHue_Bri_Lib, line 15
 
 void startLevelChange(String direction) { // library marker RMoRobert.CoCoHue_Bri_Lib, line 17
-   if (enableDebug == true) log.debug "startLevelChange($direction)..." // library marker RMoRobert.CoCoHue_Bri_Lib, line 18
+   if (logEnable == true) log.debug "startLevelChange($direction)..." // library marker RMoRobert.CoCoHue_Bri_Lib, line 18
    Map cmd = ["bri": (direction == "up" ? 254 : 1), // library marker RMoRobert.CoCoHue_Bri_Lib, line 19
             "transitiontime": ((settings["levelChangeRate"] == "fast" || !settings["levelChangeRate"]) ? // library marker RMoRobert.CoCoHue_Bri_Lib, line 20
                                  30 : (settings["levelChangeRate"] == "slow" ? 60 : 45))] // library marker RMoRobert.CoCoHue_Bri_Lib, line 21
-   sendBridgeCommand(cmd, false)  // library marker RMoRobert.CoCoHue_Bri_Lib, line 22
+   sendBridgeCommandV1(cmd, false)  // library marker RMoRobert.CoCoHue_Bri_Lib, line 22
 } // library marker RMoRobert.CoCoHue_Bri_Lib, line 23
 
 void stopLevelChange() { // library marker RMoRobert.CoCoHue_Bri_Lib, line 25
-   if (enableDebug == true) log.debug "stopLevelChange()..." // library marker RMoRobert.CoCoHue_Bri_Lib, line 26
+   if (logEnable == true) log.debug "stopLevelChange()..." // library marker RMoRobert.CoCoHue_Bri_Lib, line 26
    Map cmd = ["bri_inc": 0] // library marker RMoRobert.CoCoHue_Bri_Lib, line 27
-   sendBridgeCommand(cmd, false)  // library marker RMoRobert.CoCoHue_Bri_Lib, line 28
+   sendBridgeCommandV1(cmd, false)  // library marker RMoRobert.CoCoHue_Bri_Lib, line 28
 } // library marker RMoRobert.CoCoHue_Bri_Lib, line 29
 
 void setLevel(value) { // library marker RMoRobert.CoCoHue_Bri_Lib, line 31
-   if (enableDebug == true) log.debug "setLevel($value)" // library marker RMoRobert.CoCoHue_Bri_Lib, line 32
+   if (logEnable == true) log.debug "setLevel($value)" // library marker RMoRobert.CoCoHue_Bri_Lib, line 32
    setLevel(value, ((transitionTime != null ? transitionTime.toFloat() : defaultLevelTransitionTime.toFloat())) / 1000) // library marker RMoRobert.CoCoHue_Bri_Lib, line 33
 } // library marker RMoRobert.CoCoHue_Bri_Lib, line 34
 
 void setLevel(Number value, Number rate) { // library marker RMoRobert.CoCoHue_Bri_Lib, line 36
-   if (enableDebug == true) log.debug "setLevel($value, $rate)" // library marker RMoRobert.CoCoHue_Bri_Lib, line 37
+   if (logEnable == true) log.debug "setLevel($value, $rate)" // library marker RMoRobert.CoCoHue_Bri_Lib, line 37
    // For backwards compatibility; will be removed in future version: // library marker RMoRobert.CoCoHue_Bri_Lib, line 38
    if (levelStaging) { // library marker RMoRobert.CoCoHue_Bri_Lib, line 39
       log.warn "Level prestaging preference enabled and setLevel() called. This is deprecated and may be removed in the future. Please move to new, standard presetLevel() command." // library marker RMoRobert.CoCoHue_Bri_Lib, line 40
@@ -584,107 +664,103 @@ void setLevel(Number value, Number rate) { // library marker RMoRobert.CoCoHue_B
       "bri": newLevel, // library marker RMoRobert.CoCoHue_Bri_Lib, line 56
       "transitiontime": scaledRate // library marker RMoRobert.CoCoHue_Bri_Lib, line 57
    ] // library marker RMoRobert.CoCoHue_Bri_Lib, line 58
-   Map prestagedCmds = getPrestagedCommands() // library marker RMoRobert.CoCoHue_Bri_Lib, line 59
-   if (prestagedCmds) { // library marker RMoRobert.CoCoHue_Bri_Lib, line 60
-      bridgeCmd = prestagedCmds + bridgeCmd // library marker RMoRobert.CoCoHue_Bri_Lib, line 61
-   } // library marker RMoRobert.CoCoHue_Bri_Lib, line 62
-   sendBridgeCommand(bridgeCmd) // library marker RMoRobert.CoCoHue_Bri_Lib, line 63
-} // library marker RMoRobert.CoCoHue_Bri_Lib, line 64
+   sendBridgeCommandV1(bridgeCmd) // library marker RMoRobert.CoCoHue_Bri_Lib, line 59
+} // library marker RMoRobert.CoCoHue_Bri_Lib, line 60
 
-void setLevel(value, rate) { // library marker RMoRobert.CoCoHue_Bri_Lib, line 66
-   if (enableDebug == true) log.debug "setLevel(Object $value, Object $rate)" // library marker RMoRobert.CoCoHue_Bri_Lib, line 67
-   Float floatLevel = Float.parseFloat(value.toString()) // library marker RMoRobert.CoCoHue_Bri_Lib, line 68
-   Integer intLevel = Math.round(floatLevel) // library marker RMoRobert.CoCoHue_Bri_Lib, line 69
-   Float floatRate = Float.parseFloat(rate.toString()) // library marker RMoRobert.CoCoHue_Bri_Lib, line 70
-   setLevel(intLevel, floatRate) // library marker RMoRobert.CoCoHue_Bri_Lib, line 71
-} // library marker RMoRobert.CoCoHue_Bri_Lib, line 72
+void setLevel(value, rate) { // library marker RMoRobert.CoCoHue_Bri_Lib, line 62
+   if (logEnable == true) log.debug "setLevel(Object $value, Object $rate)" // library marker RMoRobert.CoCoHue_Bri_Lib, line 63
+   Float floatLevel = Float.parseFloat(value.toString()) // library marker RMoRobert.CoCoHue_Bri_Lib, line 64
+   Integer intLevel = Math.round(floatLevel) // library marker RMoRobert.CoCoHue_Bri_Lib, line 65
+   Float floatRate = Float.parseFloat(rate.toString()) // library marker RMoRobert.CoCoHue_Bri_Lib, line 66
+   setLevel(intLevel, floatRate) // library marker RMoRobert.CoCoHue_Bri_Lib, line 67
+} // library marker RMoRobert.CoCoHue_Bri_Lib, line 68
 
-void presetLevel(Number level) { // library marker RMoRobert.CoCoHue_Bri_Lib, line 74
-   if (enableDebug == true) log.debug "presetLevel($level)" // library marker RMoRobert.CoCoHue_Bri_Lib, line 75
-   if (level < 0) level = 1 // library marker RMoRobert.CoCoHue_Bri_Lib, line 76
-   else if (level > 100) level = 100 // library marker RMoRobert.CoCoHue_Bri_Lib, line 77
-   Integer newLevel = scaleBriToBridge(level) // library marker RMoRobert.CoCoHue_Bri_Lib, line 78
-   Integer scaledRate = ((transitionTime != null ? transitionTime.toBigDecimal() : 1000) / 1000).toInteger() // library marker RMoRobert.CoCoHue_Bri_Lib, line 79
-   Boolean isOn = device.currentValue("switch") == "on" // library marker RMoRobert.CoCoHue_Bri_Lib, line 80
-   doSendEvent("levelPreset", level) // library marker RMoRobert.CoCoHue_Bri_Lib, line 81
-   if (isOn) { // library marker RMoRobert.CoCoHue_Bri_Lib, line 82
-      setLevel(level) // library marker RMoRobert.CoCoHue_Bri_Lib, line 83
-   } else { // library marker RMoRobert.CoCoHue_Bri_Lib, line 84
-      state.presetLevel = true // library marker RMoRobert.CoCoHue_Bri_Lib, line 85
-   } // library marker RMoRobert.CoCoHue_Bri_Lib, line 86
-} // library marker RMoRobert.CoCoHue_Bri_Lib, line 87
+void presetLevel(Number level) { // library marker RMoRobert.CoCoHue_Bri_Lib, line 70
+   if (logEnable == true) log.debug "presetLevel($level)" // library marker RMoRobert.CoCoHue_Bri_Lib, line 71
+   if (level < 0) level = 1 // library marker RMoRobert.CoCoHue_Bri_Lib, line 72
+   else if (level > 100) level = 100 // library marker RMoRobert.CoCoHue_Bri_Lib, line 73
+   Integer newLevel = scaleBriToBridge(level) // library marker RMoRobert.CoCoHue_Bri_Lib, line 74
+   Integer scaledRate = ((transitionTime != null ? transitionTime.toBigDecimal() : 1000) / 1000).toInteger() // library marker RMoRobert.CoCoHue_Bri_Lib, line 75
+   Boolean isOn = device.currentValue("switch") == "on" // library marker RMoRobert.CoCoHue_Bri_Lib, line 76
+   doSendEvent("levelPreset", level) // library marker RMoRobert.CoCoHue_Bri_Lib, line 77
+   if (isOn) { // library marker RMoRobert.CoCoHue_Bri_Lib, line 78
+      setLevel(level) // library marker RMoRobert.CoCoHue_Bri_Lib, line 79
+   } else { // library marker RMoRobert.CoCoHue_Bri_Lib, line 80
+      state.presetLevel = true // library marker RMoRobert.CoCoHue_Bri_Lib, line 81
+   } // library marker RMoRobert.CoCoHue_Bri_Lib, line 82
+} // library marker RMoRobert.CoCoHue_Bri_Lib, line 83
 
-/** // library marker RMoRobert.CoCoHue_Bri_Lib, line 89
- * Reads device preference for on() transition time, or provides default if not available; device // library marker RMoRobert.CoCoHue_Bri_Lib, line 90
- * can use input(name: onTransitionTime, ...) to provide this // library marker RMoRobert.CoCoHue_Bri_Lib, line 91
- */ // library marker RMoRobert.CoCoHue_Bri_Lib, line 92
-Integer getScaledOnTransitionTime() { // library marker RMoRobert.CoCoHue_Bri_Lib, line 93
-   Integer scaledRate = null // library marker RMoRobert.CoCoHue_Bri_Lib, line 94
-   if (settings.onTransitionTime == null || settings.onTransitionTime == "-2" || settings.onTransitionTime == -2) { // library marker RMoRobert.CoCoHue_Bri_Lib, line 95
-      // keep null; will result in not specifiying with command // library marker RMoRobert.CoCoHue_Bri_Lib, line 96
-   } // library marker RMoRobert.CoCoHue_Bri_Lib, line 97
-   else { // library marker RMoRobert.CoCoHue_Bri_Lib, line 98
-      scaledRate = Math.round(settings.onTransitionTime.toFloat() / 100) // library marker RMoRobert.CoCoHue_Bri_Lib, line 99
-   } // library marker RMoRobert.CoCoHue_Bri_Lib, line 100
-   return scaledRate // library marker RMoRobert.CoCoHue_Bri_Lib, line 101
-} // library marker RMoRobert.CoCoHue_Bri_Lib, line 102
+/** // library marker RMoRobert.CoCoHue_Bri_Lib, line 85
+ * Reads device preference for on() transition time, or provides default if not available; device // library marker RMoRobert.CoCoHue_Bri_Lib, line 86
+ * can use input(name: onTransitionTime, ...) to provide this // library marker RMoRobert.CoCoHue_Bri_Lib, line 87
+ */ // library marker RMoRobert.CoCoHue_Bri_Lib, line 88
+Integer getScaledOnTransitionTime() { // library marker RMoRobert.CoCoHue_Bri_Lib, line 89
+   Integer scaledRate = null // library marker RMoRobert.CoCoHue_Bri_Lib, line 90
+   if (settings.onTransitionTime == null || settings.onTransitionTime == "-2" || settings.onTransitionTime == -2) { // library marker RMoRobert.CoCoHue_Bri_Lib, line 91
+      // keep null; will result in not specifiying with command // library marker RMoRobert.CoCoHue_Bri_Lib, line 92
+   } // library marker RMoRobert.CoCoHue_Bri_Lib, line 93
+   else { // library marker RMoRobert.CoCoHue_Bri_Lib, line 94
+      scaledRate = Math.round(settings.onTransitionTime.toFloat() / 100) // library marker RMoRobert.CoCoHue_Bri_Lib, line 95
+   } // library marker RMoRobert.CoCoHue_Bri_Lib, line 96
+   return scaledRate // library marker RMoRobert.CoCoHue_Bri_Lib, line 97
+} // library marker RMoRobert.CoCoHue_Bri_Lib, line 98
 
 
-/** // library marker RMoRobert.CoCoHue_Bri_Lib, line 105
- * Reads device preference for off() transition time, or provides default if not available; device // library marker RMoRobert.CoCoHue_Bri_Lib, line 106
- * can use input(name: onTransitionTime, ...) to provide this // library marker RMoRobert.CoCoHue_Bri_Lib, line 107
- */ // library marker RMoRobert.CoCoHue_Bri_Lib, line 108
-Integer getScaledOffTransitionTime() { // library marker RMoRobert.CoCoHue_Bri_Lib, line 109
-   Integer scaledRate = null // library marker RMoRobert.CoCoHue_Bri_Lib, line 110
-   if (settings.offTransitionTime == null || settings.offTransitionTime == "-2" || settings.offTransitionTime == -2) { // library marker RMoRobert.CoCoHue_Bri_Lib, line 111
-      // keep null; will result in not specifiying with command // library marker RMoRobert.CoCoHue_Bri_Lib, line 112
-   } // library marker RMoRobert.CoCoHue_Bri_Lib, line 113
-   else if (settings.offTransitionTime == "-1" || settings.offTransitionTime == -1) { // library marker RMoRobert.CoCoHue_Bri_Lib, line 114
-      scaledRate = getScaledOnTransitionTime() // library marker RMoRobert.CoCoHue_Bri_Lib, line 115
-   } // library marker RMoRobert.CoCoHue_Bri_Lib, line 116
-   else { // library marker RMoRobert.CoCoHue_Bri_Lib, line 117
-      scaledRate = Math.round(settings.offTransitionTime.toFloat() / 100) // library marker RMoRobert.CoCoHue_Bri_Lib, line 118
-   } // library marker RMoRobert.CoCoHue_Bri_Lib, line 119
-   return scaledRate // library marker RMoRobert.CoCoHue_Bri_Lib, line 120
-} // library marker RMoRobert.CoCoHue_Bri_Lib, line 121
+/** // library marker RMoRobert.CoCoHue_Bri_Lib, line 101
+ * Reads device preference for off() transition time, or provides default if not available; device // library marker RMoRobert.CoCoHue_Bri_Lib, line 102
+ * can use input(name: onTransitionTime, ...) to provide this // library marker RMoRobert.CoCoHue_Bri_Lib, line 103
+ */ // library marker RMoRobert.CoCoHue_Bri_Lib, line 104
+Integer getScaledOffTransitionTime() { // library marker RMoRobert.CoCoHue_Bri_Lib, line 105
+   Integer scaledRate = null // library marker RMoRobert.CoCoHue_Bri_Lib, line 106
+   if (settings.offTransitionTime == null || settings.offTransitionTime == "-2" || settings.offTransitionTime == -2) { // library marker RMoRobert.CoCoHue_Bri_Lib, line 107
+      // keep null; will result in not specifiying with command // library marker RMoRobert.CoCoHue_Bri_Lib, line 108
+   } // library marker RMoRobert.CoCoHue_Bri_Lib, line 109
+   else if (settings.offTransitionTime == "-1" || settings.offTransitionTime == -1) { // library marker RMoRobert.CoCoHue_Bri_Lib, line 110
+      scaledRate = getScaledOnTransitionTime() // library marker RMoRobert.CoCoHue_Bri_Lib, line 111
+   } // library marker RMoRobert.CoCoHue_Bri_Lib, line 112
+   else { // library marker RMoRobert.CoCoHue_Bri_Lib, line 113
+      scaledRate = Math.round(settings.offTransitionTime.toFloat() / 100) // library marker RMoRobert.CoCoHue_Bri_Lib, line 114
+   } // library marker RMoRobert.CoCoHue_Bri_Lib, line 115
+   return scaledRate // library marker RMoRobert.CoCoHue_Bri_Lib, line 116
+} // library marker RMoRobert.CoCoHue_Bri_Lib, line 117
 
-// Internal methods for scaling // library marker RMoRobert.CoCoHue_Bri_Lib, line 123
+// Internal methods for scaling // library marker RMoRobert.CoCoHue_Bri_Lib, line 119
 
 
-/** // library marker RMoRobert.CoCoHue_Bri_Lib, line 126
- * Scales Hubitat's 1-100 brightness levels to Hue Bridge's 1-254 (or 0-100) // library marker RMoRobert.CoCoHue_Bri_Lib, line 127
- * @param apiVersion: Use "1" (default) for classic, 1-254 API values; use "2" for v2/SSE 0.0-100.0 values (note: 0.0 is on) // library marker RMoRobert.CoCoHue_Bri_Lib, line 128
- */ // library marker RMoRobert.CoCoHue_Bri_Lib, line 129
-Number scaleBriToBridge(Number hubitatLevel, String apiVersion="1") { // library marker RMoRobert.CoCoHue_Bri_Lib, line 130
-   if (apiVersion != "2") { // library marker RMoRobert.CoCoHue_Bri_Lib, line 131
-      Integer scaledLevel // library marker RMoRobert.CoCoHue_Bri_Lib, line 132
-      scaledLevel = Math.round(hubitatLevel == 1 ? 1 : hubitatLevel.toBigDecimal() / 100 * 254) // library marker RMoRobert.CoCoHue_Bri_Lib, line 133
-      return Math.round(scaledLevel) as Integer // library marker RMoRobert.CoCoHue_Bri_Lib, line 134
-   } // library marker RMoRobert.CoCoHue_Bri_Lib, line 135
-   else { // library marker RMoRobert.CoCoHue_Bri_Lib, line 136
-      BigDecimal scaledLevel // library marker RMoRobert.CoCoHue_Bri_Lib, line 137
-      // for now, a quick cheat to make 1% the Hue minimum (should scale other values proportionally in future) // library marker RMoRobert.CoCoHue_Bri_Lib, line 138
-      scaledLevel = hubitatLevel == 1 ? 0.0 : hubitatLevel.toBigDecimal().setScale(2, java.math.RoundingMode.HALF_UP) // library marker RMoRobert.CoCoHue_Bri_Lib, line 139
-      return scaledLevel // library marker RMoRobert.CoCoHue_Bri_Lib, line 140
-   } // library marker RMoRobert.CoCoHue_Bri_Lib, line 141
-} // library marker RMoRobert.CoCoHue_Bri_Lib, line 142
+/** // library marker RMoRobert.CoCoHue_Bri_Lib, line 122
+ * Scales Hubitat's 1-100 brightness levels to Hue Bridge's 1-254 (or 0-100) // library marker RMoRobert.CoCoHue_Bri_Lib, line 123
+ * @param apiVersion: Use "1" (default) for classic, 1-254 API values; use "2" for v2/SSE 0.0-100.0 values (note: 0.0 is on) // library marker RMoRobert.CoCoHue_Bri_Lib, line 124
+ */ // library marker RMoRobert.CoCoHue_Bri_Lib, line 125
+Number scaleBriToBridge(Number hubitatLevel, String apiVersion="1") { // library marker RMoRobert.CoCoHue_Bri_Lib, line 126
+   if (apiVersion != "2") { // library marker RMoRobert.CoCoHue_Bri_Lib, line 127
+      Integer scaledLevel // library marker RMoRobert.CoCoHue_Bri_Lib, line 128
+      scaledLevel = Math.round(hubitatLevel == 1 ? 1 : hubitatLevel.toBigDecimal() / 100 * 254) // library marker RMoRobert.CoCoHue_Bri_Lib, line 129
+      return Math.round(scaledLevel) as Integer // library marker RMoRobert.CoCoHue_Bri_Lib, line 130
+   } // library marker RMoRobert.CoCoHue_Bri_Lib, line 131
+   else { // library marker RMoRobert.CoCoHue_Bri_Lib, line 132
+      BigDecimal scaledLevel // library marker RMoRobert.CoCoHue_Bri_Lib, line 133
+      // for now, a quick cheat to make 1% the Hue minimum (should scale other values proportionally in future) // library marker RMoRobert.CoCoHue_Bri_Lib, line 134
+      scaledLevel = hubitatLevel == 1 ? 0.0 : hubitatLevel.toBigDecimal().setScale(2, java.math.RoundingMode.HALF_UP) // library marker RMoRobert.CoCoHue_Bri_Lib, line 135
+      return scaledLevel // library marker RMoRobert.CoCoHue_Bri_Lib, line 136
+   } // library marker RMoRobert.CoCoHue_Bri_Lib, line 137
+} // library marker RMoRobert.CoCoHue_Bri_Lib, line 138
 
-/** // library marker RMoRobert.CoCoHue_Bri_Lib, line 144
- * Scales Hue Bridge's 1-254 brightness levels to Hubitat's 1-100 (or 0-100) // library marker RMoRobert.CoCoHue_Bri_Lib, line 145
- * @param apiVersion: Use "1" (default) for classic, 1-254 API values; use "2" for v2/SSE 0.0-100.0 values (note: 0.0 is on) // library marker RMoRobert.CoCoHue_Bri_Lib, line 146
- */ // library marker RMoRobert.CoCoHue_Bri_Lib, line 147
-Integer scaleBriFromBridge(Number bridgeLevel, String apiVersion="1") { // library marker RMoRobert.CoCoHue_Bri_Lib, line 148
-   Integer scaledLevel // library marker RMoRobert.CoCoHue_Bri_Lib, line 149
-   if (apiVersion != "2") { // library marker RMoRobert.CoCoHue_Bri_Lib, line 150
-      scaledLevel = Math.round(bridgeLevel.toBigDecimal() / 254 * 100) // library marker RMoRobert.CoCoHue_Bri_Lib, line 151
-      if (scaledLevel < 1) scaledLevel = 1 // library marker RMoRobert.CoCoHue_Bri_Lib, line 152
+/** // library marker RMoRobert.CoCoHue_Bri_Lib, line 140
+ * Scales Hue Bridge's 1-254 brightness levels to Hubitat's 1-100 (or 0-100) // library marker RMoRobert.CoCoHue_Bri_Lib, line 141
+ * @param apiVersion: Use "1" (default) for classic, 1-254 API values; use "2" for v2/SSE 0.0-100.0 values (note: 0.0 is on) // library marker RMoRobert.CoCoHue_Bri_Lib, line 142
+ */ // library marker RMoRobert.CoCoHue_Bri_Lib, line 143
+Integer scaleBriFromBridge(Number bridgeLevel, String apiVersion="1") { // library marker RMoRobert.CoCoHue_Bri_Lib, line 144
+   Integer scaledLevel // library marker RMoRobert.CoCoHue_Bri_Lib, line 145
+   if (apiVersion != "2") { // library marker RMoRobert.CoCoHue_Bri_Lib, line 146
+      scaledLevel = Math.round(bridgeLevel.toBigDecimal() / 254 * 100) // library marker RMoRobert.CoCoHue_Bri_Lib, line 147
+      if (scaledLevel < 1) scaledLevel = 1 // library marker RMoRobert.CoCoHue_Bri_Lib, line 148
+   } // library marker RMoRobert.CoCoHue_Bri_Lib, line 149
+   else { // library marker RMoRobert.CoCoHue_Bri_Lib, line 150
+      // for now, a quick cheat to make 1% the Hue minimum (should scale other values proportionally in future) // library marker RMoRobert.CoCoHue_Bri_Lib, line 151
+      scaledLevel = Math.round(bridgeLevel <= 1.49 && bridgeLevel > 0.001 ? 1 : bridgeLevel) // library marker RMoRobert.CoCoHue_Bri_Lib, line 152
    } // library marker RMoRobert.CoCoHue_Bri_Lib, line 153
-   else { // library marker RMoRobert.CoCoHue_Bri_Lib, line 154
-      // for now, a quick cheat to make 1% the Hue minimum (should scale other values proportionally in future) // library marker RMoRobert.CoCoHue_Bri_Lib, line 155
-      scaledLevel = Math.round(bridgeLevel <= 1.49 && bridgeLevel > 0.001 ? 1 : bridgeLevel) // library marker RMoRobert.CoCoHue_Bri_Lib, line 156
-   } // library marker RMoRobert.CoCoHue_Bri_Lib, line 157
-   return scaledLevel // library marker RMoRobert.CoCoHue_Bri_Lib, line 158
-} // library marker RMoRobert.CoCoHue_Bri_Lib, line 159
+   return scaledLevel // library marker RMoRobert.CoCoHue_Bri_Lib, line 154
+} // library marker RMoRobert.CoCoHue_Bri_Lib, line 155
 
 // ~~~~~ end include (2) RMoRobert.CoCoHue_Bri_Lib ~~~~~
 
@@ -701,7 +777,7 @@ library ( // library marker RMoRobert.CoCoHue_CT_Lib, line 3
 ) // library marker RMoRobert.CoCoHue_CT_Lib, line 10
 
 void setColorTemperature(Number colorTemperature, Number level = null, Number transitionTime = null) { // library marker RMoRobert.CoCoHue_CT_Lib, line 12
-   if (enableDebug == true) log.debug "setColorTemperature($colorTemperature, $level, $transitionTime)" // library marker RMoRobert.CoCoHue_CT_Lib, line 13
+   if (logEnable == true) log.debug "setColorTemperature($colorTemperature, $level, $transitionTime)" // library marker RMoRobert.CoCoHue_CT_Lib, line 13
    state.lastKnownColorMode = "CT" // library marker RMoRobert.CoCoHue_CT_Lib, line 14
    // For backwards compatibility; will be removed in future version: // library marker RMoRobert.CoCoHue_CT_Lib, line 15
    if (colorStaging) { // library marker RMoRobert.CoCoHue_CT_Lib, line 16
@@ -723,88 +799,68 @@ void setColorTemperature(Number colorTemperature, Number level = null, Number tr
    if (level) { // library marker RMoRobert.CoCoHue_CT_Lib, line 32
       bridgeCmd << ["bri": scaleBriToBridge(level)] // library marker RMoRobert.CoCoHue_CT_Lib, line 33
    } // library marker RMoRobert.CoCoHue_CT_Lib, line 34
-   Map prestagedCmds = getPrestagedCommands() // library marker RMoRobert.CoCoHue_CT_Lib, line 35
-   if (prestagedCmds) { // library marker RMoRobert.CoCoHue_CT_Lib, line 36
-      bridgeCmd = prestagedCmds + bridgeCmd // library marker RMoRobert.CoCoHue_CT_Lib, line 37
-   } // library marker RMoRobert.CoCoHue_CT_Lib, line 38
-   sendBridgeCommand(bridgeCmd) // library marker RMoRobert.CoCoHue_CT_Lib, line 39
-} // library marker RMoRobert.CoCoHue_CT_Lib, line 40
+   sendBridgeCommandV1(bridgeCmd) // library marker RMoRobert.CoCoHue_CT_Lib, line 35
+} // library marker RMoRobert.CoCoHue_CT_Lib, line 36
 
-// Not a standard command (yet?), but I hope it will get implemented as such soon in // library marker RMoRobert.CoCoHue_CT_Lib, line 42
-// the same manner as this. Otherwise, subject to change if/when that happens.... // library marker RMoRobert.CoCoHue_CT_Lib, line 43
-void presetColorTemperature(Number colorTemperature) { // library marker RMoRobert.CoCoHue_CT_Lib, line 44
-   if (enableDebug == true) log.debug "presetColorTemperature($colorTemperature)" // library marker RMoRobert.CoCoHue_CT_Lib, line 45
-   Boolean isOn = device.currentValue("switch") == "on" // library marker RMoRobert.CoCoHue_CT_Lib, line 46
-   doSendEvent("colorTemperaturePreset", colorTemperature) // library marker RMoRobert.CoCoHue_CT_Lib, line 47
-   if (isOn) { // library marker RMoRobert.CoCoHue_CT_Lib, line 48
-      setColorTemperature(colorTemperature) // library marker RMoRobert.CoCoHue_CT_Lib, line 49
-   } else { // library marker RMoRobert.CoCoHue_CT_Lib, line 50
-      state.remove("presetCT") // library marker RMoRobert.CoCoHue_CT_Lib, line 51
-      state.presetColorTemperature = true // library marker RMoRobert.CoCoHue_CT_Lib, line 52
-      state.presetHue = false // library marker RMoRobert.CoCoHue_CT_Lib, line 53
-      state.presetSaturation = false // library marker RMoRobert.CoCoHue_CT_Lib, line 54
-   } // library marker RMoRobert.CoCoHue_CT_Lib, line 55
-} // library marker RMoRobert.CoCoHue_CT_Lib, line 56
+// Not a standard command (yet?), but I hope it will get implemented as such soon in // library marker RMoRobert.CoCoHue_CT_Lib, line 38
+// the same manner as this. Otherwise, subject to change if/when that happens.... // library marker RMoRobert.CoCoHue_CT_Lib, line 39
+void presetColorTemperature(Number colorTemperature) { // library marker RMoRobert.CoCoHue_CT_Lib, line 40
+   if (logEnable == true) log.debug "presetColorTemperature($colorTemperature)" // library marker RMoRobert.CoCoHue_CT_Lib, line 41
+   Boolean isOn = device.currentValue("switch") == "on" // library marker RMoRobert.CoCoHue_CT_Lib, line 42
+   doSendEvent("colorTemperaturePreset", colorTemperature) // library marker RMoRobert.CoCoHue_CT_Lib, line 43
+   if (isOn) { // library marker RMoRobert.CoCoHue_CT_Lib, line 44
+      setColorTemperature(colorTemperature) // library marker RMoRobert.CoCoHue_CT_Lib, line 45
+   } else { // library marker RMoRobert.CoCoHue_CT_Lib, line 46
+      state.remove("presetCT") // library marker RMoRobert.CoCoHue_CT_Lib, line 47
+      state.presetColorTemperature = true // library marker RMoRobert.CoCoHue_CT_Lib, line 48
+      state.presetHue = false // library marker RMoRobert.CoCoHue_CT_Lib, line 49
+      state.presetSaturation = false // library marker RMoRobert.CoCoHue_CT_Lib, line 50
+   } // library marker RMoRobert.CoCoHue_CT_Lib, line 51
+} // library marker RMoRobert.CoCoHue_CT_Lib, line 52
 
-/** // library marker RMoRobert.CoCoHue_CT_Lib, line 58
- * Scales CT from Kelvin (Hubitat units) to mireds (Hue units) // library marker RMoRobert.CoCoHue_CT_Lib, line 59
- */ // library marker RMoRobert.CoCoHue_CT_Lib, line 60
-private Integer scaleCTToBridge(Number kelvinCT, Boolean checkIfInRange=true) { // library marker RMoRobert.CoCoHue_CT_Lib, line 61
-   Integer mireds = Math.round(1000000/kelvinCT) as Integer // library marker RMoRobert.CoCoHue_CT_Lib, line 62
-   if (checkIfInRange == true) { // library marker RMoRobert.CoCoHue_CT_Lib, line 63
-      if (mireds < minMireds) mireds = minMireds // library marker RMoRobert.CoCoHue_CT_Lib, line 64
-      else if (mireds > maxMireds) mireds = maxMireds // library marker RMoRobert.CoCoHue_CT_Lib, line 65
-   } // library marker RMoRobert.CoCoHue_CT_Lib, line 66
-   return mireds // library marker RMoRobert.CoCoHue_CT_Lib, line 67
-} // library marker RMoRobert.CoCoHue_CT_Lib, line 68
+/** // library marker RMoRobert.CoCoHue_CT_Lib, line 54
+ * Scales CT from Kelvin (Hubitat units) to mireds (Hue units) // library marker RMoRobert.CoCoHue_CT_Lib, line 55
+ */ // library marker RMoRobert.CoCoHue_CT_Lib, line 56
+private Integer scaleCTToBridge(Number kelvinCT, Boolean checkIfInRange=true) { // library marker RMoRobert.CoCoHue_CT_Lib, line 57
+   Integer mireds = Math.round(1000000/kelvinCT) as Integer // library marker RMoRobert.CoCoHue_CT_Lib, line 58
+   if (checkIfInRange == true) { // library marker RMoRobert.CoCoHue_CT_Lib, line 59
+      if (mireds < minMireds) mireds = minMireds // library marker RMoRobert.CoCoHue_CT_Lib, line 60
+      else if (mireds > maxMireds) mireds = maxMireds // library marker RMoRobert.CoCoHue_CT_Lib, line 61
+   } // library marker RMoRobert.CoCoHue_CT_Lib, line 62
+   return mireds // library marker RMoRobert.CoCoHue_CT_Lib, line 63
+} // library marker RMoRobert.CoCoHue_CT_Lib, line 64
 
-/** // library marker RMoRobert.CoCoHue_CT_Lib, line 70
- * Scales CT from mireds (Hue units) to Kelvin (Hubitat units) // library marker RMoRobert.CoCoHue_CT_Lib, line 71
- */ // library marker RMoRobert.CoCoHue_CT_Lib, line 72
-private Integer scaleCTFromBridge(Number mireds) { // library marker RMoRobert.CoCoHue_CT_Lib, line 73
-   Integer kelvin = Math.round(1000000/mireds) as Integer // library marker RMoRobert.CoCoHue_CT_Lib, line 74
-   return kelvin // library marker RMoRobert.CoCoHue_CT_Lib, line 75
-} // library marker RMoRobert.CoCoHue_CT_Lib, line 76
+/** // library marker RMoRobert.CoCoHue_CT_Lib, line 66
+ * Scales CT from mireds (Hue units) to Kelvin (Hubitat units) // library marker RMoRobert.CoCoHue_CT_Lib, line 67
+ */ // library marker RMoRobert.CoCoHue_CT_Lib, line 68
+private Integer scaleCTFromBridge(Number mireds) { // library marker RMoRobert.CoCoHue_CT_Lib, line 69
+   Integer kelvin = Math.round(1000000/mireds) as Integer // library marker RMoRobert.CoCoHue_CT_Lib, line 70
+   return kelvin // library marker RMoRobert.CoCoHue_CT_Lib, line 71
+} // library marker RMoRobert.CoCoHue_CT_Lib, line 72
 
-/** // library marker RMoRobert.CoCoHue_CT_Lib, line 78
- * Reads device preference for CT transition time, or provides default if not available; device // library marker RMoRobert.CoCoHue_CT_Lib, line 79
- * can use input(name: ctTransitionTime, ...) to provide this // library marker RMoRobert.CoCoHue_CT_Lib, line 80
- */ // library marker RMoRobert.CoCoHue_CT_Lib, line 81
-Integer getScaledCTTransitionTime() { // library marker RMoRobert.CoCoHue_CT_Lib, line 82
-   Integer scaledRate = null // library marker RMoRobert.CoCoHue_CT_Lib, line 83
-   if (settings.ctTransitionTime == null || settings.ctTransitionTime == "-2" || settings.ctTransitionTime == -2) { // library marker RMoRobert.CoCoHue_CT_Lib, line 84
-      // keep null; will result in not specifiying with command // library marker RMoRobert.CoCoHue_CT_Lib, line 85
-   } // library marker RMoRobert.CoCoHue_CT_Lib, line 86
-   else if (settings.ctTransitionTime == "-1" || settings.ctTransitionTime == -1) { // library marker RMoRobert.CoCoHue_CT_Lib, line 87
-      scaledRate = (settings.transitionTime != null) ? Math.round(settings.transitionTime.toFloat() / 100) : (defaultTransitionTime != null ? defaultTransitionTime : 250) // library marker RMoRobert.CoCoHue_CT_Lib, line 88
-   } // library marker RMoRobert.CoCoHue_CT_Lib, line 89
-   else { // library marker RMoRobert.CoCoHue_CT_Lib, line 90
-      scaledRate = Math.round(settings.ctTransitionTime.toFloat() / 100) // library marker RMoRobert.CoCoHue_CT_Lib, line 91
-   } // library marker RMoRobert.CoCoHue_CT_Lib, line 92
-   return scaledRate // library marker RMoRobert.CoCoHue_CT_Lib, line 93
-} // library marker RMoRobert.CoCoHue_CT_Lib, line 94
+/** // library marker RMoRobert.CoCoHue_CT_Lib, line 74
+ * Reads device preference for CT transition time, or provides default if not available; device // library marker RMoRobert.CoCoHue_CT_Lib, line 75
+ * can use input(name: ctTransitionTime, ...) to provide this // library marker RMoRobert.CoCoHue_CT_Lib, line 76
+ */ // library marker RMoRobert.CoCoHue_CT_Lib, line 77
+Integer getScaledCTTransitionTime() { // library marker RMoRobert.CoCoHue_CT_Lib, line 78
+   Integer scaledRate = null // library marker RMoRobert.CoCoHue_CT_Lib, line 79
+   if (settings.ctTransitionTime == null || settings.ctTransitionTime == "-2" || settings.ctTransitionTime == -2) { // library marker RMoRobert.CoCoHue_CT_Lib, line 80
+      // keep null; will result in not specifiying with command // library marker RMoRobert.CoCoHue_CT_Lib, line 81
+   } // library marker RMoRobert.CoCoHue_CT_Lib, line 82
+   else if (settings.ctTransitionTime == "-1" || settings.ctTransitionTime == -1) { // library marker RMoRobert.CoCoHue_CT_Lib, line 83
+      scaledRate = (settings.transitionTime != null) ? Math.round(settings.transitionTime.toFloat() / 100) : (defaultTransitionTime != null ? defaultTransitionTime : 250) // library marker RMoRobert.CoCoHue_CT_Lib, line 84
+   } // library marker RMoRobert.CoCoHue_CT_Lib, line 85
+   else { // library marker RMoRobert.CoCoHue_CT_Lib, line 86
+      scaledRate = Math.round(settings.ctTransitionTime.toFloat() / 100) // library marker RMoRobert.CoCoHue_CT_Lib, line 87
+   } // library marker RMoRobert.CoCoHue_CT_Lib, line 88
+   return scaledRate // library marker RMoRobert.CoCoHue_CT_Lib, line 89
+} // library marker RMoRobert.CoCoHue_CT_Lib, line 90
 
-
-// Hubitat-provided ct/name mappings // library marker RMoRobert.CoCoHue_CT_Lib, line 97
-void setGenericTempName(temp) { // library marker RMoRobert.CoCoHue_CT_Lib, line 98
-   if (!temp) return // library marker RMoRobert.CoCoHue_CT_Lib, line 99
-   String genericName // library marker RMoRobert.CoCoHue_CT_Lib, line 100
-   Integer value = temp.toInteger() // library marker RMoRobert.CoCoHue_CT_Lib, line 101
-   if (value <= 2000) genericName = "Sodium" // library marker RMoRobert.CoCoHue_CT_Lib, line 102
-   else if (value <= 2100) genericName = "Starlight" // library marker RMoRobert.CoCoHue_CT_Lib, line 103
-   else if (value < 2400) genericName = "Sunrise" // library marker RMoRobert.CoCoHue_CT_Lib, line 104
-   else if (value < 2800) genericName = "Incandescent" // library marker RMoRobert.CoCoHue_CT_Lib, line 105
-   else if (value < 3300) genericName = "Soft White" // library marker RMoRobert.CoCoHue_CT_Lib, line 106
-   else if (value < 3500) genericName = "Warm White" // library marker RMoRobert.CoCoHue_CT_Lib, line 107
-   else if (value < 4150) genericName = "Moonlight" // library marker RMoRobert.CoCoHue_CT_Lib, line 108
-   else if (value <= 5000) genericName = "Horizon" // library marker RMoRobert.CoCoHue_CT_Lib, line 109
-   else if (value < 5500) genericName = "Daylight" // library marker RMoRobert.CoCoHue_CT_Lib, line 110
-   else if (value < 6000) genericName = "Electronic" // library marker RMoRobert.CoCoHue_CT_Lib, line 111
-   else if (value <= 6500) genericName = "Skylight" // library marker RMoRobert.CoCoHue_CT_Lib, line 112
-   else if (value < 20000) genericName = "Polar" // library marker RMoRobert.CoCoHue_CT_Lib, line 113
-   else genericName = "undefined" // shouldn't happen, but just in case // library marker RMoRobert.CoCoHue_CT_Lib, line 114
-   if (device.currentValue("colorName") != genericName) doSendEvent("colorName", genericName) // library marker RMoRobert.CoCoHue_CT_Lib, line 115
-} // library marker RMoRobert.CoCoHue_CT_Lib, line 116
+void setGenericTempName(temp) { // library marker RMoRobert.CoCoHue_CT_Lib, line 92
+   if (!temp) return // library marker RMoRobert.CoCoHue_CT_Lib, line 93
+   String genericName = convertTemperatureToGenericColorName(temp) // library marker RMoRobert.CoCoHue_CT_Lib, line 94
+   if (device.currentValue("colorName") != genericName) doSendEvent("colorName", genericName) // library marker RMoRobert.CoCoHue_CT_Lib, line 95
+} // library marker RMoRobert.CoCoHue_CT_Lib, line 96
 
 // ~~~~~ end include (3) RMoRobert.CoCoHue_CT_Lib ~~~~~
 
@@ -821,7 +877,7 @@ library ( // library marker RMoRobert.CoCoHue_HueSat_Lib, line 3
 ) // library marker RMoRobert.CoCoHue_HueSat_Lib, line 10
 
 void setColor(Map value) { // library marker RMoRobert.CoCoHue_HueSat_Lib, line 12
-   if (enableDebug == true) log.debug "setColor($value)" // library marker RMoRobert.CoCoHue_HueSat_Lib, line 13
+   if (logEnable == true) log.debug "setColor($value)" // library marker RMoRobert.CoCoHue_HueSat_Lib, line 13
    state.lastKnownColorMode = "RGB" // library marker RMoRobert.CoCoHue_HueSat_Lib, line 14
    // For backwards compatibility; will be removed in future version: // library marker RMoRobert.CoCoHue_HueSat_Lib, line 15
    if (colorStaging) { // library marker RMoRobert.CoCoHue_HueSat_Lib, line 16
@@ -832,7 +888,7 @@ void setColor(Map value) { // library marker RMoRobert.CoCoHue_HueSat_Lib, line 
       } // library marker RMoRobert.CoCoHue_HueSat_Lib, line 21
    } // library marker RMoRobert.CoCoHue_HueSat_Lib, line 22
    if (value.hue == null || value.hue == "NaN" || value.saturation == null || value.saturation == "NaN") { // library marker RMoRobert.CoCoHue_HueSat_Lib, line 23
-      if (enableDebug == true) log.debug "Exiting setColor because no hue and/or saturation set" // library marker RMoRobert.CoCoHue_HueSat_Lib, line 24
+      if (logEnable == true) log.debug "Exiting setColor because no hue and/or saturation set" // library marker RMoRobert.CoCoHue_HueSat_Lib, line 24
       return // library marker RMoRobert.CoCoHue_HueSat_Lib, line 25
    } // library marker RMoRobert.CoCoHue_HueSat_Lib, line 26
    Map bridgeCmd  // library marker RMoRobert.CoCoHue_HueSat_Lib, line 27
@@ -847,175 +903,133 @@ void setColor(Map value) { // library marker RMoRobert.CoCoHue_HueSat_Lib, line 
       bridgeCmd = ["on": true, "hue": newHue, "sat": newSat, "transitiontime": scaledRate] // library marker RMoRobert.CoCoHue_HueSat_Lib, line 36
    } // library marker RMoRobert.CoCoHue_HueSat_Lib, line 37
    if (newBri) bridgeCmd << ["bri": newBri] // library marker RMoRobert.CoCoHue_HueSat_Lib, line 38
-   Map prestagedCmds = getPrestagedCommands() // library marker RMoRobert.CoCoHue_HueSat_Lib, line 39
-   if (prestagedCmds) { // library marker RMoRobert.CoCoHue_HueSat_Lib, line 40
-      bridgeCmd = prestagedCmds + bridgeCmd // library marker RMoRobert.CoCoHue_HueSat_Lib, line 41
-   } // library marker RMoRobert.CoCoHue_HueSat_Lib, line 42
-   sendBridgeCommand(bridgeCmd) // library marker RMoRobert.CoCoHue_HueSat_Lib, line 43
-} // library marker RMoRobert.CoCoHue_HueSat_Lib, line 44
+   sendBridgeCommandV1(bridgeCmd) // library marker RMoRobert.CoCoHue_HueSat_Lib, line 39
+} // library marker RMoRobert.CoCoHue_HueSat_Lib, line 40
 
-// Really a hack to get this usable from the admin UI since you can only have one COLOR_MAP input, which // library marker RMoRobert.CoCoHue_HueSat_Lib, line 46
-// is already implicitly taken by setColor(). Accepts JSON object like {"hue": 10, "saturation": 100, "level": 50} // library marker RMoRobert.CoCoHue_HueSat_Lib, line 47
-// and will convert to Groovy map for use with other implenentation of this command (which I hope will be standardized // library marker RMoRobert.CoCoHue_HueSat_Lib, line 48
-// some day..) // library marker RMoRobert.CoCoHue_HueSat_Lib, line 49
-void presetColor(String jsonValue) { // library marker RMoRobert.CoCoHue_HueSat_Lib, line 50
-   if (enableDebug == true) log.debug "presetColor(String $jsonValue)" // library marker RMoRobert.CoCoHue_HueSat_Lib, line 51
-   Map value = new groovy.json.JsonSlurper().parseText(jsonValue) // library marker RMoRobert.CoCoHue_HueSat_Lib, line 52
-   presetColor(value) // library marker RMoRobert.CoCoHue_HueSat_Lib, line 53
-} // library marker RMoRobert.CoCoHue_HueSat_Lib, line 54
+// Really a hack to get this usable from the admin UI since you can only have one COLOR_MAP input, which // library marker RMoRobert.CoCoHue_HueSat_Lib, line 42
+// is already implicitly taken by setColor(). Accepts JSON object like {"hue": 10, "saturation": 100, "level": 50} // library marker RMoRobert.CoCoHue_HueSat_Lib, line 43
+// and will convert to Groovy map for use with other implenentation of this command (which I hope will be standardized // library marker RMoRobert.CoCoHue_HueSat_Lib, line 44
+// some day..) // library marker RMoRobert.CoCoHue_HueSat_Lib, line 45
+void presetColor(String jsonValue) { // library marker RMoRobert.CoCoHue_HueSat_Lib, line 46
+   if (logEnable == true) log.debug "presetColor(String $jsonValue)" // library marker RMoRobert.CoCoHue_HueSat_Lib, line 47
+   Map value = new groovy.json.JsonSlurper().parseText(jsonValue) // library marker RMoRobert.CoCoHue_HueSat_Lib, line 48
+   presetColor(value) // library marker RMoRobert.CoCoHue_HueSat_Lib, line 49
+} // library marker RMoRobert.CoCoHue_HueSat_Lib, line 50
 
-// Not currently a standard Hubitat command, so implementation subject to change if it becomes one; // library marker RMoRobert.CoCoHue_HueSat_Lib, line 56
-// for now, assuming it may be done by taking a color map like setColor() (but see also JSON variant above) // library marker RMoRobert.CoCoHue_HueSat_Lib, line 57
-// May also need presetHue() and presetSaturation(), but not including for now... // library marker RMoRobert.CoCoHue_HueSat_Lib, line 58
-void presetColor(Map value) { // library marker RMoRobert.CoCoHue_HueSat_Lib, line 59
-   if (enableDebug == true) log.debug "presetColor(Map $value)" // library marker RMoRobert.CoCoHue_HueSat_Lib, line 60
-   if (value.hue != null) { // library marker RMoRobert.CoCoHue_HueSat_Lib, line 61
-      doSendEvent("huePreset", value.hue) // library marker RMoRobert.CoCoHue_HueSat_Lib, line 62
-   } // library marker RMoRobert.CoCoHue_HueSat_Lib, line 63
-   if (value.saturation != null) { // library marker RMoRobert.CoCoHue_HueSat_Lib, line 64
-      doSendEvent("saturationPreset", value.saturation) // library marker RMoRobert.CoCoHue_HueSat_Lib, line 65
-   } // library marker RMoRobert.CoCoHue_HueSat_Lib, line 66
-   if (value.level != null) { // library marker RMoRobert.CoCoHue_HueSat_Lib, line 67
-      doSendEvent("levelPreset", value.level) // library marker RMoRobert.CoCoHue_HueSat_Lib, line 68
-   } // library marker RMoRobert.CoCoHue_HueSat_Lib, line 69
-   Boolean isOn = device.currentValue("switch") == "on" // library marker RMoRobert.CoCoHue_HueSat_Lib, line 70
-   if (isOn) { // library marker RMoRobert.CoCoHue_HueSat_Lib, line 71
-      setColor(value) // library marker RMoRobert.CoCoHue_HueSat_Lib, line 72
-   } else { // library marker RMoRobert.CoCoHue_HueSat_Lib, line 73
-      state.presetHue = (value.hue != null) // library marker RMoRobert.CoCoHue_HueSat_Lib, line 74
-      state.presetSaturation = (value.saturation != null) // library marker RMoRobert.CoCoHue_HueSat_Lib, line 75
-      state.presetLevel = (value.level != null) // library marker RMoRobert.CoCoHue_HueSat_Lib, line 76
-      state.presetColorTemperature = false // library marker RMoRobert.CoCoHue_HueSat_Lib, line 77
-   } // library marker RMoRobert.CoCoHue_HueSat_Lib, line 78
-} // library marker RMoRobert.CoCoHue_HueSat_Lib, line 79
+// Not currently a standard Hubitat command, so implementation subject to change if it becomes one; // library marker RMoRobert.CoCoHue_HueSat_Lib, line 52
+// for now, assuming it may be done by taking a color map like setColor() (but see also JSON variant above) // library marker RMoRobert.CoCoHue_HueSat_Lib, line 53
+// May also need presetHue() and presetSaturation(), but not including for now... // library marker RMoRobert.CoCoHue_HueSat_Lib, line 54
+void presetColor(Map value) { // library marker RMoRobert.CoCoHue_HueSat_Lib, line 55
+   if (logEnable == true) log.debug "presetColor(Map $value)" // library marker RMoRobert.CoCoHue_HueSat_Lib, line 56
+   if (value.hue != null) { // library marker RMoRobert.CoCoHue_HueSat_Lib, line 57
+      doSendEvent("huePreset", value.hue) // library marker RMoRobert.CoCoHue_HueSat_Lib, line 58
+   } // library marker RMoRobert.CoCoHue_HueSat_Lib, line 59
+   if (value.saturation != null) { // library marker RMoRobert.CoCoHue_HueSat_Lib, line 60
+      doSendEvent("saturationPreset", value.saturation) // library marker RMoRobert.CoCoHue_HueSat_Lib, line 61
+   } // library marker RMoRobert.CoCoHue_HueSat_Lib, line 62
+   if (value.level != null) { // library marker RMoRobert.CoCoHue_HueSat_Lib, line 63
+      doSendEvent("levelPreset", value.level) // library marker RMoRobert.CoCoHue_HueSat_Lib, line 64
+   } // library marker RMoRobert.CoCoHue_HueSat_Lib, line 65
+   Boolean isOn = device.currentValue("switch") == "on" // library marker RMoRobert.CoCoHue_HueSat_Lib, line 66
+   if (isOn) { // library marker RMoRobert.CoCoHue_HueSat_Lib, line 67
+      setColor(value) // library marker RMoRobert.CoCoHue_HueSat_Lib, line 68
+   } else { // library marker RMoRobert.CoCoHue_HueSat_Lib, line 69
+      state.presetHue = (value.hue != null) // library marker RMoRobert.CoCoHue_HueSat_Lib, line 70
+      state.presetSaturation = (value.saturation != null) // library marker RMoRobert.CoCoHue_HueSat_Lib, line 71
+      state.presetLevel = (value.level != null) // library marker RMoRobert.CoCoHue_HueSat_Lib, line 72
+      state.presetColorTemperature = false // library marker RMoRobert.CoCoHue_HueSat_Lib, line 73
+   } // library marker RMoRobert.CoCoHue_HueSat_Lib, line 74
+} // library marker RMoRobert.CoCoHue_HueSat_Lib, line 75
 
-void setHue(value) { // library marker RMoRobert.CoCoHue_HueSat_Lib, line 81
-   if (enableDebug == true) log.debug "setHue($value)" // library marker RMoRobert.CoCoHue_HueSat_Lib, line 82
-   state.lastKnownColorMode = "RGB" // library marker RMoRobert.CoCoHue_HueSat_Lib, line 83
-   // For backwards compatibility; will be removed in future version: // library marker RMoRobert.CoCoHue_HueSat_Lib, line 84
-   if (colorStaging) { // library marker RMoRobert.CoCoHue_HueSat_Lib, line 85
-      log.warn "Color prestaging preference enabled and setHue() called. This is deprecated and may be removed in the future. Please move to new presetColor() command." // library marker RMoRobert.CoCoHue_HueSat_Lib, line 86
-      if (device.currentValue("switch") != "on") { // library marker RMoRobert.CoCoHue_HueSat_Lib, line 87
-         presetColor([hue: value]) // library marker RMoRobert.CoCoHue_HueSat_Lib, line 88
-         return // library marker RMoRobert.CoCoHue_HueSat_Lib, line 89
-      } // library marker RMoRobert.CoCoHue_HueSat_Lib, line 90
-   } // library marker RMoRobert.CoCoHue_HueSat_Lib, line 91
-   Integer newHue = scaleHueToBridge(value) // library marker RMoRobert.CoCoHue_HueSat_Lib, line 92
-   Integer scaledRate = ((transitionTime != null ? transitionTime.toBigDecimal() : defaultLevelTransitionTime) / 100).toInteger() // library marker RMoRobert.CoCoHue_HueSat_Lib, line 93
-   Map bridgeCmd = ["on": true, "hue": newHue, "transitiontime": scaledRate] // library marker RMoRobert.CoCoHue_HueSat_Lib, line 94
-   Map prestagedCmds = getPrestagedCommands() // library marker RMoRobert.CoCoHue_HueSat_Lib, line 95
-   if (prestagedCmds) { // library marker RMoRobert.CoCoHue_HueSat_Lib, line 96
-      bridgeCmd = prestagedCmds + bridgeCmd // library marker RMoRobert.CoCoHue_HueSat_Lib, line 97
-   } // library marker RMoRobert.CoCoHue_HueSat_Lib, line 98
-   sendBridgeCommand(bridgeCmd) // library marker RMoRobert.CoCoHue_HueSat_Lib, line 99
-} // library marker RMoRobert.CoCoHue_HueSat_Lib, line 100
+void setHue(value) { // library marker RMoRobert.CoCoHue_HueSat_Lib, line 77
+   if (logEnable == true) log.debug "setHue($value)" // library marker RMoRobert.CoCoHue_HueSat_Lib, line 78
+   state.lastKnownColorMode = "RGB" // library marker RMoRobert.CoCoHue_HueSat_Lib, line 79
+   // For backwards compatibility; will be removed in future version: // library marker RMoRobert.CoCoHue_HueSat_Lib, line 80
+   if (colorStaging) { // library marker RMoRobert.CoCoHue_HueSat_Lib, line 81
+      log.warn "Color prestaging preference enabled and setHue() called. This is deprecated and may be removed in the future. Please move to new presetColor() command." // library marker RMoRobert.CoCoHue_HueSat_Lib, line 82
+      if (device.currentValue("switch") != "on") { // library marker RMoRobert.CoCoHue_HueSat_Lib, line 83
+         presetColor([hue: value]) // library marker RMoRobert.CoCoHue_HueSat_Lib, line 84
+         return // library marker RMoRobert.CoCoHue_HueSat_Lib, line 85
+      } // library marker RMoRobert.CoCoHue_HueSat_Lib, line 86
+   } // library marker RMoRobert.CoCoHue_HueSat_Lib, line 87
+   Integer newHue = scaleHueToBridge(value) // library marker RMoRobert.CoCoHue_HueSat_Lib, line 88
+   Integer scaledRate = ((transitionTime != null ? transitionTime.toBigDecimal() : defaultLevelTransitionTime) / 100).toInteger() // library marker RMoRobert.CoCoHue_HueSat_Lib, line 89
+   Map bridgeCmd = ["on": true, "hue": newHue, "transitiontime": scaledRate] // library marker RMoRobert.CoCoHue_HueSat_Lib, line 90
+   sendBridgeCommandV1(bridgeCmd) // library marker RMoRobert.CoCoHue_HueSat_Lib, line 91
+} // library marker RMoRobert.CoCoHue_HueSat_Lib, line 92
 
-void setSaturation(value) { // library marker RMoRobert.CoCoHue_HueSat_Lib, line 102
-   if (enableDebug == true) log.debug "setSaturation($value)" // library marker RMoRobert.CoCoHue_HueSat_Lib, line 103
-   state.lastKnownColorMode = "RGB" // library marker RMoRobert.CoCoHue_HueSat_Lib, line 104
-   // For backwards compatibility; will be removed in future version: // library marker RMoRobert.CoCoHue_HueSat_Lib, line 105
-   if (colorStaging) { // library marker RMoRobert.CoCoHue_HueSat_Lib, line 106
-      log.warn "Color prestaging preference enabled and setSaturation() called. This is deprecated and may be removed in the future. Please move to new presetColor() command." // library marker RMoRobert.CoCoHue_HueSat_Lib, line 107
-      if (device.currentValue("switch") != "on") { // library marker RMoRobert.CoCoHue_HueSat_Lib, line 108
-         presetColor([saturation: value]) // library marker RMoRobert.CoCoHue_HueSat_Lib, line 109
-         return // library marker RMoRobert.CoCoHue_HueSat_Lib, line 110
-      } // library marker RMoRobert.CoCoHue_HueSat_Lib, line 111
-   } // library marker RMoRobert.CoCoHue_HueSat_Lib, line 112
-   Integer newSat = scaleSatToBridge(value) // library marker RMoRobert.CoCoHue_HueSat_Lib, line 113
-   Integer scaledRate = ((transitionTime != null ? transitionTime.toBigDecimal() : 1000) / 100).toInteger() // library marker RMoRobert.CoCoHue_HueSat_Lib, line 114
-   Map bridgeCmd = ["on": true, "sat": newSat, "transitiontime": scaledRate] // library marker RMoRobert.CoCoHue_HueSat_Lib, line 115
-   Map prestagedCmds = getPrestagedCommands() // library marker RMoRobert.CoCoHue_HueSat_Lib, line 116
-   if (prestagedCmds) { // library marker RMoRobert.CoCoHue_HueSat_Lib, line 117
-      bridgeCmd = prestagedCmds + bridgeCmd // library marker RMoRobert.CoCoHue_HueSat_Lib, line 118
-   } // library marker RMoRobert.CoCoHue_HueSat_Lib, line 119
-   sendBridgeCommand(bridgeCmd) // library marker RMoRobert.CoCoHue_HueSat_Lib, line 120
-} // library marker RMoRobert.CoCoHue_HueSat_Lib, line 121
+void setSaturation(value) { // library marker RMoRobert.CoCoHue_HueSat_Lib, line 94
+   if (logEnable == true) log.debug "setSaturation($value)" // library marker RMoRobert.CoCoHue_HueSat_Lib, line 95
+   state.lastKnownColorMode = "RGB" // library marker RMoRobert.CoCoHue_HueSat_Lib, line 96
+   // For backwards compatibility; will be removed in future version: // library marker RMoRobert.CoCoHue_HueSat_Lib, line 97
+   if (colorStaging) { // library marker RMoRobert.CoCoHue_HueSat_Lib, line 98
+      log.warn "Color prestaging preference enabled and setSaturation() called. This is deprecated and may be removed in the future. Please move to new presetColor() command." // library marker RMoRobert.CoCoHue_HueSat_Lib, line 99
+      if (device.currentValue("switch") != "on") { // library marker RMoRobert.CoCoHue_HueSat_Lib, line 100
+         presetColor([saturation: value]) // library marker RMoRobert.CoCoHue_HueSat_Lib, line 101
+         return // library marker RMoRobert.CoCoHue_HueSat_Lib, line 102
+      } // library marker RMoRobert.CoCoHue_HueSat_Lib, line 103
+   } // library marker RMoRobert.CoCoHue_HueSat_Lib, line 104
+   Integer newSat = scaleSatToBridge(value) // library marker RMoRobert.CoCoHue_HueSat_Lib, line 105
+   Integer scaledRate = ((transitionTime != null ? transitionTime.toBigDecimal() : 1000) / 100).toInteger() // library marker RMoRobert.CoCoHue_HueSat_Lib, line 106
+   Map bridgeCmd = ["on": true, "sat": newSat, "transitiontime": scaledRate] // library marker RMoRobert.CoCoHue_HueSat_Lib, line 107
+   sendBridgeCommandV1(bridgeCmd) // library marker RMoRobert.CoCoHue_HueSat_Lib, line 108
+} // library marker RMoRobert.CoCoHue_HueSat_Lib, line 109
 
-Integer scaleHueToBridge(hubitatHue) { // library marker RMoRobert.CoCoHue_HueSat_Lib, line 123
-   Integer scaledHue = Math.round(hubitatHue.toBigDecimal() / (hiRezHue ? 360 : 100) * 65535) // library marker RMoRobert.CoCoHue_HueSat_Lib, line 124
-   if (scaledHue < 0) scaledHue = 0 // library marker RMoRobert.CoCoHue_HueSat_Lib, line 125
-   else if (scaledHue > 65535) scaledHue = 65535 // library marker RMoRobert.CoCoHue_HueSat_Lib, line 126
-   return scaledHue // library marker RMoRobert.CoCoHue_HueSat_Lib, line 127
-} // library marker RMoRobert.CoCoHue_HueSat_Lib, line 128
+Integer scaleHueToBridge(hubitatHue) { // library marker RMoRobert.CoCoHue_HueSat_Lib, line 111
+   Integer scaledHue = Math.round(hubitatHue.toBigDecimal() / (hiRezHue ? 360 : 100) * 65535) // library marker RMoRobert.CoCoHue_HueSat_Lib, line 112
+   if (scaledHue < 0) scaledHue = 0 // library marker RMoRobert.CoCoHue_HueSat_Lib, line 113
+   else if (scaledHue > 65535) scaledHue = 65535 // library marker RMoRobert.CoCoHue_HueSat_Lib, line 114
+   return scaledHue // library marker RMoRobert.CoCoHue_HueSat_Lib, line 115
+} // library marker RMoRobert.CoCoHue_HueSat_Lib, line 116
 
-Integer scaleHueFromBridge(bridgeLevel) { // library marker RMoRobert.CoCoHue_HueSat_Lib, line 130
-   Integer scaledHue = Math.round(bridgeLevel.toBigDecimal() / 65535 * (hiRezHue ? 360 : 100)) // library marker RMoRobert.CoCoHue_HueSat_Lib, line 131
-   if (scaledHue < 0) scaledHue = 0 // library marker RMoRobert.CoCoHue_HueSat_Lib, line 132
-   else if (scaledHue > 360) scaledHue = 360 // library marker RMoRobert.CoCoHue_HueSat_Lib, line 133
-   else if (scaledHue > 100 && !hiRezHue) scaledHue = 100 // library marker RMoRobert.CoCoHue_HueSat_Lib, line 134
-   return scaledHue // library marker RMoRobert.CoCoHue_HueSat_Lib, line 135
-} // library marker RMoRobert.CoCoHue_HueSat_Lib, line 136
+Integer scaleHueFromBridge(bridgeLevel) { // library marker RMoRobert.CoCoHue_HueSat_Lib, line 118
+   Integer scaledHue = Math.round(bridgeLevel.toBigDecimal() / 65535 * (hiRezHue ? 360 : 100)) // library marker RMoRobert.CoCoHue_HueSat_Lib, line 119
+   if (scaledHue < 0) scaledHue = 0 // library marker RMoRobert.CoCoHue_HueSat_Lib, line 120
+   else if (scaledHue > 360) scaledHue = 360 // library marker RMoRobert.CoCoHue_HueSat_Lib, line 121
+   else if (scaledHue > 100 && !hiRezHue) scaledHue = 100 // library marker RMoRobert.CoCoHue_HueSat_Lib, line 122
+   return scaledHue // library marker RMoRobert.CoCoHue_HueSat_Lib, line 123
+} // library marker RMoRobert.CoCoHue_HueSat_Lib, line 124
 
-Integer scaleSatToBridge(hubitatSat) { // library marker RMoRobert.CoCoHue_HueSat_Lib, line 138
-   Integer scaledSat = Math.round(hubitatSat.toBigDecimal() / 100 * 254) // library marker RMoRobert.CoCoHue_HueSat_Lib, line 139
-   if (scaledSat < 0) scaledSat = 0 // library marker RMoRobert.CoCoHue_HueSat_Lib, line 140
-   else if (scaledSat > 254) scaledSat = 254 // library marker RMoRobert.CoCoHue_HueSat_Lib, line 141
-   return scaledSat // library marker RMoRobert.CoCoHue_HueSat_Lib, line 142
-} // library marker RMoRobert.CoCoHue_HueSat_Lib, line 143
+Integer scaleSatToBridge(hubitatSat) { // library marker RMoRobert.CoCoHue_HueSat_Lib, line 126
+   Integer scaledSat = Math.round(hubitatSat.toBigDecimal() / 100 * 254) // library marker RMoRobert.CoCoHue_HueSat_Lib, line 127
+   if (scaledSat < 0) scaledSat = 0 // library marker RMoRobert.CoCoHue_HueSat_Lib, line 128
+   else if (scaledSat > 254) scaledSat = 254 // library marker RMoRobert.CoCoHue_HueSat_Lib, line 129
+   return scaledSat // library marker RMoRobert.CoCoHue_HueSat_Lib, line 130
+} // library marker RMoRobert.CoCoHue_HueSat_Lib, line 131
 
-Integer scaleSatFromBridge(bridgeSat) { // library marker RMoRobert.CoCoHue_HueSat_Lib, line 145
-   Integer scaledSat = Math.round(bridgeSat.toBigDecimal() / 254 * 100) // library marker RMoRobert.CoCoHue_HueSat_Lib, line 146
-   if (scaledSat < 0) scaledSat = 0 // library marker RMoRobert.CoCoHue_HueSat_Lib, line 147
-   else if (scaledSat > 100) scaledSat = 100 // library marker RMoRobert.CoCoHue_HueSat_Lib, line 148
-   return scaledSat // library marker RMoRobert.CoCoHue_HueSat_Lib, line 149
-} // library marker RMoRobert.CoCoHue_HueSat_Lib, line 150
+Integer scaleSatFromBridge(bridgeSat) { // library marker RMoRobert.CoCoHue_HueSat_Lib, line 133
+   Integer scaledSat = Math.round(bridgeSat.toBigDecimal() / 254 * 100) // library marker RMoRobert.CoCoHue_HueSat_Lib, line 134
+   if (scaledSat < 0) scaledSat = 0 // library marker RMoRobert.CoCoHue_HueSat_Lib, line 135
+   else if (scaledSat > 100) scaledSat = 100 // library marker RMoRobert.CoCoHue_HueSat_Lib, line 136
+   return scaledSat // library marker RMoRobert.CoCoHue_HueSat_Lib, line 137
+} // library marker RMoRobert.CoCoHue_HueSat_Lib, line 138
 
 
-/** // library marker RMoRobert.CoCoHue_HueSat_Lib, line 153
- * Reads device preference for setColor/RGB transition time, or provides default if not available; device // library marker RMoRobert.CoCoHue_HueSat_Lib, line 154
- * can use input(name: rgbTransitionTime, ...) to provide this // library marker RMoRobert.CoCoHue_HueSat_Lib, line 155
- */ // library marker RMoRobert.CoCoHue_HueSat_Lib, line 156
-Integer getScaledRGBTransitionTime() { // library marker RMoRobert.CoCoHue_HueSat_Lib, line 157
-   Integer scaledRate = null // library marker RMoRobert.CoCoHue_HueSat_Lib, line 158
-   if (settings.rgbTransitionTime == null || settings.rgbTransitionTime == "-2" || settings.rgbTransitionTime == -2) { // library marker RMoRobert.CoCoHue_HueSat_Lib, line 159
-      // keep null; will result in not specifying with command // library marker RMoRobert.CoCoHue_HueSat_Lib, line 160
-   } // library marker RMoRobert.CoCoHue_HueSat_Lib, line 161
-   else if (settings.rgbTransitionTime == "-1" || settings.rgbTransitionTime == -1) { // library marker RMoRobert.CoCoHue_HueSat_Lib, line 162
-      scaledRate = (settings.transitionTime != null) ? Math.round(settings.transitionTime.toFloat() / 100) : defaultTransitionTime // library marker RMoRobert.CoCoHue_HueSat_Lib, line 163
-   } // library marker RMoRobert.CoCoHue_HueSat_Lib, line 164
-   else { // library marker RMoRobert.CoCoHue_HueSat_Lib, line 165
-      scaledRate = Math.round(settings.rgbTransitionTime.toFloat() / 100) // library marker RMoRobert.CoCoHue_HueSat_Lib, line 166
-   } // library marker RMoRobert.CoCoHue_HueSat_Lib, line 167
-} // library marker RMoRobert.CoCoHue_HueSat_Lib, line 168
+/** // library marker RMoRobert.CoCoHue_HueSat_Lib, line 141
+ * Reads device preference for setColor/RGB transition time, or provides default if not available; device // library marker RMoRobert.CoCoHue_HueSat_Lib, line 142
+ * can use input(name: rgbTransitionTime, ...) to provide this // library marker RMoRobert.CoCoHue_HueSat_Lib, line 143
+ */ // library marker RMoRobert.CoCoHue_HueSat_Lib, line 144
+Integer getScaledRGBTransitionTime() { // library marker RMoRobert.CoCoHue_HueSat_Lib, line 145
+   Integer scaledRate = null // library marker RMoRobert.CoCoHue_HueSat_Lib, line 146
+   if (settings.rgbTransitionTime == null || settings.rgbTransitionTime == "-2" || settings.rgbTransitionTime == -2) { // library marker RMoRobert.CoCoHue_HueSat_Lib, line 147
+      // keep null; will result in not specifying with command // library marker RMoRobert.CoCoHue_HueSat_Lib, line 148
+   } // library marker RMoRobert.CoCoHue_HueSat_Lib, line 149
+   else if (settings.rgbTransitionTime == "-1" || settings.rgbTransitionTime == -1) { // library marker RMoRobert.CoCoHue_HueSat_Lib, line 150
+      scaledRate = (settings.transitionTime != null) ? Math.round(settings.transitionTime.toFloat() / 100) : defaultTransitionTime // library marker RMoRobert.CoCoHue_HueSat_Lib, line 151
+   } // library marker RMoRobert.CoCoHue_HueSat_Lib, line 152
+   else { // library marker RMoRobert.CoCoHue_HueSat_Lib, line 153
+      scaledRate = Math.round(settings.rgbTransitionTime.toFloat() / 100) // library marker RMoRobert.CoCoHue_HueSat_Lib, line 154
+   } // library marker RMoRobert.CoCoHue_HueSat_Lib, line 155
+} // library marker RMoRobert.CoCoHue_HueSat_Lib, line 156
 
-// Hubiat-provided color/name mappings // library marker RMoRobert.CoCoHue_HueSat_Lib, line 170
-void setGenericName(hue) { // library marker RMoRobert.CoCoHue_HueSat_Lib, line 171
-   String colorName // library marker RMoRobert.CoCoHue_HueSat_Lib, line 172
-   hue = hue.toInteger() // library marker RMoRobert.CoCoHue_HueSat_Lib, line 173
-   if (!hiRezHue) hue = (hue * 3.6) // library marker RMoRobert.CoCoHue_HueSat_Lib, line 174
-   switch (hue.toInteger()) { // library marker RMoRobert.CoCoHue_HueSat_Lib, line 175
-      case 0..15: colorName = "Red" // library marker RMoRobert.CoCoHue_HueSat_Lib, line 176
-         break // library marker RMoRobert.CoCoHue_HueSat_Lib, line 177
-      case 16..45: colorName = "Orange" // library marker RMoRobert.CoCoHue_HueSat_Lib, line 178
-         break // library marker RMoRobert.CoCoHue_HueSat_Lib, line 179
-      case 46..75: colorName = "Yellow" // library marker RMoRobert.CoCoHue_HueSat_Lib, line 180
-         break // library marker RMoRobert.CoCoHue_HueSat_Lib, line 181
-      case 76..105: colorName = "Chartreuse" // library marker RMoRobert.CoCoHue_HueSat_Lib, line 182
-         break // library marker RMoRobert.CoCoHue_HueSat_Lib, line 183
-      case 106..135: colorName = "Green" // library marker RMoRobert.CoCoHue_HueSat_Lib, line 184
-         break // library marker RMoRobert.CoCoHue_HueSat_Lib, line 185
-      case 136..165: colorName = "Spring" // library marker RMoRobert.CoCoHue_HueSat_Lib, line 186
-         break // library marker RMoRobert.CoCoHue_HueSat_Lib, line 187
-      case 166..195: colorName = "Cyan" // library marker RMoRobert.CoCoHue_HueSat_Lib, line 188
-         break // library marker RMoRobert.CoCoHue_HueSat_Lib, line 189
-      case 196..225: colorName = "Azure" // library marker RMoRobert.CoCoHue_HueSat_Lib, line 190
-         break // library marker RMoRobert.CoCoHue_HueSat_Lib, line 191
-      case 226..255: colorName = "Blue" // library marker RMoRobert.CoCoHue_HueSat_Lib, line 192
-         break // library marker RMoRobert.CoCoHue_HueSat_Lib, line 193
-      case 256..285: colorName = "Violet" // library marker RMoRobert.CoCoHue_HueSat_Lib, line 194
-         break // library marker RMoRobert.CoCoHue_HueSat_Lib, line 195
-      case 286..315: colorName = "Magenta" // library marker RMoRobert.CoCoHue_HueSat_Lib, line 196
-         break // library marker RMoRobert.CoCoHue_HueSat_Lib, line 197
-      case 316..345: colorName = "Rose" // library marker RMoRobert.CoCoHue_HueSat_Lib, line 198
-         break // library marker RMoRobert.CoCoHue_HueSat_Lib, line 199
-      case 346..360: colorName = "Red" // library marker RMoRobert.CoCoHue_HueSat_Lib, line 200
-         break // library marker RMoRobert.CoCoHue_HueSat_Lib, line 201
-      default: colorName = "undefined" // shouldn't happen, but just in case // library marker RMoRobert.CoCoHue_HueSat_Lib, line 202
-         break             // library marker RMoRobert.CoCoHue_HueSat_Lib, line 203
-   } // library marker RMoRobert.CoCoHue_HueSat_Lib, line 204
-   if (device.currentValue("saturation") < 1) colorName = "White" // library marker RMoRobert.CoCoHue_HueSat_Lib, line 205
-   if (device.currentValue("colorName") != colorName) doSendEvent("colorName", colorName) // library marker RMoRobert.CoCoHue_HueSat_Lib, line 206
-} // library marker RMoRobert.CoCoHue_HueSat_Lib, line 207
+// Hubiat-provided color/name mappings // library marker RMoRobert.CoCoHue_HueSat_Lib, line 158
+void setGenericName(hue) { // library marker RMoRobert.CoCoHue_HueSat_Lib, line 159
+   String colorName // library marker RMoRobert.CoCoHue_HueSat_Lib, line 160
+   hue = hue.toInteger() // library marker RMoRobert.CoCoHue_HueSat_Lib, line 161
+   if (hiRezHue) hue = (hue / 3.6) // library marker RMoRobert.CoCoHue_HueSat_Lib, line 162
+   colorName = convertHueToGenericColorName(hue, device.currentSaturation ?: 100) // library marker RMoRobert.CoCoHue_HueSat_Lib, line 163
+   if (device.currentValue("colorName") != colorName) doSendEvent("colorName", colorName) // library marker RMoRobert.CoCoHue_HueSat_Lib, line 164
+} // library marker RMoRobert.CoCoHue_HueSat_Lib, line 165
 
 // ~~~~~ end include (6) RMoRobert.CoCoHue_HueSat_Lib ~~~~~
 
@@ -1032,24 +1046,24 @@ library ( // library marker RMoRobert.CoCoHue_Flash_Lib, line 3
 ) // library marker RMoRobert.CoCoHue_Flash_Lib, line 10
 
 void flash() { // library marker RMoRobert.CoCoHue_Flash_Lib, line 12
-   if (enableDebug == true) log.debug "flash()" // library marker RMoRobert.CoCoHue_Flash_Lib, line 13
-   if (settings.enableDesc == true) log.info("${device.displayName} started 15-cycle flash") // library marker RMoRobert.CoCoHue_Flash_Lib, line 14
+   if (logEnable == true) log.debug "flash()" // library marker RMoRobert.CoCoHue_Flash_Lib, line 13
+   if (settings.txtEnable == true) log.info("${device.displayName} started 15-cycle flash") // library marker RMoRobert.CoCoHue_Flash_Lib, line 14
    Map<String,String> cmd = ["alert": "lselect"] // library marker RMoRobert.CoCoHue_Flash_Lib, line 15
-   sendBridgeCommand(cmd, false)  // library marker RMoRobert.CoCoHue_Flash_Lib, line 16
+   sendBridgeCommandV1(cmd, false)  // library marker RMoRobert.CoCoHue_Flash_Lib, line 16
 } // library marker RMoRobert.CoCoHue_Flash_Lib, line 17
 
 void flashOnce() { // library marker RMoRobert.CoCoHue_Flash_Lib, line 19
-   if (enableDebug == true) log.debug "flashOnce()" // library marker RMoRobert.CoCoHue_Flash_Lib, line 20
-   if (settings.enableDesc == true) log.info("${device.displayName} started 1-cycle flash") // library marker RMoRobert.CoCoHue_Flash_Lib, line 21
+   if (logEnable == true) log.debug "flashOnce()" // library marker RMoRobert.CoCoHue_Flash_Lib, line 20
+   if (settings.txtEnable == true) log.info("${device.displayName} started 1-cycle flash") // library marker RMoRobert.CoCoHue_Flash_Lib, line 21
    Map<String,String> cmd = ["alert": "select"] // library marker RMoRobert.CoCoHue_Flash_Lib, line 22
-   sendBridgeCommand(cmd, false)  // library marker RMoRobert.CoCoHue_Flash_Lib, line 23
+   sendBridgeCommandV1(cmd, false)  // library marker RMoRobert.CoCoHue_Flash_Lib, line 23
 } // library marker RMoRobert.CoCoHue_Flash_Lib, line 24
 
 void flashOff() { // library marker RMoRobert.CoCoHue_Flash_Lib, line 26
-   if (enableDebug == true) log.debug "flashOff()" // library marker RMoRobert.CoCoHue_Flash_Lib, line 27
-   if (settings.enableDesc == true) log.info("${device.displayName} was sent command to stop flash") // library marker RMoRobert.CoCoHue_Flash_Lib, line 28
+   if (logEnable == true) log.debug "flashOff()" // library marker RMoRobert.CoCoHue_Flash_Lib, line 27
+   if (settings.txtEnable == true) log.info("${device.displayName} was sent command to stop flash") // library marker RMoRobert.CoCoHue_Flash_Lib, line 28
    Map<String,String> cmd = ["alert": "none"] // library marker RMoRobert.CoCoHue_Flash_Lib, line 29
-   sendBridgeCommand(cmd, false)  // library marker RMoRobert.CoCoHue_Flash_Lib, line 30
+   sendBridgeCommandV1(cmd, false)  // library marker RMoRobert.CoCoHue_Flash_Lib, line 30
 } // library marker RMoRobert.CoCoHue_Flash_Lib, line 31
 
 // ~~~~~ end include (5) RMoRobert.CoCoHue_Flash_Lib ~~~~~
@@ -1067,18 +1081,18 @@ library ( // library marker RMoRobert.CoCoHue_Effect_Lib, line 3
 ) // library marker RMoRobert.CoCoHue_Effect_Lib, line 10
 
 void setEffect(String effect) { // library marker RMoRobert.CoCoHue_Effect_Lib, line 12
-   if (enableDebug == true) log.debug "setEffect($effect)" // library marker RMoRobert.CoCoHue_Effect_Lib, line 13
+   if (logEnable == true) log.debug "setEffect($effect)" // library marker RMoRobert.CoCoHue_Effect_Lib, line 13
    def id = lightEffects.find { it.value == effect } // library marker RMoRobert.CoCoHue_Effect_Lib, line 14
    if (id != null) setEffect(id.key) // library marker RMoRobert.CoCoHue_Effect_Lib, line 15
 } // library marker RMoRobert.CoCoHue_Effect_Lib, line 16
 
 void setEffect(Number id) { // library marker RMoRobert.CoCoHue_Effect_Lib, line 18
-   if (enableDebug == true) log.debug "setEffect($id)" // library marker RMoRobert.CoCoHue_Effect_Lib, line 19
-   sendBridgeCommand(["effect": (id == 1 ? "colorloop" : "none"), "on": true]) // library marker RMoRobert.CoCoHue_Effect_Lib, line 20
+   if (logEnable == true) log.debug "setEffect($id)" // library marker RMoRobert.CoCoHue_Effect_Lib, line 19
+   sendBridgeCommandV1(["effect": (id == 1 ? "colorloop" : "none"), "on": true]) // library marker RMoRobert.CoCoHue_Effect_Lib, line 20
 } // library marker RMoRobert.CoCoHue_Effect_Lib, line 21
 
 void setNextEffect() { // library marker RMoRobert.CoCoHue_Effect_Lib, line 23
-   if (enableDebug == true) log.debug"setNextEffect()" // library marker RMoRobert.CoCoHue_Effect_Lib, line 24
+   if (logEnable == true) log.debug"setNextEffect()" // library marker RMoRobert.CoCoHue_Effect_Lib, line 24
    Integer currentEffect = state.crntEffectId ?: 0 // library marker RMoRobert.CoCoHue_Effect_Lib, line 25
    currentEffect++ // library marker RMoRobert.CoCoHue_Effect_Lib, line 26
    if (currentEffect > maxEffectNumber) currentEffect = 0 // library marker RMoRobert.CoCoHue_Effect_Lib, line 27
@@ -1086,7 +1100,7 @@ void setNextEffect() { // library marker RMoRobert.CoCoHue_Effect_Lib, line 23
 } // library marker RMoRobert.CoCoHue_Effect_Lib, line 29
 
 void setPreviousEffect() { // library marker RMoRobert.CoCoHue_Effect_Lib, line 31
-   if (enableDebug == true) log.debug "setPreviousEffect()" // library marker RMoRobert.CoCoHue_Effect_Lib, line 32
+   if (logEnable == true) log.debug "setPreviousEffect()" // library marker RMoRobert.CoCoHue_Effect_Lib, line 32
    Integer currentEffect = state.crntEffectId ?: 0 // library marker RMoRobert.CoCoHue_Effect_Lib, line 33
    currentEffect-- // library marker RMoRobert.CoCoHue_Effect_Lib, line 34
    if (currentEffect < 0) currentEffect = 1 // library marker RMoRobert.CoCoHue_Effect_Lib, line 35
@@ -1095,53 +1109,3 @@ void setPreviousEffect() { // library marker RMoRobert.CoCoHue_Effect_Lib, line 
 
 
 // ~~~~~ end include (4) RMoRobert.CoCoHue_Effect_Lib ~~~~~
-
-// ~~~~~ start include (7) RMoRobert.CoCoHue_Prestage_Lib ~~~~~
-// Version 1.0.0 // library marker RMoRobert.CoCoHue_Prestage_Lib, line 1
-
-library ( // library marker RMoRobert.CoCoHue_Prestage_Lib, line 3
-   base: "driver", // library marker RMoRobert.CoCoHue_Prestage_Lib, line 4
-   author: "RMoRobert", // library marker RMoRobert.CoCoHue_Prestage_Lib, line 5
-   category: "Convenience", // library marker RMoRobert.CoCoHue_Prestage_Lib, line 6
-   description: "For internal CoCoHue use only. Not intended for external use. Contains prestaging-related code shared by many CoCoHue drivers.", // library marker RMoRobert.CoCoHue_Prestage_Lib, line 7
-   name: "CoCoHue_Prestage_Lib", // library marker RMoRobert.CoCoHue_Prestage_Lib, line 8
-   namespace: "RMoRobert" // library marker RMoRobert.CoCoHue_Prestage_Lib, line 9
-) // library marker RMoRobert.CoCoHue_Prestage_Lib, line 10
-
-// Note: includes internal driver methods only; actual "prestating"/"preset" commands are in driver or other library // library marker RMoRobert.CoCoHue_Prestage_Lib, line 12
-
-/** // library marker RMoRobert.CoCoHue_Prestage_Lib, line 14
- * Returns Map containing any commands that would need to be sent to Bridge if anything is currently prestaged. // library marker RMoRobert.CoCoHue_Prestage_Lib, line 15
- * Otherwise, returns empty Map. // library marker RMoRobert.CoCoHue_Prestage_Lib, line 16
- * @param unsetPrestagingState If set to true (default), clears prestage flag // library marker RMoRobert.CoCoHue_Prestage_Lib, line 17
-*/ // library marker RMoRobert.CoCoHue_Prestage_Lib, line 18
-Map getPrestagedCommands(Boolean unsetPrestagingState=true) { // library marker RMoRobert.CoCoHue_Prestage_Lib, line 19
-   if (enableDebug == true) log.debug "getPrestagedCommands($unsetPrestagingState)" // library marker RMoRobert.CoCoHue_Prestage_Lib, line 20
-   Map cmds = [:] // library marker RMoRobert.CoCoHue_Prestage_Lib, line 21
-   if (state.presetLevel == true) { // library marker RMoRobert.CoCoHue_Prestage_Lib, line 22
-      cmds << [bri: scaleBriToBridge(device.currentValue("levelPreset"))] // library marker RMoRobert.CoCoHue_Prestage_Lib, line 23
-   } // library marker RMoRobert.CoCoHue_Prestage_Lib, line 24
-   if (state.presetColorTemperature == true) { // library marker RMoRobert.CoCoHue_Prestage_Lib, line 25
-      cmds << [ct: scaleCTToBridge(device.currentValue("colorTemperaturePreset"))] // library marker RMoRobert.CoCoHue_Prestage_Lib, line 26
-   } // library marker RMoRobert.CoCoHue_Prestage_Lib, line 27
-   if (state.presetHue == true) { // library marker RMoRobert.CoCoHue_Prestage_Lib, line 28
-      cmds << [hue: scaleHueToBridge(device.currentValue("huePreset"))] // library marker RMoRobert.CoCoHue_Prestage_Lib, line 29
-   } // library marker RMoRobert.CoCoHue_Prestage_Lib, line 30
-   if (state.presetSaturation == true) { // library marker RMoRobert.CoCoHue_Prestage_Lib, line 31
-      cmds << [sat: scaleSatToBridge(device.currentValue("saturationPreset"))] // library marker RMoRobert.CoCoHue_Prestage_Lib, line 32
-   } // library marker RMoRobert.CoCoHue_Prestage_Lib, line 33
-   if (unsetPrestagingState == true) { // library marker RMoRobert.CoCoHue_Prestage_Lib, line 34
-      clearPrestagedCommands() // library marker RMoRobert.CoCoHue_Prestage_Lib, line 35
-   } // library marker RMoRobert.CoCoHue_Prestage_Lib, line 36
-   if (enableDebug == true) log.debug "Returning: $cmds" // library marker RMoRobert.CoCoHue_Prestage_Lib, line 37
-   return cmds // library marker RMoRobert.CoCoHue_Prestage_Lib, line 38
-} // library marker RMoRobert.CoCoHue_Prestage_Lib, line 39
-
-void clearPrestagedCommands() { // library marker RMoRobert.CoCoHue_Prestage_Lib, line 41
-   state.presetLevel = false // library marker RMoRobert.CoCoHue_Prestage_Lib, line 42
-   state.presetColorTemperature = false // library marker RMoRobert.CoCoHue_Prestage_Lib, line 43
-   state.presetHue = false // library marker RMoRobert.CoCoHue_Prestage_Lib, line 44
-   state.presetSaturation = false // library marker RMoRobert.CoCoHue_Prestage_Lib, line 45
-} // library marker RMoRobert.CoCoHue_Prestage_Lib, line 46
-
-// ~~~~~ end include (7) RMoRobert.CoCoHue_Prestage_Lib ~~~~~

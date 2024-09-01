@@ -50,8 +50,8 @@ metadata {
                    ["1000": "Refresh Bridge device in 1s"],
                    ["5000": "Refresh Bridge device in 5s"]],
          defaultValue: "none"
-      input name: "enableDebug", type: "bool", title: "Enable debug logging", defaultValue: true
-      input name: "enableDesc", type: "bool", title: "Enable descriptionText logging", defaultValue: true
+      input name: "logEnable", type: "bool", title: "Enable debug logging", defaultValue: true
+      input name: "txtEnable", type: "bool", title: "Enable descriptionText logging", defaultValue: true
       input name: "suppressDeprecationWarning", type: "bool", title: "Suppress warning in logs about Hue Labs deprecation (see: https://www.philips-hue.com/en-us/support/article/huelabs/000003)"
    }
 }
@@ -70,7 +70,7 @@ void updated() {
 void initialize() {
    log.debug "initialize()"
    sendEvent(name: "numberOfButtons", value: 1)
-   if (enableDebug) {
+   if (logEnable) {
       log.debug "Debug logging will be automatically disabled in ${debugAutoDisableMinutes} minutes"
       runIn(debugAutoDisableMinutes*60, "debugOff")
    }
@@ -95,7 +95,7 @@ String getHueDeviceNumber() {
 }
 
 void on() {
-   if (enableDebug) log.debug "on()"
+   if (logEnable) log.debug "on()"
    sendBridgeCommand(["status": 1])
    if (settings["onRefresh"] == "1000" || settings["onRefresh"] == "5000") {
       parent.runInMillis(new Integer(settings["onRefresh"]), "refreshBridge")
@@ -106,7 +106,7 @@ void on() {
 }
 
 void off() {
-   if (enableDebug) log.debug "off()"
+   if (logEnable) log.debug "off()"
    sendBridgeCommand(["status": 0])
    if (settings["onRefresh"] == "1000" || settings["onRefresh"] == "5000") {
       parent.runInMillis(new Integer(settings["onRefresh"]), "refreshBridge")
@@ -117,7 +117,7 @@ void off() {
 }
 
 void push(btnNum) {
-   if (enableDebug) log.debug "push($btnNum)"
+   if (logEnable) log.debug "push($btnNum)"
    on()
    doSendEvent("pushed", 1, null, true)
 }
@@ -129,12 +129,12 @@ void push(btnNum) {
  * this isn't supported for sensors, so this driver's methods are a bit different)
  * @param stateMap Map of JSON device state as received from Bridge
  */
-void createEventsFromMap(Map stateMap) {
+void createEventsFromMapV1(Map stateMap) {
    if (!stateMap) {
-      if (enableDebug) log.debug "createEventsFromMap called but state map empty; exiting"
+      if (logEnable) log.debug "createEventsFromMapV1 called but state map empty; exiting"
       return
    }
-   if (enableDebug) log.debug "Preparing to create events from map: ${stateMap}"
+   if (logEnable) log.debug "Preparing to create events from map: ${stateMap}"
    String eventName, eventUnit, descriptionText
    String eventValue // should only be string here; could be String or number with lights/groups
    stateMap.each {
@@ -159,7 +159,7 @@ void createEventsFromMap(Map stateMap) {
  *        affected device attributes (e.g., will send an "on" event for sensor's "switch" if contains "state": 1)
  */
 void sendBridgeCommand(Map bridgeCmds = [:], Boolean createHubEvents=true) {
-   if (enableDebug) log.debug "Sending command to Bridge: ${bridgeCmds}"
+   if (logEnable) log.debug "Sending command to Bridge: ${bridgeCmds}"
    if (!bridgeCmds) {
       log.debug("Commands not sent to Bridge because command map empty")
       return
@@ -173,7 +173,7 @@ void sendBridgeCommand(Map bridgeCmds = [:], Boolean createHubEvents=true) {
       timeout: 15
       ]
    asynchttpPut("parseSendCommandResponse", params, createHubEvents ? bridgeCmds : null)
-   if (enableDebug) log.debug "-- Command sent to Bridge! --"
+   if (logEnable) log.debug "-- Command sent to Bridge! --"
 }
 
 /** 
@@ -183,13 +183,13 @@ void sendBridgeCommand(Map bridgeCmds = [:], Boolean createHubEvents=true) {
   * @param data Map of commands sent to Bridge if specified to create events from map
   */
 void parseSendCommandResponse(AsyncResponse resp, Map data) {
-   if (enableDebug) log.debug "Response from Bridge: ${resp.status}"
+   if (logEnable) log.debug "Response from Bridge: ${resp.status}"
    if (checkIfValidResponse(resp) && data) {
-      if (enableDebug) log.debug "  Bridge response valid; creating events from data map"
-      createEventsFromMap(data)
+      if (logEnable) log.debug "  Bridge response valid; creating events from data map"
+      createEventsFromMapV1(data)
    }
    else {
-      if (enableDebug) log.debug "  Not creating events from map because not specified to do or Bridge response invalid"
+      if (logEnable) log.debug "  Not creating events from map because not specified to do or Bridge response invalid"
    }
 }
 
@@ -199,82 +199,112 @@ void parseSendCommandResponse(AsyncResponse resp, Map data) {
  * approximately warm white and off.
  */
 private void setDefaultAttributeValues() {
-   if (enableDebug) log.debug "Setting scene device states to sensibile default values..."
+   if (logEnable) log.debug "Setting scene device states to sensibile default values..."
    event = sendEvent(name: "switch", value: "off", isStateChange: false)
    event = sendEvent(name: "pushed", value: 1, isStateChange: false)
 }
 // ~~~~~ start include (8) RMoRobert.CoCoHue_Common_Lib ~~~~~
-// Version 1.0.2 // library marker RMoRobert.CoCoHue_Common_Lib, line 1
+// Version 1.0.3 // library marker RMoRobert.CoCoHue_Common_Lib, line 1
+// For use with CoCoHue drivers (not app) // library marker RMoRobert.CoCoHue_Common_Lib, line 2
 
-// 1.0.2  - HTTP error handling tweaks // library marker RMoRobert.CoCoHue_Common_Lib, line 3
+/** // library marker RMoRobert.CoCoHue_Common_Lib, line 4
+ * 1.0.4 - Add common bridgeAsyncGetV2() method (goal to reduce individual driver code) // library marker RMoRobert.CoCoHue_Common_Lib, line 5
+ * 1.0.3 - Add APIV1 and APIV2 "constants" // library marker RMoRobert.CoCoHue_Common_Lib, line 6
+ * 1.0.2  - HTTP error handling tweaks // library marker RMoRobert.CoCoHue_Common_Lib, line 7
+ */ // library marker RMoRobert.CoCoHue_Common_Lib, line 8
 
-library ( // library marker RMoRobert.CoCoHue_Common_Lib, line 5
-   base: "driver", // library marker RMoRobert.CoCoHue_Common_Lib, line 6
-   author: "RMoRobert", // library marker RMoRobert.CoCoHue_Common_Lib, line 7
-   category: "Convenience", // library marker RMoRobert.CoCoHue_Common_Lib, line 8
-   description: "For internal CoCoHue use only. Not intended for external use. Contains common code shared by many CoCoHue drivers.", // library marker RMoRobert.CoCoHue_Common_Lib, line 9
-   name: "CoCoHue_Common_Lib", // library marker RMoRobert.CoCoHue_Common_Lib, line 10
-   namespace: "RMoRobert" // library marker RMoRobert.CoCoHue_Common_Lib, line 11
-) // library marker RMoRobert.CoCoHue_Common_Lib, line 12
+library ( // library marker RMoRobert.CoCoHue_Common_Lib, line 10
+   base: "driver", // library marker RMoRobert.CoCoHue_Common_Lib, line 11
+   author: "RMoRobert", // library marker RMoRobert.CoCoHue_Common_Lib, line 12
+   category: "Convenience", // library marker RMoRobert.CoCoHue_Common_Lib, line 13
+   description: "For internal CoCoHue use only. Not intended for external use. Contains common code shared by many CoCoHue drivers.", // library marker RMoRobert.CoCoHue_Common_Lib, line 14
+   name: "CoCoHue_Common_Lib", // library marker RMoRobert.CoCoHue_Common_Lib, line 15
+   namespace: "RMoRobert" // library marker RMoRobert.CoCoHue_Common_Lib, line 16
+) // library marker RMoRobert.CoCoHue_Common_Lib, line 17
 
-void debugOff() { // library marker RMoRobert.CoCoHue_Common_Lib, line 14
-   log.warn "Disabling debug logging" // library marker RMoRobert.CoCoHue_Common_Lib, line 15
-   device.updateSetting("enableDebug", [value:"false", type:"bool"]) // library marker RMoRobert.CoCoHue_Common_Lib, line 16
-} // library marker RMoRobert.CoCoHue_Common_Lib, line 17
+void debugOff() { // library marker RMoRobert.CoCoHue_Common_Lib, line 19
+   log.warn "Disabling debug logging" // library marker RMoRobert.CoCoHue_Common_Lib, line 20
+   device.updateSetting("logEnable", [value:"false", type:"bool"]) // library marker RMoRobert.CoCoHue_Common_Lib, line 21
+} // library marker RMoRobert.CoCoHue_Common_Lib, line 22
 
-/** Performs basic check on data returned from HTTP response to determine if should be // library marker RMoRobert.CoCoHue_Common_Lib, line 19
-  * parsed as likely Hue Bridge data or not; returns true (if OK) or logs errors/warnings and // library marker RMoRobert.CoCoHue_Common_Lib, line 20
-  * returns false if not // library marker RMoRobert.CoCoHue_Common_Lib, line 21
-  * @param resp The async HTTP response object to examine // library marker RMoRobert.CoCoHue_Common_Lib, line 22
-  */ // library marker RMoRobert.CoCoHue_Common_Lib, line 23
-private Boolean checkIfValidResponse(hubitat.scheduling.AsyncResponse resp) { // library marker RMoRobert.CoCoHue_Common_Lib, line 24
-   if (enableDebug == true) log.debug "Checking if valid HTTP response/data from Bridge..." // library marker RMoRobert.CoCoHue_Common_Lib, line 25
-   Boolean isOK = true // library marker RMoRobert.CoCoHue_Common_Lib, line 26
-   if (resp.status < 400) { // library marker RMoRobert.CoCoHue_Common_Lib, line 27
-      if (resp.json == null) { // library marker RMoRobert.CoCoHue_Common_Lib, line 28
-         isOK = false // library marker RMoRobert.CoCoHue_Common_Lib, line 29
-         if (resp.headers == null) log.error "Error: HTTP ${resp.status} when attempting to communicate with Bridge" // library marker RMoRobert.CoCoHue_Common_Lib, line 30
-         else log.error "No JSON data found in response. ${resp.headers.'Content-Type'} (HTTP ${resp.status})" // library marker RMoRobert.CoCoHue_Common_Lib, line 31
-         parent.sendBridgeDiscoveryCommandIfSSDPEnabled(true) // maybe IP changed, so attempt rediscovery  // library marker RMoRobert.CoCoHue_Common_Lib, line 32
-         parent.setBridgeStatus(false) // library marker RMoRobert.CoCoHue_Common_Lib, line 33
-      } // library marker RMoRobert.CoCoHue_Common_Lib, line 34
-      else if (resp.json) { // library marker RMoRobert.CoCoHue_Common_Lib, line 35
-         if (resp.json instanceof List && resp.json[0]?.error) { // library marker RMoRobert.CoCoHue_Common_Lib, line 36
-            // Bridge (not HTTP) error (bad username, bad command formatting, etc.): // library marker RMoRobert.CoCoHue_Common_Lib, line 37
-            isOK = false // library marker RMoRobert.CoCoHue_Common_Lib, line 38
-            log.warn "Error from Hue Bridge: ${resp.json[0].error}" // library marker RMoRobert.CoCoHue_Common_Lib, line 39
-            // Not setting Bridge to offline when light/scene/group devices end up here because could // library marker RMoRobert.CoCoHue_Common_Lib, line 40
-            // be old/bad ID and don't want to consider Bridge offline just for that (but also won't set // library marker RMoRobert.CoCoHue_Common_Lib, line 41
-            // to online because wasn't successful attempt) // library marker RMoRobert.CoCoHue_Common_Lib, line 42
-         } // library marker RMoRobert.CoCoHue_Common_Lib, line 43
-         // Otherwise: probably OK (not changing anything because isOK = true already) // library marker RMoRobert.CoCoHue_Common_Lib, line 44
-      } // library marker RMoRobert.CoCoHue_Common_Lib, line 45
-      else { // library marker RMoRobert.CoCoHue_Common_Lib, line 46
-         isOK = false // library marker RMoRobert.CoCoHue_Common_Lib, line 47
-         log.warn("HTTP status code ${resp.status} from Bridge") // library marker RMoRobert.CoCoHue_Common_Lib, line 48
-         if (resp?.status >= 400) parent.sendBridgeDiscoveryCommandIfSSDPEnabled(true) // maybe IP changed, so attempt rediscovery  // library marker RMoRobert.CoCoHue_Common_Lib, line 49
-         parent.setBridgeStatus(false) // library marker RMoRobert.CoCoHue_Common_Lib, line 50
-      } // library marker RMoRobert.CoCoHue_Common_Lib, line 51
-      if (isOK == true) parent.setBridgeStatus(true) // library marker RMoRobert.CoCoHue_Common_Lib, line 52
-   } // library marker RMoRobert.CoCoHue_Common_Lib, line 53
-   else { // library marker RMoRobert.CoCoHue_Common_Lib, line 54
-      log.warn "Error communiating with Hue Bridge: HTTP ${resp?.status}" // library marker RMoRobert.CoCoHue_Common_Lib, line 55
-      isOK = false // library marker RMoRobert.CoCoHue_Common_Lib, line 56
-   } // library marker RMoRobert.CoCoHue_Common_Lib, line 57
-   return isOK // library marker RMoRobert.CoCoHue_Common_Lib, line 58
-} // library marker RMoRobert.CoCoHue_Common_Lib, line 59
+/** Performs basic check on data returned from HTTP response to determine if should be // library marker RMoRobert.CoCoHue_Common_Lib, line 24
+  * parsed as likely Hue Bridge data or not; returns true (if OK) or logs errors/warnings and // library marker RMoRobert.CoCoHue_Common_Lib, line 25
+  * returns false if not // library marker RMoRobert.CoCoHue_Common_Lib, line 26
+  * @param resp The async HTTP response object to examine // library marker RMoRobert.CoCoHue_Common_Lib, line 27
+  */ // library marker RMoRobert.CoCoHue_Common_Lib, line 28
+private Boolean checkIfValidResponse(hubitat.scheduling.AsyncResponse resp) { // library marker RMoRobert.CoCoHue_Common_Lib, line 29
+   if (logEnable == true) log.debug "Checking if valid HTTP response/data from Bridge..." // library marker RMoRobert.CoCoHue_Common_Lib, line 30
+   Boolean isOK = true // library marker RMoRobert.CoCoHue_Common_Lib, line 31
+   if (resp.status < 400) { // library marker RMoRobert.CoCoHue_Common_Lib, line 32
+      if (resp.json == null) { // library marker RMoRobert.CoCoHue_Common_Lib, line 33
+         isOK = false // library marker RMoRobert.CoCoHue_Common_Lib, line 34
+         if (resp.headers == null) log.error "Error: HTTP ${resp.status} when attempting to communicate with Bridge" // library marker RMoRobert.CoCoHue_Common_Lib, line 35
+         else log.error "No JSON data found in response. ${resp.headers.'Content-Type'} (HTTP ${resp.status})" // library marker RMoRobert.CoCoHue_Common_Lib, line 36
+         parent.sendBridgeDiscoveryCommandIfSSDPEnabled(true) // maybe IP changed, so attempt rediscovery  // library marker RMoRobert.CoCoHue_Common_Lib, line 37
+         parent.setBridgeOnlineStatus(false) // library marker RMoRobert.CoCoHue_Common_Lib, line 38
+      } // library marker RMoRobert.CoCoHue_Common_Lib, line 39
+      else if (resp.json) { // library marker RMoRobert.CoCoHue_Common_Lib, line 40
+         if ((resp.json instanceof List) && resp.json.getAt(0).error) { // library marker RMoRobert.CoCoHue_Common_Lib, line 41
+            // Bridge (not HTTP) error (bad username, bad command formatting, etc.): // library marker RMoRobert.CoCoHue_Common_Lib, line 42
+            isOK = false // library marker RMoRobert.CoCoHue_Common_Lib, line 43
+            log.warn "Error from Hue Bridge: ${resp.json[0].error}" // library marker RMoRobert.CoCoHue_Common_Lib, line 44
+            // Not setting Bridge to offline when light/scene/group devices end up here because could // library marker RMoRobert.CoCoHue_Common_Lib, line 45
+            // be old/bad ID and don't want to consider Bridge offline just for that (but also won't set // library marker RMoRobert.CoCoHue_Common_Lib, line 46
+            // to online because wasn't successful attempt) // library marker RMoRobert.CoCoHue_Common_Lib, line 47
+         } // library marker RMoRobert.CoCoHue_Common_Lib, line 48
+         // Otherwise: probably OK (not changing anything because isOK = true already) // library marker RMoRobert.CoCoHue_Common_Lib, line 49
+      } // library marker RMoRobert.CoCoHue_Common_Lib, line 50
+      else { // library marker RMoRobert.CoCoHue_Common_Lib, line 51
+         isOK = false // library marker RMoRobert.CoCoHue_Common_Lib, line 52
+         log.warn("HTTP status code ${resp.status} from Bridge") // library marker RMoRobert.CoCoHue_Common_Lib, line 53
+         // TODO: Update for mDNS if/when switch: // library marker RMoRobert.CoCoHue_Common_Lib, line 54
+         if (resp?.status >= 400) parent.sendBridgeDiscoveryCommandIfSSDPEnabled(true) // maybe IP changed, so attempt rediscovery  // library marker RMoRobert.CoCoHue_Common_Lib, line 55
+         parent.setBridgeOnlineStatus(false) // library marker RMoRobert.CoCoHue_Common_Lib, line 56
+      } // library marker RMoRobert.CoCoHue_Common_Lib, line 57
+      if (isOK == true) parent.setBridgeOnlineStatus(true) // library marker RMoRobert.CoCoHue_Common_Lib, line 58
+   } // library marker RMoRobert.CoCoHue_Common_Lib, line 59
+   else { // library marker RMoRobert.CoCoHue_Common_Lib, line 60
+      log.warn "Error communicating with Hue Bridge: HTTP ${resp?.status}" // library marker RMoRobert.CoCoHue_Common_Lib, line 61
+      isOK = false // library marker RMoRobert.CoCoHue_Common_Lib, line 62
+   } // library marker RMoRobert.CoCoHue_Common_Lib, line 63
+   return isOK // library marker RMoRobert.CoCoHue_Common_Lib, line 64
+} // library marker RMoRobert.CoCoHue_Common_Lib, line 65
 
-void doSendEvent(String eventName, eventValue, String eventUnit=null, Boolean forceStateChange=false) { // library marker RMoRobert.CoCoHue_Common_Lib, line 61
-   //if (enableDebug == true) log.debug "doSendEvent($eventName, $eventValue, $eventUnit)" // library marker RMoRobert.CoCoHue_Common_Lib, line 62
-   String descriptionText = "${device.displayName} ${eventName} is ${eventValue}${eventUnit ?: ''}" // library marker RMoRobert.CoCoHue_Common_Lib, line 63
-   if (settings.enableDesc == true) log.info(descriptionText) // library marker RMoRobert.CoCoHue_Common_Lib, line 64
-   if (eventUnit) { // library marker RMoRobert.CoCoHue_Common_Lib, line 65
-      if (forceStateChange == true) sendEvent(name: eventName, value: eventValue, descriptionText: descriptionText, unit: eventUnit, isStateChange: true)  // library marker RMoRobert.CoCoHue_Common_Lib, line 66
-      else sendEvent(name: eventName, value: eventValue, descriptionText: descriptionText, unit: eventUnit)  // library marker RMoRobert.CoCoHue_Common_Lib, line 67
-   } else { // library marker RMoRobert.CoCoHue_Common_Lib, line 68
-      if (forceStateChange == true) sendEvent(name: eventName, value: eventValue, descriptionText: descriptionText, isStateChange: true)  // library marker RMoRobert.CoCoHue_Common_Lib, line 69
-      else sendEvent(name: eventName, value: eventValue, descriptionText: descriptionText)  // library marker RMoRobert.CoCoHue_Common_Lib, line 70
-   } // library marker RMoRobert.CoCoHue_Common_Lib, line 71
-} // library marker RMoRobert.CoCoHue_Common_Lib, line 72
+void doSendEvent(String eventName, eventValue, String eventUnit=null, Boolean forceStateChange=false) { // library marker RMoRobert.CoCoHue_Common_Lib, line 67
+   //if (logEnable == true) log.debug "doSendEvent($eventName, $eventValue, $eventUnit)" // library marker RMoRobert.CoCoHue_Common_Lib, line 68
+   String descriptionText = "${device.displayName} ${eventName} is ${eventValue}${eventUnit ?: ''}" // library marker RMoRobert.CoCoHue_Common_Lib, line 69
+   if (settings.txtEnable == true) log.info(descriptionText) // library marker RMoRobert.CoCoHue_Common_Lib, line 70
+   if (eventUnit) { // library marker RMoRobert.CoCoHue_Common_Lib, line 71
+      if (forceStateChange == true) sendEvent(name: eventName, value: eventValue, descriptionText: descriptionText, unit: eventUnit, isStateChange: true)  // library marker RMoRobert.CoCoHue_Common_Lib, line 72
+      else sendEvent(name: eventName, value: eventValue, descriptionText: descriptionText, unit: eventUnit)  // library marker RMoRobert.CoCoHue_Common_Lib, line 73
+   } else { // library marker RMoRobert.CoCoHue_Common_Lib, line 74
+      if (forceStateChange == true) sendEvent(name: eventName, value: eventValue, descriptionText: descriptionText, isStateChange: true)  // library marker RMoRobert.CoCoHue_Common_Lib, line 75
+      else sendEvent(name: eventName, value: eventValue, descriptionText: descriptionText)  // library marker RMoRobert.CoCoHue_Common_Lib, line 76
+   } // library marker RMoRobert.CoCoHue_Common_Lib, line 77
+} // library marker RMoRobert.CoCoHue_Common_Lib, line 78
+
+// HTTP methods (might be better to split into separate library if not needed for some?) // library marker RMoRobert.CoCoHue_Common_Lib, line 80
+
+/** Performs asynchttpGet() to Bridge using data retrieved from parent app or as passed in // library marker RMoRobert.CoCoHue_Common_Lib, line 82
+  * @param callbackMethod Callback method // library marker RMoRobert.CoCoHue_Common_Lib, line 83
+  * @param clipV2Path The Hue V2 API path (without '/clip/v2', automatically prepended), e.g. '/resource' or '/resource/light' // library marker RMoRobert.CoCoHue_Common_Lib, line 84
+  * @param bridgeData Bridge data from parent getBridgeData() call, or will call this method on parent if null // library marker RMoRobert.CoCoHue_Common_Lib, line 85
+  * @param data Extra data to pass as optional third (data) parameter to asynchtttpGet() method // library marker RMoRobert.CoCoHue_Common_Lib, line 86
+  */ // library marker RMoRobert.CoCoHue_Common_Lib, line 87
+void bridgeAsyncGetV2(String callbackMethod, String clipV2Path, Map<String,String> bridgeData = null, Map data = null) { // library marker RMoRobert.CoCoHue_Common_Lib, line 88
+   if (bridgeData == null) { // library marker RMoRobert.CoCoHue_Common_Lib, line 89
+      bridgeData = parent.getBridgeData() // library marker RMoRobert.CoCoHue_Common_Lib, line 90
+   } // library marker RMoRobert.CoCoHue_Common_Lib, line 91
+   Map params = [ // library marker RMoRobert.CoCoHue_Common_Lib, line 92
+      uri: "https://${bridgeData.ip}", // library marker RMoRobert.CoCoHue_Common_Lib, line 93
+      path: "/clip/v2${clipV2Path}", // library marker RMoRobert.CoCoHue_Common_Lib, line 94
+      headers: ["hue-application-key": bridgeData.username], // library marker RMoRobert.CoCoHue_Common_Lib, line 95
+      contentType: "application/json", // library marker RMoRobert.CoCoHue_Common_Lib, line 96
+      timeout: 15, // library marker RMoRobert.CoCoHue_Common_Lib, line 97
+      ignoreSSLIssues: true // library marker RMoRobert.CoCoHue_Common_Lib, line 98
+   ] // library marker RMoRobert.CoCoHue_Common_Lib, line 99
+   asynchttpGet(callbackMethod, params, data) // library marker RMoRobert.CoCoHue_Common_Lib, line 100
+} // library marker RMoRobert.CoCoHue_Common_Lib, line 101
+
 
 // ~~~~~ end include (8) RMoRobert.CoCoHue_Common_Lib ~~~~~
