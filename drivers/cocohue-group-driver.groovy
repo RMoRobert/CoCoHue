@@ -83,7 +83,7 @@ import hubitat.scheduling.AsyncResponse
 @Field static final String xyParsingMode = "ct"
 
 metadata {
-   definition(name: "CoCoHue Group", namespace: NAMESPACE, author: "Robert Morris", importUrl: "https://raw.githubusercontent.com/HubitatCommunity/CoCoHue/master/drivers/cocohue-group-driver.groovy") {
+   definition(name: DRIVER_NAME_GROUP, namespace: NAMESPACE, author: "Robert Morris", importUrl: "https://raw.githubusercontent.com/HubitatCommunity/CoCoHue/master/drivers/cocohue-group-driver.groovy") {
       capability "Actuator"
       capability "ColorControl"
       capability "ColorTemperature"
