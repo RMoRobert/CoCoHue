@@ -68,7 +68,7 @@ import groovy.transform.Field
 ]
 
 metadata {
-   definition(name: "CoCoHue Bridge", namespace: "RMoRobert", author: "Robert Morris", importUrl: "https://raw.githubusercontent.com/HubitatCommunity/CoCoHue/master/drivers/cocohue-bridge-driver.groovy") {
+   definition(name: DRIVER_NAME_BRIDGE, namespace: NAMESPACE, author: "Robert Morris", importUrl: "https://raw.githubusercontent.com/HubitatCommunity/CoCoHue/master/drivers/cocohue-bridge-driver.groovy") {
       capability "Actuator"
       capability "Refresh"
       capability "Initialize"
@@ -486,7 +486,7 @@ void parseSceneStatesV2(List scenesJson) {
 void parseMotionSensorStatesV2(List sensorJson) {
    if (logEnable) log.debug "parseMotionSensorStatesV2()"
    // Uncomment this line if asked to for debugging (or you're curious):
-   log.debug "sensorJson = $sensorJson"
+   //log.debug "sensorJson = $sensorJson"
    try {
       sensorJson.each { Map data ->
          String id = data.owner.rid // use owner ID for sensor to keep same physical devices together more easily 
@@ -719,7 +719,7 @@ void clearGroupsCache() {
  *  requested list of rooms
  */
 Map getAllRoomsCache() {
-   return state.allRooms
+   return state.allRooms ?: [:]
 }
 
 /** Clears cache of room IDs/names (and group light data inside); useful for parent app to call if trying to ensure
@@ -734,7 +734,7 @@ void clearRoomsCache() {
  *  requested list of zones
  */
 Map getAllZonesCache() {
-   return state.allZones
+   return state.allZones ?: [:]
 }
 
 /** Clears cache of zone IDs/names (and group light data inside); useful for parent app to call if trying to ensure
@@ -787,6 +787,7 @@ void getAllScenesV2() {
    if (logEnable) log.debug "getAllScenesV2()"
    getAllGroupsV2() // so can get room names, etc.
    //clearScenesCache()
+   pauseExecution(750)
    bridgeAsyncGetV2("parseGetAllScenesResponseV2", "/resource/scene")
 }
 
@@ -919,6 +920,7 @@ void parseGetAllButtonsResponseV2(resp, data) {
             timeout: 10,
             ignoreSSLIssues: true
          ]
+         pauseExecution(750)
          httpGet(params,
             { response ->
                   response.data.data.each {

@@ -14,7 +14,7 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2024-08-29
+ *  Last modified: 2024-08-31
  *
  *  Changelog:
  *  v5.0    - Use API v2 by default, remove deprecated features
@@ -30,13 +30,14 @@
  */
  
 #include RMoRobert.CoCoHue_Common_Lib
+#include RMoRobert.CoCoHue_Constants_Lib
 
 import groovy.transform.Field
 
 @Field static final Integer debugAutoDisableMinutes = 30
 
 metadata {
-   definition(name: "CoCoHue Motion Sensor", namespace: "RMoRobert", author: "Robert Morris", importUrl: "https://raw.githubusercontent.com/HubitatCommunity/CoCoHue/master/drivers/cocohue-motion-sensor-driver.groovy") {
+   definition(name: DRIVER_NAME_MOTION, namespace: NAMESPACE, author: "Robert Morris", importUrl: "https://raw.githubusercontent.com/HubitatCommunity/CoCoHue/master/drivers/cocohue-motion-sensor-driver.groovy") {
       capability "Sensor"
       capability "Refresh"
       capability "MotionSensor"

@@ -1,5 +1,5 @@
 /*
- * =============================  CoCoHue On/Off Plug/Light (Driver) ===============================
+ * =============================  CoCoHue Plug (On/Off Light) (Driver) ===============================
  *
  *  Copyright 2019-2024 Robert Morris
  * 
@@ -14,10 +14,10 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2024-08-25
+ *  Last modified: 2024-08-31
  *
  *  Changelog:
- *  v5.0   - Use API v2 by default, remove deprecated features
+ *  v5.0    - Use API v2 by default, remove deprecated features
  *  v4.2    - Library updates, prep for more v2 API
  *  v4.1.4  - Improved error handling, fix missing battery for motion sensors
  *  v4.0    - Add SSE support for push
@@ -34,7 +34,8 @@
  */
  
 #include RMoRobert.CoCoHue_Common_Lib
-#include RMoRobert.CoCoHue_Flash_Lib // can comment out if don't need commands; see also definition() below
+#include RMoRobert.CoCoHue_Constants_Lib
+//#include RMoRobert.CoCoHue_Flash_Lib // can uncomment if needed; see also definition() below
 
 import groovy.transform.Field
 import hubitat.scheduling.AsyncResponse
@@ -48,7 +49,7 @@ import hubitat.scheduling.AsyncResponse
 
 
 metadata {
-   definition(name: "CoCoHue On/Off Plug", namespace: "RMoRobert", author: "Robert Morris", importUrl: "https://raw.githubusercontent.com/HubitatCommunity/CoCoHue/master/drivers/cocohue-plug-driver.groovy") {
+   definition(name: DRIVER_NAME_PLUG, namespace: NAMESPACE, author: "Robert Morris", importUrl: "https://raw.githubusercontent.com/HubitatCommunity/CoCoHue/master/drivers/cocohue-plug-driver.groovy") {
       capability "Actuator"
       capability "Refresh"
       capability "Switch"

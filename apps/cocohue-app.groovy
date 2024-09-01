@@ -131,7 +131,7 @@ void updated() {
 */
 void upgradeCCHv1DNIsToV2() {
    if (logEnable == true) log.debug "upgradeV1DnisToV2()"
-   if (state.useV2 && (!(state.updatedTo) || state.updatedTo < currentSchemaVersion)) {
+   if (state.useV2 && !(state.useV2UpgradeCompleted)) {
       Map<String,String> bridgeData = getBridgeData()
       Map params = [
          uri: "https://${bridgeData.ip}",
@@ -260,7 +260,7 @@ void upgradeCCHv1DNIsToV2ResponseHandler(AsyncResponse resp, data=null) {
    else {
       log.warn "Unable to upgrade to V2 DNIs. HTTP ${resp.status}. Error(s): ${resp.error}. Data: ${resp.data}"
    }
-   state.updatedTo = currentSchemaVersion // indicate conversion complete so does not try every time
+   state.useV2UpgradeCompleted = true // indicate conversion complete so does not try every time
 }
 
 /** Converts application state values and scheduled jobs used by built-in integration to ones
@@ -268,17 +268,17 @@ void upgradeCCHv1DNIsToV2ResponseHandler(AsyncResponse resp, data=null) {
   * no user is upgrading from old/built-in Hue app (pre-platform 2.4.0):
  */
 void convertBuiltInIntegrationStatesToNew() {
-   log.trace "convertBuiltInIntegrationStatesToNew..."
+   //log.trace "convertBuiltInIntegrationStatesToNew..."
    if (!state.updatedTo || state.updatedTo < currentSchemaVersion) { 
       if (state.bridgeHost) {  // basic heuristic to determine if was built-in integration (uses this state name to track Bridge IP; CoCoHue did not)
-         log.trace "proceeding..."
+         //log.trace "proceeding..."
          // nothing -- want to upgrade
       }
       else {
          if (logEnable) "Not attempting conversion from pre-2.3.9 built-in integration because existing install does not appear to have been built-in integration"
          return
       }
-      log.trace "proceeding more..."
+      //log.trace "proceeding more..."
       if (logEnable == true) log.debug "Converting pre-2.3.9 built-in integration configuration to new built-in integration configuration..."
       state.remove("bridgeRefreshCount")
       state.remove("bridges")
@@ -324,7 +324,7 @@ void convertBuiltInIntegrationStatesToNew() {
          app.updateSetting("pollInterval", [type: "number", value: newPollInt])
          app.removeSetting("pollOptions")
       }
-      log.trace "dni conversion prep"
+      //log.trace "dni conversion prep"
       // Convert DNIs from original built-in to CoCoHue format:
       getChildDevices().each { DeviceWrapper ogDev ->
          if (ogDev.deviceNetworkId.startsWith("hueGroup:")) {
@@ -936,7 +936,7 @@ def pageSelectScenes() {
    state.useV2 ? bridge.getAllScenesV2() : bridge.getAllScenesV1()
    List arrNewScenes = []
    Map sceneCache = bridge.getAllScenesCache()
-   Map groupCache = bridge.getAllGroupsCache()
+   Map groupCache = state.useV2 ? (bridge.getAllRoomsCache() + bridge.getAllZonesCache()) : bridge.getAllGroupsCache()
    List<DeviceWrapper> unclaimedScenes = getChildDevices().findAll { it.deviceNetworkId.startsWith("${DNI_PREFIX}/${app.id}/Scene/") }
    Map grps = [:]
    groupCache?.each { grps << [(it.key) : (it.value.name)] }
@@ -1284,21 +1284,21 @@ void createNewSelectedSensorDevices() {
    DeviceWrapper bridge = getChildDevice("${DNI_PREFIX}/${app.id}")
    if (bridge == null) log.error("Unable to find Bridge device")
    Map<String,String> sensorCache = bridge?.getAllSensorsCache()
-   log.trace "sensorCache = $sensorCache"
+   //log.trace "sensorCache = $sensorCache"
    settings.newSensors.each { String id ->
       String name = sensorCache.get(id)
       if (name) {
-         log.trace "name = $name"
-         //try {
-            log.trace "id = $id"
+         //log.trace "name = $name"
+         try {
+            //log.trace "id = $id"
             if (logEnable == true) log.debug "Creating new device for Hue sensor ${id}: (${name})"
             String devDNI = "${DNI_PREFIX}/${app.id}/Sensor/${id}"
             Map devProps = [name: name]
             addChildDevice(NAMESPACE, driverName, devDNI, devProps)
-         //}
-         //catch (Exception ex) {
-           // log.error "Unable to create new sensor device for $id: $ex"
-         //}
+         }
+         catch (Exception ex) {
+            log.error "Unable to create new sensor device for $id: $ex"
+         }
       } else {
          log.error "Unable to create new device for sensor $id: ID not found in Hue Bridge cache"
       }

@@ -14,7 +14,7 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2024-08-25
+ *  Last modified: 2024-08-31
  *
  *  Changelog:
  *  v5.0   - Use API v2 by default, remove deprecated features
@@ -37,6 +37,7 @@
  */
 
 #include RMoRobert.CoCoHue_Common_Lib
+#include RMoRobert.CoCoHue_Constants_Lib
 #include RMoRobert.CoCoHue_Bri_Lib
 #include RMoRobert.CoCoHue_Flash_Lib
 
@@ -55,7 +56,7 @@ import hubitat.scheduling.AsyncResponse
 @Field static final List<String> listKeysToIgnoreIfSSEEnabledAndNotFromBridge = ["on", "bri"]
 
 metadata {
-   definition(name: "CoCoHue Dimmable Bulb", namespace: "RMoRobert", author: "Robert Morris", importUrl: "https://raw.githubusercontent.com/HubitatCommunity/CoCoHue/master/drivers/cocohue-dimmable-bulb-driver.groovy") {
+   definition(name: DRIVER_NAME_DIMMABLE_BULB, namespace: NAMESPACE, author: "Robert Morris", importUrl: "https://raw.githubusercontent.com/HubitatCommunity/CoCoHue/master/drivers/cocohue-dimmable-bulb-driver.groovy") {
       capability "Actuator"
       capability "Refresh"
       capability "Switch"

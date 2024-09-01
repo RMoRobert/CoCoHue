@@ -14,7 +14,7 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2024-08-29
+ *  Last modified: 2024-08-31
  *
  *  Changelog:
  *  v5.0     - Use API v2 by default, remove deprecated features
@@ -27,6 +27,7 @@
  */
 
 #include RMoRobert.CoCoHue_Common_Lib
+#include RMoRobert.CoCoHue_Constants_Lib
 
 import hubitat.scheduling.AsyncResponse
 import groovy.transform.Field
@@ -34,7 +35,7 @@ import groovy.transform.Field
 @Field static final Integer debugAutoDisableMinutes = 30
 
 metadata {
-   definition(name: "CoCoHue Button", namespace: "RMoRobert", author: "Robert Morris", importUrl: "https://raw.githubusercontent.com/HubitatCommunity/CoCoHue/master/drivers/cocohue-button-driver.groovy") {
+   definition(name: DRIVER_NAME_BUTTON, namespace: NAMESPACE, author: "Robert Morris", importUrl: "https://raw.githubusercontent.com/HubitatCommunity/CoCoHue/master/drivers/cocohue-button-driver.groovy") {
       capability "Actuator"
       //capability "Refresh"
       capability "PushableButton"
