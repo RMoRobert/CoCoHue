@@ -21,7 +21,7 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2024-08-31
+ *  Last modified: 2024-09-01
 
  *  Changelog:
  *  v5.0   - Use API v2 by default, remove deprecated features
@@ -65,21 +65,35 @@ import com.hubitat.app.DeviceWrapper
 // if need to run once-post-upgrade conversions, etc. Increase iff such modifications become necessary:
 @Field static final Integer currentSchemaVersion = 5
 
-@Field static final Map driverMap = [
-   "extended color light":     "CoCoHue RGBW Bulb",
-   "color light":              "CoCoHue RGBW Bulb",  // eventually should make this one RGB
-   "color temperature light":  "CoCoHue CT Bulb",
-   "dimmable light":           "CoCoHue Dimmable Bulb",
-   "on/off light":             "CoCoHue On/Off Plug",
-   "on/off plug-in unit":      "CoCoHue On/Off Plug",
-   "DEFAULT":                  "CoCoHue RGBW Bulb"
-]
+String getDriverNameForDeviceType(String deviceType) {
+   switch (deviceType) {
+      case "extended color light":
+         return DRIVER_NAME_RGBW_BULB
+         break
+      case "color light":
+         return DRIVER_NAME_RGBW_BULB // eventually should make RGB driver
+         break
+      case "color temperature light":
+         return DRIVER_NAME_CT_BULB
+         break
+      case "dimmable light":
+         return DRIVER_NAME_DIMMABLE_BULB
+         break
+      case "on/off light":
+      case "on/off plug-in unit":
+         return DRIVER_NAME_PLUG
+         break
+      default:
+         return DRIVER_NAME_RGBW_BULB  // reasonable enough?
+         break
+   }
+}
 
 @Field static final Integer minPossibleV2SwVersion = 1948086000 // minimum swversion on Bridge needed for Hue V2 API
 @Field static final Integer minV2SwVersion = 1955082050         // ... but 1955082050 recommended for production use
 
 definition (
-   name: APP_NAME,
+   name: APP_NAME + " 2",
    namespace: NAMESPACE,
    author: "Robert Morris",
    description: "${APP_NAME != 'Hue Bridge Integration' ? 'Community-created ' : ''}Philips Hue integration for Hue Bridge lights and other Hue features and devices",
@@ -107,6 +121,7 @@ preferences {
 
 void installed() {
    log.debug "installed()"
+   app.updateSetting("logEnable", true)
    initialize()
 }
 
@@ -617,7 +632,7 @@ def pageReAddBridge() {
 }
 
 def pageLinkBridge() {
-   if (logEnable == true) log.debug "Beginning brdige link process..."
+   if (logEnable == true) log.debug "Beginning bridge link process..."
    String ipAddress = (settings.useSSDP != false) ? settings.selectedDiscoveredBridge : settings.bridgeIP
    state.ipAddress = ipAddress
    if (logEnable == true) log.debug "  IP address = ${state.ipAddress}"
@@ -632,7 +647,7 @@ def pageLinkBridge() {
       }
    }
    dynamicPage(name: "pageLinkBridge", refreshInterval: state.authRefreshInterval, uninstall: true, install: false,
-               nextPage: "pageFirstPage") {  
+               nextPage: "pageFirstPage") {
       section("Linking Hue Bridge") {
          if (!(state.bridgeAuthorized)) {
                log.debug "Attempting Hue Bridge authorization; attempt number ${state.authTryCount+1}"
@@ -661,8 +676,8 @@ def pageLinkBridge() {
                if (!state.bridgeLinked || !getChildDevice("${DNI_PREFIX}/${app.id}")) {
                   log.debug "Bridge authorized. Requesting information from Bridge and creating Hue Bridge device on Hubitat..."
                   paragraph "Bridge authorized. Requesting information from Bridge and creating Hue Bridge device on Hubitat..."
-                  if (settings["useSSDP"]) sendBridgeInfoRequest()
-                  else sendBridgeInfoRequest(ip: settings.bridgeIP ?: state.ipAddress, port: settings.customPort as Integer ?: null)
+                  if (settings["useSSDP"]) sendBridgeInfoRequest(createBridge: true)
+                  else sendBridgeInfoRequest(createBridge: true, ip: settings.bridgeIP ?: state.ipAddress, port: settings.customPort as Integer ?: null)
                }
                else {
                   if (logEnable == true) log.debug("Bridge already linked; skipping Bridge device creation")
@@ -1199,7 +1214,7 @@ void createNewSelectedBulbDevices() {
       if (b) {
          try {
             if (logEnable == true) log.debug "Creating new device for Hue light ${it} (${b.name})"
-            String devDriver = driverMap[b.type.toLowerCase()] ?: driverMap["DEFAULT"]
+            String devDriver = getDriverNameForDeviceType(b.type.toLowerCase())
             String devDNI = "${DNI_PREFIX}/${app.id}/Light/${it}"
             Map devProps = [name: (settings["boolAppendBulb"] ? b.name + " (Hue Bulb)" : b.name)]
             addChildDevice(NAMESPACE, devDriver, devDNI, devProps)
@@ -1435,6 +1450,7 @@ void sendBridgeInfoRequest(Map options) {
 void parseBridgeInfoResponse(resp, Map data) {
    //resp?.properties.each { log.trace it }
    if (logEnable == true) log.debug "parseBridgeInfoResponse(resp?.data = ${resp?.data}, data = $data)"
+   String ipAddress = (data?.ip == null) ? state.ipAddress : data.ip
    Map body
    try {
       body = resp.json
@@ -1500,8 +1516,8 @@ void parseBridgeInfoResponse(resp, Map data) {
       if (!(state.bridgeLinked)) { // so in discovery
          if (logEnable == true) log.debug "  Adding Bridge with MAC $bridgeMAC ($friendlyBridgeName) to list of discovered Bridges"
          if (!state.discoveredBridges) state.discoveredBridges = []
-         if (!(state.discoveredBridges.any { it.containsKey(data?.ip) } )) {
-            state.discoveredBridges.add([(data.ip): "${friendlyBridgeName} - ${bridgeMAC}"])
+         if (!(state.discoveredBridges.any { it.containsKey(ipAddress) })) {
+            state.discoveredBridges.add([(ipAddress): "${friendlyBridgeName} - ${bridgeMAC}"])
          }
       }
       else { // Bridge already added, so likely added with discovery; check if IP changed
