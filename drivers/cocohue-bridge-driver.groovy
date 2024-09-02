@@ -14,7 +14,7 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2024-08-31
+ *  Last modified: 2024-09-01
  *
  *  Changelog:
  *  v5.0    - Use API v2 by default, remove deprecated features
@@ -56,19 +56,14 @@ import groovy.transform.Field
 
 @Field static final Integer debugAutoDisableMinutes = 30
 
-// These are as reported by V1 API and are also set to the same text based on device capabilities advertised in V2 API:
-@Field static final Map<String,String> bulbTypes = [
-   "extended color light":     "CoCoHue RGBW Bulb",
-   "color light":              "CoCoHue RGBW Bulb",  // eventually should make this one RGB
-   "color temperature light":  "CoCoHue CT Bulb",
-   "dimmable light":           "CoCoHue Dimmable Bulb",
-   "on/off light":             "CoCoHue On/Off Plug",
-   "on/off plug-in unit":      "CoCoHue On/Off Plug",
-   "DEFAULT":                  "CoCoHue RGBW Bulb"
-]
-
 metadata {
-   definition(name: DRIVER_NAME_BRIDGE, namespace: NAMESPACE, author: "Robert Morris", importUrl: "https://raw.githubusercontent.com/HubitatCommunity/CoCoHue/master/drivers/cocohue-bridge-driver.groovy") {
+   definition(
+      name: DRIVER_NAME_BRIDGE,
+      namespace: NAMESPACE,
+      author: "Robert Morris",
+      singleThreaded: true,
+      importUrl: "https://raw.githubusercontent.com/HubitatCommunity/CoCoHue/master/drivers/cocohue-bridge-driver.groovy"
+   ) {
       capability "Actuator"
       capability "Refresh"
       capability "Initialize"
@@ -103,7 +98,7 @@ void initialize() {
       log.debug "Debug logging will be automatically disabled in ${debugAutoDisableMinutes} minutes"
       runIn(debugAutoDisableMinutes*60, "debugOff")
    }
-   if (parent.getEventStreamEnabledSetting()) connectEventStream()
+   if (parent.getEventStreamEnabledSetting()) runIn(2, "connectEventStream")
    // Performing this check here since capability "Initialize" declared and will run on every boot, including after update if hub updated to 2.4.0 or
    // newer with CoCoHue-based integration app (will check if already done there and have no effect if so):
    parent.convertBuiltInIntegrationStatesToNew()
@@ -159,14 +154,15 @@ void eventStreamStatus(String message) {
    }
 }
 
-private void setEventStreamStatusToConnected() {
+// TODO: Re-think this approach (or just eliminate and see if can work around any other issues?)
+void setEventStreamStatusToConnected() {
    parent.setEventStreamOpenStatus(true) // notify app
    unschedule("setEventStreamStatusToDisconnected")
    if (device.currentValue("eventStreamStatus") == "disconnected") doSendEvent("eventStreamStatus", "connected")
    state.connectionRetryTime = 3
 }
 
-private void setEventStreamStatusToDisconnected() {
+void setEventStreamStatusToDisconnected() {
    parent.setEventStreamOpenStatus(false) // notify app
    doSendEvent("eventStreamStatus", "disconnected")
    if (state.connectionRetryTime) {
@@ -187,6 +183,7 @@ void parse(String description) {
    if (logEnable) log.debug "parse: $description"
    List<String> messages = description.split("\n\n")
    setEventStreamStatusToConnected() // should help avoid spurious disconnect messages?
+   if (logEnable) log.debug "messages (${messages.size() total}): $messages"
    messages.each { String message -> 
       List<String> lines = description.split("\n")
       StringBuilder sbData = new StringBuilder()
@@ -241,7 +238,7 @@ void parse(String description) {
                            }
                            break
                         case "button":
-                        case "relative_rotary": // todo: test!
+                        case "relative_rotary":
                            String ownerId = updateEntryMap.owner?.rid
                            dev = parent.getChildDevice("${device.deviceNetworkId}/Button/${ownerId}")
                            break
@@ -911,6 +908,7 @@ void parseGetAllButtonsResponseV2(resp, data) {
                   }
             }
          )
+         pauseExecution(500)
          // Check for relative_rotary, too (Hue Tap Dial, Lutron Aurora)
          params = [
             uri: "https://${bridgeData.ip}",
@@ -920,7 +918,6 @@ void parseGetAllButtonsResponseV2(resp, data) {
             timeout: 10,
             ignoreSSLIssues: true
          ]
-         pauseExecution(750)
          httpGet(params,
             { response ->
                   response.data.data.each {

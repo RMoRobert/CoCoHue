@@ -397,7 +397,7 @@ void initialize() {
          unsubscribe("ssdpHandler")
          unschedule("periodicSendDiscovery")
       }
-      subscribe(location, "systemStart", hubRestartHandler)
+      subscribe(location, "systemStart", "hubRestartHandler")
       if (state.bridgeAuthorized) {
          // Do discovery if user clicks "Done" (but wait a bit in case other data also being fetched...)
          runIn(10, "sendBridgeDiscoveryCommandIfSSDPEnabled")
@@ -503,7 +503,7 @@ void sendBridgeDiscoveryCommandIfSSDPEnabled(Boolean checkIfRecent=true) {
 }
 
 void hubRestartHandler(evt) {
-   sendBridgeDiscoveryCommandIfSSDPEnabled()
+   runIn(10, "sendBridgeDiscoveryCommandIfSSDPEnabled")
 }
 
 // Scheduled job handler; if using SSDP, schedules to run once a day just in case
