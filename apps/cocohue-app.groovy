@@ -404,7 +404,10 @@ void initialize() {
          unschedule("periodicSendDiscovery")
       }
       subscribe(location, "systemStart", hubRestartHandler)
-      if (state.bridgeAuthorized) sendBridgeDiscoveryCommandIfSSDPEnabled() // do discovery if user clicks "Done"
+      if (state.bridgeAuthorized) {
+         // Do discovery if user clicks "Done" (but wait a bit in case other data also being fetched...)
+         runIn(10, "sendBridgeDiscoveryCommandIfSSDPEnabled")
+      }
    }
    else {
       unsubscribe("ssdpHandler")
