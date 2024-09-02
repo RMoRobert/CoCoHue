@@ -160,7 +160,7 @@ void upgradeCCHv1DNIsToV2() {
       asynchttpGet("upgradeCCHv1DNIsToV2ResponseHandler", params)
    }
    else {
-      if (logEnable == true) log.debug "Not configured to use Hue V2 API, so not upgrading DNIs to V2 API format."
+      if (logEnable == true && !state.useV2) log.debug "Not configured to use Hue V2 API, so not upgrading DNIs to V2 API format."
    }
 }
 
@@ -183,13 +183,7 @@ void upgradeCCHv1DNIsToV2ResponseHandler(AsyncResponse resp, data=null) {
       // Not doing buttons because have always been created using only V2 ID
 
       // -- Now, look up each Hubitat device and perform DNI conversion if found on Hue --
-      final List<Map<String,String>> conversionKeys = [
-         // Format is ["V1 DNI Infix": "id_v1 prefix in V2 API data"]
-         ["Light": "/lights/"],
-         ["Group": "/groups/"],
-         ["Scene": "/scenes/"]
-      ]
-      // converting lights, groups, and scens are all pretty similar:
+      // converting lights, groups, and scens are all pretty similar (TODO: see if can refactor and reuse more code among all 3?):
       lightsData.each { Map hueData ->
          String id = hueData.id 
          String id_v1 = hueData.id_v1
