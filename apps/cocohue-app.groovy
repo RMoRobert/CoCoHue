@@ -93,7 +93,7 @@ String getDriverNameForDeviceType(String deviceType) {
 @Field static final Integer minV2SwVersion = 1955082050         // ... but 1955082050 recommended for production use
 
 definition (
-   name: APP_NAME + " 2",
+   name: APP_NAME,
    namespace: NAMESPACE,
    author: "Robert Morris",
    description: "${APP_NAME != 'Hue Bridge Integration' ? 'Community-created ' : ''}Philips Hue integration for Hue Bridge lights and other Hue features and devices",
@@ -340,7 +340,7 @@ void convertBuiltInIntegrationStatesToNew() {
          app.removeSetting("pollOptions")
       }
       //log.trace "dni conversion prep"
-      // Convert DNIs from original built-in to CoCoHue format:
+      // Convert DNIs from original built-in to new, CoCoHue-esque format:
       getChildDevices().each { DeviceWrapper ogDev ->
          if (ogDev.deviceNetworkId.startsWith("hueGroup:")) {
             // Group (DNI format = hueGroup:<appId>/<HueV1D>, e.g., hueGroup:12:89)
@@ -369,7 +369,7 @@ void convertBuiltInIntegrationStatesToNew() {
       }
       app.updateSetting("useEventStream", [type: "bool", value: false])
       unschedule()
-      // Quick way of keeping track of what CoCoHue version app should be updated to when all is done:
+      // Quick way of keeping track of what CoCoHue version app/device/etc. settings should be "updated" to when breaking changes are made:
       state.updatedTo = currentSchemaVersion
       // Should re-etablish polling, etc. if configured and lost in above shuffle:
       initialize()
@@ -527,7 +527,7 @@ def pageFirstPage() {
       // Shouldn't happen with installOnOpen: true, but just in case...
       dynamicPage(name: "pageIncomplete", uninstall: true, install: true) {
          section() {
-            paragraph "Please select \"Done\" to install CoCoHue.<br>Then, re-open to set up your Hue Bridge."
+            paragraph "Please select \"Done\" to finish installation.<br>Then, re-open to set up your Hue Bridge."
          }
       }
    }
@@ -569,8 +569,8 @@ def pageAddBridge() {
                input name: "selectedDiscoveredBridge", type: "enum", title: "Discovered bridges:", options: state.discoveredBridges,
                      multiple: false, submitOnChange: true
                if (!(settings.selectedDiscoveredBridge)) {
-                  if (!(state.discoveredBridges)) paragraph("Please wait while CoCoHue discovers Hue Bridges on your network...")
-                  else paragraph("Select a Hue Bridge above to begin adding it to CoCoHue.")
+                  if (!(state.discoveredBridges)) paragraph("Please wait while we discover Hue Bridges on your network...")
+                  else paragraph("Select a Hue Bridge above to begin adding it to your Hubitat Elevation hub.")
                }
                else {
                   if (/*!state.bridgeLinked ||*/ !state.bridgeAuthorized)
@@ -775,7 +775,7 @@ def pageManageBridge() {
             options: [0:"Disabled", 15:"15 seconds", 20:"20 seconds", 30:"30 seconds", 45:"45 seconds", 60:"1 minute (default)", 120:"2 minutes",
                       180:"3 minutes", 300:"5 minutes", 420:"7 minutes", 6000:"10 minutes", 1800:"30 minutes", 3600:"1 hour", 7200:"2 hours", 18000:"5 hours"],
                       defaultValue: 60
-         input name: "boolCustomLabel", type: "bool", title: "Customize the name of this CoCoHue app instance", defaultValue: false, submitOnChange: true
+         input name: "boolCustomLabel", type: "bool", title: "Customize the name of this app", defaultValue: false, submitOnChange: true
          if (settings.boolCustomLabel) label title: "Custom name for this app", required: false
          input name: "logEnable", type: "bool", title: "Enable debug logging", defaultValue: true
       }
@@ -823,7 +823,7 @@ def pageSelectLights() {
       }
       if (!bulbCache) {
          section("Discovering bulbs/lights. Please wait...") {
-            paragraph "Select \"Refresh\" if you see this message for an extended period of time"
+            paragraph "Select \"Refresh\" if you see this message for an extended period of time and do not see devices you have added to Hue."
             input name: "btnBulbRefresh", type: "button", title: "Refresh", submitOnChange: true
          }
       }
@@ -901,7 +901,7 @@ def pageSelectGroups() {
       }
       if (!groupCache) { 
          section("Discovering groups. Please wait...") {
-               paragraph "Select \"Refresh\" if you see this message for an extended period of time"
+               paragraph "Select \"Refresh\" if you see this message for an extended period of time and do not see devices you have added to Hue."
                input name: "btnGroupRefresh", type: "button", title: "Refresh", submitOnChange: true
          }
       }
@@ -951,11 +951,17 @@ def pageSelectScenes() {
    state.useV2 ? bridge.getAllScenesV2() : bridge.getAllScenesV1()
    List arrNewScenes = []
    Map sceneCache = bridge.getAllScenesCache()
-   Map groupCache = state.useV2 ? (bridge.getAllRoomsCache() + bridge.getAllZonesCache()) : bridge.getAllGroupsCache()
+   Map groupCache 
+   if (state.useV2 == true) {
+      groupCache = (bridge.getAllRoomsCache() ?: [:]) + (bridge.getAllZonesCache() ?: [:])
+   }
+   else {
+      groupCache = bridge.getAllGroupsCache()
+   }
    List<DeviceWrapper> unclaimedScenes = getChildDevices().findAll { it.deviceNetworkId.startsWith("${DNI_PREFIX}/${app.id}/Scene/") }
    Map grps = [:]
    groupCache?.each { grps << [(it.key) : (it.value.name)] }
-   dynamicPage(name: "pageSelectScenes", refreshInterval: sceneCache ? 0 : 7, uninstall: true, install: false, nextPage: "pageManageBridge") {  
+   dynamicPage(name: "pageSelectScenes", refreshInterval: sceneCache ? 0 : 7, uninstall: true, install: false, nextPage: "pageManageBridge") {
       Map addedScenes = [:]  // To be populated with scenes user has added, matched by Hue ID
       if (!bridge) {
          log.error "No Bridge device found"
@@ -998,7 +1004,7 @@ def pageSelectScenes() {
 
       if (!sceneCache) {
          section("Discovering scenes. Please wait...") {
-            paragraph "Select \"Refresh\" if you see this message for an extended period of time"
+            paragraph "Select \"Refresh\" if you see this message for an extended period of time and do not see devices you have added to Hue."
             input name: "btnSceneRefresh", type: "button", title: "Refresh", submitOnChange: true
          }
       }
@@ -1078,7 +1084,7 @@ def pageSelectMotionSensors() {
       }
       if (!sensorCache) {
          section("Discovering sensors. Please wait...") {
-            paragraph "Select \"Refresh\" if you see this message for an extended period of time"
+            paragraph "Select \"Refresh\" if you see this message for an extended period of time and do not see devices you have added to Hue."
             input name: "btnSensorRefresh", type: "button", title: "Refresh", submitOnChange: true
          }
       }
@@ -1155,7 +1161,7 @@ def pageSelectButtons() {
       }
       if (!buttonCache) {
          section("Discovering buttons. Please wait...") {
-            paragraph "Select \"Refresh\" if you see this message for an extended period of time"
+            paragraph "Select \"Refresh\" if you see this message for an extended period of time and do not see devices you have added to Hue."
             input name: "btnButtonRefresh", type: "button", title: "Refresh", submitOnChange: true
          }
       }
@@ -1235,7 +1241,6 @@ void createNewSelectedBulbDevices() {
  * page (intended to be called after navigating away/using "Done" from that page)
  */
 void createNewSelectedGroupDevices() {
-   String driverName = "CoCoHue Group"
    DeviceWrapper bridge = getChildDevice("${DNI_PREFIX}/${app.id}")
    if (bridge == null) log.error("Unable to find Bridge device")
    Map groupCache = bridge?.getAllGroupsCache()
@@ -1246,7 +1251,7 @@ void createNewSelectedGroupDevices() {
             if (logEnable == true) log.debug("Creating new device for Hue group ${it} (${g.name})")
             String devDNI = "${DNI_PREFIX}/${app.id}/Group/${it}"
             Map devProps = [name: (settings["boolAppendGroup"] ? g.name + " (Hue Group)" : g.name)]
-            addChildDevice(NAMESPACE, driverName, devDNI, devProps)
+            addChildDevice(NAMESPACE, DRIVER_NAME_GROUP, devDNI, devProps)
 
          }
          catch (Exception ex) {
@@ -1266,7 +1271,6 @@ void createNewSelectedGroupDevices() {
  * page (intended to be called after navigating away/using "Done" from that page)
  */
 void createNewSelectedSceneDevices() {
-   String driverName = "CoCoHue Scene"
    DeviceWrapper bridge = getChildDevice("${DNI_PREFIX}/${app.id}")
    if (!bridge) log.error("Unable to find Bridge device")
    Map sceneCache = bridge?.getAllScenesCache()
@@ -1277,7 +1281,7 @@ void createNewSelectedSceneDevices() {
                if (logEnable == true) log.debug "Creating new device for Hue group ${it} (state.sceneFullNames?.get(it) ?: sc.name)"
                String devDNI = "${DNI_PREFIX}/${app.id}/Scene/${it}"
                Map devProps = [name: (state.sceneFullNames?.get(it) ?: sc.name)]
-               addChildDevice(NAMESPACE, driverName, devDNI, devProps)
+               addChildDevice(NAMESPACE, DRIVER_NAME_SCENE, devDNI, devProps)
          } catch (Exception ex) {
                log.error "Unable to create new scene device for $it: $ex"
          }
@@ -1295,7 +1299,6 @@ void createNewSelectedSceneDevices() {
  * page (intended to be called after navigating away/using "Done" from that page)
  */
 void createNewSelectedSensorDevices() {
-   String driverName = "CoCoHue Motion Sensor"
    DeviceWrapper bridge = getChildDevice("${DNI_PREFIX}/${app.id}")
    if (bridge == null) log.error("Unable to find Bridge device")
    Map<String,String> sensorCache = bridge?.getAllSensorsCache()
@@ -1309,7 +1312,7 @@ void createNewSelectedSensorDevices() {
             if (logEnable == true) log.debug "Creating new device for Hue sensor ${id}: (${name})"
             String devDNI = "${DNI_PREFIX}/${app.id}/Sensor/${id}"
             Map devProps = [name: name]
-            addChildDevice(NAMESPACE, driverName, devDNI, devProps)
+            addChildDevice(NAMESPACE, DRIVER_NAME_MOTION, devDNI, devProps)
          }
          catch (Exception ex) {
             log.error "Unable to create new sensor device for $id: $ex"
@@ -1329,7 +1332,6 @@ void createNewSelectedSensorDevices() {
  * page (intended to be called after navigating away/using "Done" from that page)
  */
 void createNewSelectedButtonDevices() {
-   String devDriver = "CoCoHue Button"
    DeviceWrapper bridge = getChildDevice("${DNI_PREFIX}/${app.id}")
    if (bridge == null) log.error("Unable to find Bridge device")
    Map buttonCache = bridge?.getAllButtonsCache()
@@ -1340,7 +1342,7 @@ void createNewSelectedButtonDevices() {
             if (logEnable == true) log.debug "Creating new device for Hue button device ${it} (${b.name})"
             String devDNI = "${DNI_PREFIX}/${app.id}/Button/${it}"
             Map devProps = [name: b.name]
-            DeviceWrapper d = addChildDevice(NAMESPACE, devDriver, devDNI, devProps)
+            DeviceWrapper d = addChildDevice(NAMESPACE, DRIVER_NAME_BUTTON, devDNI, devProps)
             if (d) {
                d.updateDataValue("manufacturer_name", b.manufacturer_name)
                d.updateDataValue("model_id", b.model_id)
@@ -1715,7 +1717,7 @@ void updateSceneStateToOffForGroup(String groupID, String excludeDNI=null) {
  * Finds Hubitat devices for member bulbs of group and returns true if any (that are found) are on; returns false
  * if all off or no member bulb devices found.
  * For Hue v1 API only
- * @param Instance of CoCoHue Group device on which to check member bulb states
+ * @param Instance of child Group device on which to check member bulb states
  */
 Boolean getIsAnyGroupMemberBulbOn(groupDevice) {
    if (logEnable == true) log.debug "Determining whether any group member bulbs on for group $groupDevice"

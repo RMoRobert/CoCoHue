@@ -711,8 +711,8 @@ Map getAllGroupsCache() {
  * not working with old data
  */
 void clearGroupsCache() {
-    if (logEnable) log.debug "Running clearGroupsCache..."
-    state.remove("allGroups")
+   if (logEnable) log.debug "Running clearGroupsCache..."
+   state.remove("allGroups")
 }
 
 /** Intended to be called from parent app to retrive previously
@@ -726,8 +726,8 @@ Map getAllRoomsCache() {
  * not working with old data
  */
 void clearRoomsCache() {
-    if (logEnable) log.debug "Running clearGroupsCache..."
-    state.remove("allRooms")
+   if (logEnable) log.debug "Running clearGroupsCache..."
+   state.remove("allRooms")
 }
 
 /** Intended to be called from parent app to retrive previously
