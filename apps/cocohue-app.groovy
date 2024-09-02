@@ -168,16 +168,16 @@ void upgradeCCHv1DNIsToV2ResponseHandler(AsyncResponse resp, data=null) {
    if (logEnable == true) log.debug "upgradeCCHv1DNIsToV2ResponseHandler()"
    if (resp.status == 200 && !(resp.error) && resp.json?.data) {
       if (logEnable == true) log.debug "Parsing data from Bridge /resources endpoint..."
-
+      
       // -- Get all relevant device data from API response: --
-      List<Map> lightsData = resp.json.data.findAll { it.type == "light" } ?: [:] // lights
-      List<Map> roomsData = resp.json.data.findAll { it.type == "room" } ?: [:]  // rooms (groups)
-      List<Map> zonesData = resp.json.data.findAll { it.type == "zone" } ?: [:]    // zones (groups)
-      List<Map> groupsData = resp.json.data.findAll { it.type == "grouped_light" } ?: [:]  // "pure" groups (groups)
-      List<Map> scenesData = resp.json.data.findAll { it.type == "scene" } ?: [:]  // scenes
-      List<Map> motionData = resp.json.data.findAll { it.type == "motion" } ?: [:]  // motion for motion sensorsor motion sensors
-      List<Map> temperatureData = resp.json.data.findAll { it.type == "temperature" } ?: [:]  // temperature for motion sensors
-      List<Map> illuminanceData = resp.json.data.findAll { it.type == "light_level" } ?: [:]  // lux for motion sensors (all three of above have separate V1 IDs)
+      List<Map> lightsData = resp.json.data.findAll { it.type == "light" } ?: [[:]] // lights
+      List<Map> roomsData = resp.json.data.findAll { it.type == "room" } ?: [[:]]  // rooms (groups)
+      List<Map> zonesData = resp.json.data.findAll { it.type == "zone" } ?: [[:]]    // zones (groups)
+      List<Map> groupsData = resp.json.data.findAll { it.type == "grouped_light" } ?: [[:]]  // "pure" groups (groups)
+      List<Map> scenesData = resp.json.data.findAll { it.type == "scene" } ?: [[:]]  // scenes
+      List<Map> motionData = resp.json.data.findAll { it.type == "motion" } ?: [[:]]  // motion for motion sensorsor motion sensors
+      List<Map> temperatureData = resp.json.data.findAll { it.type == "temperature" } ?: [[:]]  // temperature for motion sensors
+      List<Map> illuminanceData = resp.json.data.findAll { it.type == "light_level" } ?: [[:]]  // lux for motion sensors (all three of above have separate V1 IDs)
       // Don't need this for motion or button since was coupled with other data in V1:
       //List<Map> batteryData = resp.json.data.findAll { it.type == "device_power" }
       // Not doing buttons because have always been created using only V2 ID
@@ -1362,8 +1362,8 @@ void createNewSelectedButtonDevices() {
  */
 void sendUsernameRequest(String protocol="http", Integer port=null) {
    if (logEnable == true) log.debug "sendUsernameRequest()... (IP = ${state.ipAddress})"
-   String locationNameNormalized = location.name?.replaceAll("\\P{InBasic_Latin}", "_").take(13) // Cap at first 13 characters (possible 30-char total limit?)
-   String userDesc = locationNameNormalized ? "Hubitat CoCoHue#${locationNameNormalized}" : "Hubitat CoCoHue"
+   String locationNameNormalized = location.name?.replaceAll("\\P{InBasic_Latin}", "_").take(16) // Cap at first 16 characters (possible 30-char total limit?)
+   String userDesc = locationNameNormalized ? "Hubitat ${DNI_PREFIX}#${locationNameNormalized}" : "Hubitat ${DNI_PREFIX}"
    String ip = state.ipAddress
    Map params = [
       uri:  ip ? """${protocol}://${ip}${port ? ":$port" : ''}""" : getBridgeData().fullHost,
@@ -1480,8 +1480,8 @@ void parseBridgeInfoResponse(resp, Map data) {
       }
       state.bridgeMAC = bridgeMAC
       try {
-         if (!bridgeDevice) bridgeDevice = addChildDevice(NAMESPACE, "CoCoHue Bridge", "${DNI_PREFIX}/${app.id}", null,
-                              [label: """CoCoHue Bridge ${getBridgeId()}${friendlyBridgeName ? " ($friendlyBridgeName)" : ""}""", name: "CoCoHue Bridge"])
+         if (!bridgeDevice) bridgeDevice = addChildDevice(NAMESPACE, DRIVER_NAME_BRIDGE, "${DNI_PREFIX}/${app.id}", null,
+                              [label: """${DRIVER_NAME_BRIDGE} ${getBridgeId()}${friendlyBridgeName ? " ($friendlyBridgeName)" : ""}""", name: DRIVER_NAME_BRIDGE])
          if (!bridgeDevice) {
             log.error "    Bridge device unable to be created or found. Check that driver is installed and no existing device exists for this Bridge." 
          }
@@ -1501,7 +1501,12 @@ void parseBridgeInfoResponse(resp, Map data) {
             }
          }
          if (!(settings.boolCustomLabel)) {
-            app.updateLabel("""CoCoHue - Hue Bridge Integration (${getBridgeId()}${friendlyBridgeName ? " - $friendlyBridgeName)" : ")"}""")
+            if (APP_NAME != "Hue Bridge Integration") {
+               app.updateLabel("""CoCoHue - Hue Bridge Integration (${getBridgeId()}${friendlyBridgeName ? " - $friendlyBridgeName)" : ")"}""")
+            }
+            else {
+               app.updateLabel("""Hue Bridge Integration (${getBridgeId()}${friendlyBridgeName ? " - $friendlyBridgeName)" : ")"}""")
+            }
          }
       }
       catch (IllegalArgumentException e) { // could be bad DNI if already exists

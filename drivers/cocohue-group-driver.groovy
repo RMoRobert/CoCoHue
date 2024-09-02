@@ -195,7 +195,7 @@ void off(Number transitionTime = null) {
 }
 
 void refresh() {
-   log.warn "Refresh CoCoHue Bridge device instead of individual device to update (all) bulbs/groups"
+   log.warn "Refresh Hue Bridge device instead of individual device to update (all) bulbs/groups"
 }
 
 /**

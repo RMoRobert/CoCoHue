@@ -72,7 +72,7 @@ void initialize() {
 }
 
 void refresh() {
-   log.warn "Refresh CoCoHue Bridge device instead of individual device to update (all) bulbs/groups/sensors"
+   log.warn "Refresh Hue Bridge device instead of individual device to update (all) bulbs/groups/sensors"
 }
 
 // Probably won't happen but...

@@ -107,7 +107,7 @@ void initialize() {
 void connectEventStream() {
    if (logEnable) log.debug "connectEventStream()"
    if (parent.getEventStreamEnabledSetting() != true) {
-      log.warn "CoCoHue app is configured not to use EventStream. To reliably use this interface, enable this option in the app."
+      log.warn "Parent app is configured not to use EventStream. To reliably use this interface, enable this option in the app."
    }
    Map<String,String> data = parent.getBridgeData()
    if (logEnable) {
