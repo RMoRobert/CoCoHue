@@ -14,7 +14,7 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2024-08-31
+ *  Last modified: 2024-09-03
  *
  *  Changelog:
  *  v5.0    - Use API v2 by default, remove deprecated features
@@ -40,8 +40,6 @@
  */ 
 
 
-
-
 import groovy.json.JsonSlurper
 import hubitat.scheduling.AsyncResponse
 import com.hubitat.app.DeviceWrapper
@@ -56,19 +54,14 @@ import groovy.transform.Field
 
 @Field static final Integer debugAutoDisableMinutes = 30
 
-// These are as reported by V1 API and are also set to the same text based on device capabilities advertised in V2 API:
-@Field static final Map<String,String> bulbTypes = [
-   "extended color light":     "CoCoHue RGBW Bulb",
-   "color light":              "CoCoHue RGBW Bulb",  // eventually should make this one RGB
-   "color temperature light":  "CoCoHue CT Bulb",
-   "dimmable light":           "CoCoHue Dimmable Bulb",
-   "on/off light":             "CoCoHue On/Off Plug",
-   "on/off plug-in unit":      "CoCoHue On/Off Plug",
-   "DEFAULT":                  "CoCoHue RGBW Bulb"
-]
-
 metadata {
-   definition(name: DRIVER_NAME_BRIDGE, namespace: NAMESPACE, author: "Robert Morris", importUrl: "https://raw.githubusercontent.com/HubitatCommunity/CoCoHue/master/drivers/cocohue-bridge-driver.groovy") {
+   definition(
+      name: "CoCoHue Bridge",
+      namespace:"RMoRobert",
+      author: "Robert Morris",
+      singleThreaded: true,
+      importUrl: "https://raw.githubusercontent.com/HubitatCommunity/CoCoHue/master/drivers/cocohue-bridge-driver.groovy"
+   ) {
       capability "Actuator"
       capability "Refresh"
       capability "Initialize"
@@ -103,7 +96,7 @@ void initialize() {
       log.debug "Debug logging will be automatically disabled in ${debugAutoDisableMinutes} minutes"
       runIn(debugAutoDisableMinutes*60, "debugOff")
    }
-   if (parent.getEventStreamEnabledSetting()) connectEventStream()
+   if (parent.getEventStreamEnabledSetting()) runIn(2, "connectEventStream")
    // Performing this check here since capability "Initialize" declared and will run on every boot, including after update if hub updated to 2.4.0 or
    // newer with CoCoHue-based integration app (will check if already done there and have no effect if so):
    parent.convertBuiltInIntegrationStatesToNew()
@@ -112,7 +105,7 @@ void initialize() {
 void connectEventStream() {
    if (logEnable) log.debug "connectEventStream()"
    if (parent.getEventStreamEnabledSetting() != true) {
-      log.warn "CoCoHue app is configured not to use EventStream. To reliably use this interface, enable this option in the app."
+      log.warn "Parent app is configured not to use EventStream. To reliably use this interface, enable this option in the app."
    }
    Map<String,String> data = parent.getBridgeData()
    if (logEnable) {
@@ -159,14 +152,15 @@ void eventStreamStatus(String message) {
    }
 }
 
-private void setEventStreamStatusToConnected() {
+// TODO: Re-think this approach (or just eliminate and see if can work around any other issues?)
+void setEventStreamStatusToConnected() {
    parent.setEventStreamOpenStatus(true) // notify app
    unschedule("setEventStreamStatusToDisconnected")
    if (device.currentValue("eventStreamStatus") == "disconnected") doSendEvent("eventStreamStatus", "connected")
    state.connectionRetryTime = 3
 }
 
-private void setEventStreamStatusToDisconnected() {
+void setEventStreamStatusToDisconnected() {
    parent.setEventStreamOpenStatus(false) // notify app
    doSendEvent("eventStreamStatus", "disconnected")
    if (state.connectionRetryTime) {
@@ -187,6 +181,7 @@ void parse(String description) {
    if (logEnable) log.debug "parse: $description"
    List<String> messages = description.split("\n\n")
    setEventStreamStatusToConnected() // should help avoid spurious disconnect messages?
+   if (logEnable) log.debug "messages (${messages.size()} total): $messages"
    messages.each { String message -> 
       List<String> lines = description.split("\n")
       StringBuilder sbData = new StringBuilder()
@@ -241,7 +236,7 @@ void parse(String description) {
                            }
                            break
                         case "button":
-                        case "relative_rotary": // todo: test!
+                        case "relative_rotary":
                            String ownerId = updateEntryMap.owner?.rid
                            dev = parent.getChildDevice("${device.deviceNetworkId}/Button/${ownerId}")
                            break
@@ -379,7 +374,7 @@ void parseLightStatesV2(List lightsJson) {
          DeviceWrapper dev = parent.getChildDevice("${device.deviceNetworkId}/Light/${id}")
          if (dev == null) {
             dev = parent.getChildDevice("${device.deviceNetworkId}/Light/${id_v1}")
-            if (dev != null) log.warn "Device ${dev.displayName} with Hue V1 ID $id_v1 and V2 ID $id never converted to V2 DNI format"
+            if (dev != null) log.warn "Device ${dev.displayName} with Hue V1 ID $id_v1 and V2 ID $id never converted to V2 DNI format. Try selecting \"Done\" in the parent app to retry conversion. Found and using V1 device for now."
          }
          if (dev != null) {
             dev.createEventsFromMapV2(data)
@@ -421,7 +416,7 @@ void parseGroupStatesV2(List groupsJson) {
          DeviceWrapper dev = parent.getChildDevice("${device.deviceNetworkId}/Group/${id}")
          if (dev == null) {
             dev = parent.getChildDevice("${device.deviceNetworkId}/Group/${id_v1}")
-            if (dev != null) log.warn "Device ${dev.displayName} with Hue V1 ID $id_v1 and V2 ID $id never converted to V2 DNI format"
+            if (dev != null) log.warn "Device ${dev.displayName} with Hue V1 ID $id_v1 and V2 ID $id never converted to V2 DNI format. Try selecting \"Done\" in the parent app to retry conversion. Found and using V1 device for now."
          }
          if (dev != null) {
             dev.createEventsFromMapV2(data)
@@ -470,7 +465,7 @@ void parseSceneStatesV2(List scenesJson) {
          DeviceWrapper dev = parent.getChildDevice("${device.deviceNetworkId}/Scene/${id}")
          if (dev == null) {
             dev = parent.getChildDevice("${device.deviceNetworkId}/Scene/${id_v1}")
-            if (dev != null) log.warn "Device ${dev.displayName} with Hue V1 ID $id_v1 and V2 ID $id never converted to V2 DNI format"
+            if (dev != null) log.warn "Device ${dev.displayName} with Hue V1 ID $id_v1 and V2 ID $id never converted to V2 DNI format. Try selecting \"Done\" in the parent app to retry conversion. Found and using V1 device for now."
          }
          if (dev != null) {
             dev.createEventsFromMapV2(data)
@@ -497,7 +492,7 @@ void parseMotionSensorStatesV2(List sensorJson) {
                   d.deviceNetworkId.startsWith("${device.deviceNetworkId}/Sensor/") &&
                   id_v1 in d.deviceNetworkId.tokenize('/')[-1].tokenize('|')
                }
-            if (dev != null) log.warn "Device ${dev.displayName} with Hue V1 ID $id_v1 and V2 ID $id never converted to V2 DNI format"
+            if (dev != null) log.warn "Device ${dev.displayName} with Hue V1 ID $id_v1 and V2 ID $id never converted to V2 DNI format. Try selecting \"Done\" in the parent app to retry conversion. Found and using V1 device for now."
          }
          if (dev != null) {
             dev.createEventsFromMapV2(data)
@@ -711,8 +706,8 @@ Map getAllGroupsCache() {
  * not working with old data
  */
 void clearGroupsCache() {
-    if (logEnable) log.debug "Running clearGroupsCache..."
-    state.remove("allGroups")
+   if (logEnable) log.debug "Running clearGroupsCache..."
+   state.remove("allGroups")
 }
 
 /** Intended to be called from parent app to retrive previously
@@ -726,8 +721,8 @@ Map getAllRoomsCache() {
  * not working with old data
  */
 void clearRoomsCache() {
-    if (logEnable) log.debug "Running clearGroupsCache..."
-    state.remove("allRooms")
+   if (logEnable) log.debug "Running clearGroupsCache..."
+   state.remove("allRooms")
 }
 
 /** Intended to be called from parent app to retrive previously
@@ -911,6 +906,7 @@ void parseGetAllButtonsResponseV2(resp, data) {
                   }
             }
          )
+         pauseExecution(500)
          // Check for relative_rotary, too (Hue Tap Dial, Lutron Aurora)
          params = [
             uri: "https://${bridgeData.ip}",
@@ -920,7 +916,6 @@ void parseGetAllButtonsResponseV2(resp, data) {
             timeout: 10,
             ignoreSSLIssues: true
          ]
-         pauseExecution(750)
          httpGet(params,
             { response ->
                   response.data.data.each {
@@ -973,156 +968,146 @@ void clearButtonsCache() {
    if (logEnable) log.debug "Running clearButtonsCache..."
    state.remove('allButtons')
 }
-// ~~~~~ start include (8) RMoRobert.CoCoHue_Common_Lib ~~~~~
-// Version 1.0.3 // library marker RMoRobert.CoCoHue_Common_Lib, line 1
-// For use with CoCoHue drivers (not app) // library marker RMoRobert.CoCoHue_Common_Lib, line 2
 
-/** // library marker RMoRobert.CoCoHue_Common_Lib, line 4
- * 1.0.4 - Add common bridgeAsyncGetV2() method (goal to reduce individual driver code) // library marker RMoRobert.CoCoHue_Common_Lib, line 5
- * 1.0.3 - Add APIV1 and APIV2 "constants" // library marker RMoRobert.CoCoHue_Common_Lib, line 6
- * 1.0.2  - HTTP error handling tweaks // library marker RMoRobert.CoCoHue_Common_Lib, line 7
- */ // library marker RMoRobert.CoCoHue_Common_Lib, line 8
+// ~~~ IMPORTED FROM RMoRobert.CoCoHue_Common_Lib ~~~
+// Version 1.0.3
+// For use with CoCoHue drivers (not app)
 
-library ( // library marker RMoRobert.CoCoHue_Common_Lib, line 10
-   base: "driver", // library marker RMoRobert.CoCoHue_Common_Lib, line 11
-   author: "RMoRobert", // library marker RMoRobert.CoCoHue_Common_Lib, line 12
-   category: "Convenience", // library marker RMoRobert.CoCoHue_Common_Lib, line 13
-   description: "For internal CoCoHue use only. Not intended for external use. Contains common code shared by many CoCoHue drivers.", // library marker RMoRobert.CoCoHue_Common_Lib, line 14
-   name: "CoCoHue_Common_Lib", // library marker RMoRobert.CoCoHue_Common_Lib, line 15
-   namespace: "RMoRobert" // library marker RMoRobert.CoCoHue_Common_Lib, line 16
-) // library marker RMoRobert.CoCoHue_Common_Lib, line 17
+/**
+ * 1.0.4 - Add common bridgeAsyncGetV2() method (goal to reduce individual driver code)
+ * 1.0.3 - Add APIV1 and APIV2 "constants"
+ * 1.0.2  - HTTP error handling tweaks
+ */
 
-void debugOff() { // library marker RMoRobert.CoCoHue_Common_Lib, line 19
-   log.warn "Disabling debug logging" // library marker RMoRobert.CoCoHue_Common_Lib, line 20
-   device.updateSetting("logEnable", [value:"false", type:"bool"]) // library marker RMoRobert.CoCoHue_Common_Lib, line 21
-} // library marker RMoRobert.CoCoHue_Common_Lib, line 22
+library (
+   base: "driver",
+   author: "RMoRobert",
+   category: "Convenience",
+   description: "For internal CoCoHue use only. Not intended for external use. Contains common code shared by many CoCoHue drivers.",
+   name: "CoCoHue_Common_Lib",
+   namespace: "RMoRobert"
+)
 
-/** Performs basic check on data returned from HTTP response to determine if should be // library marker RMoRobert.CoCoHue_Common_Lib, line 24
-  * parsed as likely Hue Bridge data or not; returns true (if OK) or logs errors/warnings and // library marker RMoRobert.CoCoHue_Common_Lib, line 25
-  * returns false if not // library marker RMoRobert.CoCoHue_Common_Lib, line 26
-  * @param resp The async HTTP response object to examine // library marker RMoRobert.CoCoHue_Common_Lib, line 27
-  */ // library marker RMoRobert.CoCoHue_Common_Lib, line 28
-private Boolean checkIfValidResponse(hubitat.scheduling.AsyncResponse resp) { // library marker RMoRobert.CoCoHue_Common_Lib, line 29
-   if (logEnable == true) log.debug "Checking if valid HTTP response/data from Bridge..." // library marker RMoRobert.CoCoHue_Common_Lib, line 30
-   Boolean isOK = true // library marker RMoRobert.CoCoHue_Common_Lib, line 31
-   if (resp.status < 400) { // library marker RMoRobert.CoCoHue_Common_Lib, line 32
-      if (resp.json == null) { // library marker RMoRobert.CoCoHue_Common_Lib, line 33
-         isOK = false // library marker RMoRobert.CoCoHue_Common_Lib, line 34
-         if (resp.headers == null) log.error "Error: HTTP ${resp.status} when attempting to communicate with Bridge" // library marker RMoRobert.CoCoHue_Common_Lib, line 35
-         else log.error "No JSON data found in response. ${resp.headers.'Content-Type'} (HTTP ${resp.status})" // library marker RMoRobert.CoCoHue_Common_Lib, line 36
-         parent.sendBridgeDiscoveryCommandIfSSDPEnabled(true) // maybe IP changed, so attempt rediscovery  // library marker RMoRobert.CoCoHue_Common_Lib, line 37
-         parent.setBridgeOnlineStatus(false) // library marker RMoRobert.CoCoHue_Common_Lib, line 38
-      } // library marker RMoRobert.CoCoHue_Common_Lib, line 39
-      else if (resp.json) { // library marker RMoRobert.CoCoHue_Common_Lib, line 40
-         if ((resp.json instanceof List) && resp.json.getAt(0).error) { // library marker RMoRobert.CoCoHue_Common_Lib, line 41
-            // Bridge (not HTTP) error (bad username, bad command formatting, etc.): // library marker RMoRobert.CoCoHue_Common_Lib, line 42
-            isOK = false // library marker RMoRobert.CoCoHue_Common_Lib, line 43
-            log.warn "Error from Hue Bridge: ${resp.json[0].error}" // library marker RMoRobert.CoCoHue_Common_Lib, line 44
-            // Not setting Bridge to offline when light/scene/group devices end up here because could // library marker RMoRobert.CoCoHue_Common_Lib, line 45
-            // be old/bad ID and don't want to consider Bridge offline just for that (but also won't set // library marker RMoRobert.CoCoHue_Common_Lib, line 46
-            // to online because wasn't successful attempt) // library marker RMoRobert.CoCoHue_Common_Lib, line 47
-         } // library marker RMoRobert.CoCoHue_Common_Lib, line 48
-         // Otherwise: probably OK (not changing anything because isOK = true already) // library marker RMoRobert.CoCoHue_Common_Lib, line 49
-      } // library marker RMoRobert.CoCoHue_Common_Lib, line 50
-      else { // library marker RMoRobert.CoCoHue_Common_Lib, line 51
-         isOK = false // library marker RMoRobert.CoCoHue_Common_Lib, line 52
-         log.warn("HTTP status code ${resp.status} from Bridge") // library marker RMoRobert.CoCoHue_Common_Lib, line 53
-         // TODO: Update for mDNS if/when switch: // library marker RMoRobert.CoCoHue_Common_Lib, line 54
-         if (resp?.status >= 400) parent.sendBridgeDiscoveryCommandIfSSDPEnabled(true) // maybe IP changed, so attempt rediscovery  // library marker RMoRobert.CoCoHue_Common_Lib, line 55
-         parent.setBridgeOnlineStatus(false) // library marker RMoRobert.CoCoHue_Common_Lib, line 56
-      } // library marker RMoRobert.CoCoHue_Common_Lib, line 57
-      if (isOK == true) parent.setBridgeOnlineStatus(true) // library marker RMoRobert.CoCoHue_Common_Lib, line 58
-   } // library marker RMoRobert.CoCoHue_Common_Lib, line 59
-   else { // library marker RMoRobert.CoCoHue_Common_Lib, line 60
-      log.warn "Error communicating with Hue Bridge: HTTP ${resp?.status}" // library marker RMoRobert.CoCoHue_Common_Lib, line 61
-      isOK = false // library marker RMoRobert.CoCoHue_Common_Lib, line 62
-   } // library marker RMoRobert.CoCoHue_Common_Lib, line 63
-   return isOK // library marker RMoRobert.CoCoHue_Common_Lib, line 64
-} // library marker RMoRobert.CoCoHue_Common_Lib, line 65
+void debugOff() {
+   log.warn "Disabling debug logging"
+   device.updateSetting("logEnable", [value:"false", type:"bool"])
+}
 
-void doSendEvent(String eventName, eventValue, String eventUnit=null, Boolean forceStateChange=false) { // library marker RMoRobert.CoCoHue_Common_Lib, line 67
-   //if (logEnable == true) log.debug "doSendEvent($eventName, $eventValue, $eventUnit)" // library marker RMoRobert.CoCoHue_Common_Lib, line 68
-   String descriptionText = "${device.displayName} ${eventName} is ${eventValue}${eventUnit ?: ''}" // library marker RMoRobert.CoCoHue_Common_Lib, line 69
-   if (settings.txtEnable == true) log.info(descriptionText) // library marker RMoRobert.CoCoHue_Common_Lib, line 70
-   if (eventUnit) { // library marker RMoRobert.CoCoHue_Common_Lib, line 71
-      if (forceStateChange == true) sendEvent(name: eventName, value: eventValue, descriptionText: descriptionText, unit: eventUnit, isStateChange: true)  // library marker RMoRobert.CoCoHue_Common_Lib, line 72
-      else sendEvent(name: eventName, value: eventValue, descriptionText: descriptionText, unit: eventUnit)  // library marker RMoRobert.CoCoHue_Common_Lib, line 73
-   } else { // library marker RMoRobert.CoCoHue_Common_Lib, line 74
-      if (forceStateChange == true) sendEvent(name: eventName, value: eventValue, descriptionText: descriptionText, isStateChange: true)  // library marker RMoRobert.CoCoHue_Common_Lib, line 75
-      else sendEvent(name: eventName, value: eventValue, descriptionText: descriptionText)  // library marker RMoRobert.CoCoHue_Common_Lib, line 76
-   } // library marker RMoRobert.CoCoHue_Common_Lib, line 77
-} // library marker RMoRobert.CoCoHue_Common_Lib, line 78
+/** Performs basic check on data returned from HTTP response to determine if should be
+  * parsed as likely Hue Bridge data or not; returns true (if OK) or logs errors/warnings and
+  * returns false if not
+  * @param resp The async HTTP response object to examine
+  */
+private Boolean checkIfValidResponse(hubitat.scheduling.AsyncResponse resp) {
+   if (logEnable == true) log.debug "Checking if valid HTTP response/data from Bridge..."
+   Boolean isOK = true
+   if (resp.status < 400) {
+      if (resp.json == null) {
+         isOK = false
+         if (resp.headers == null) log.error "Error: HTTP ${resp.status} when attempting to communicate with Bridge"
+         else log.error "No JSON data found in response. ${resp.headers.'Content-Type'} (HTTP ${resp.status})"
+         parent.sendBridgeDiscoveryCommandIfSSDPEnabled(true) // maybe IP changed, so attempt rediscovery 
+         parent.setBridgeOnlineStatus(false)
+      }
+      else if (resp.json) {
+         if ((resp.json instanceof List) && resp.json.getAt(0).error) {
+            // Bridge (not HTTP) error (bad username, bad command formatting, etc.):
+            isOK = false
+            log.warn "Error from Hue Bridge: ${resp.json[0].error}"
+            // Not setting Bridge to offline when light/scene/group devices end up here because could
+            // be old/bad ID and don't want to consider Bridge offline just for that (but also won't set
+            // to online because wasn't successful attempt)
+         }
+         // Otherwise: probably OK (not changing anything because isOK = true already)
+      }
+      else {
+         isOK = false
+         log.warn("HTTP status code ${resp.status} from Bridge")
+         // TODO: Update for mDNS if/when switch:
+         if (resp?.status >= 400) parent.sendBridgeDiscoveryCommandIfSSDPEnabled(true) // maybe IP changed, so attempt rediscovery 
+         parent.setBridgeOnlineStatus(false)
+      }
+      if (isOK == true) parent.setBridgeOnlineStatus(true)
+   }
+   else {
+      log.warn "Error communicating with Hue Bridge: HTTP ${resp?.status}"
+      isOK = false
+   }
+   return isOK
+}
 
-// HTTP methods (might be better to split into separate library if not needed for some?) // library marker RMoRobert.CoCoHue_Common_Lib, line 80
+void doSendEvent(String eventName, eventValue, String eventUnit=null, Boolean forceStateChange=false) {
+   //if (logEnable == true) log.debug "doSendEvent($eventName, $eventValue, $eventUnit)"
+   String descriptionText = "${device.displayName} ${eventName} is ${eventValue}${eventUnit ?: ''}"
+   if (settings.txtEnable == true) log.info(descriptionText)
+   if (eventUnit) {
+      if (forceStateChange == true) sendEvent(name: eventName, value: eventValue, descriptionText: descriptionText, unit: eventUnit, isStateChange: true) 
+      else sendEvent(name: eventName, value: eventValue, descriptionText: descriptionText, unit: eventUnit) 
+   } else {
+      if (forceStateChange == true) sendEvent(name: eventName, value: eventValue, descriptionText: descriptionText, isStateChange: true) 
+      else sendEvent(name: eventName, value: eventValue, descriptionText: descriptionText) 
+   }
+}
 
-/** Performs asynchttpGet() to Bridge using data retrieved from parent app or as passed in // library marker RMoRobert.CoCoHue_Common_Lib, line 82
-  * @param callbackMethod Callback method // library marker RMoRobert.CoCoHue_Common_Lib, line 83
-  * @param clipV2Path The Hue V2 API path (without '/clip/v2', automatically prepended), e.g. '/resource' or '/resource/light' // library marker RMoRobert.CoCoHue_Common_Lib, line 84
-  * @param bridgeData Bridge data from parent getBridgeData() call, or will call this method on parent if null // library marker RMoRobert.CoCoHue_Common_Lib, line 85
-  * @param data Extra data to pass as optional third (data) parameter to asynchtttpGet() method // library marker RMoRobert.CoCoHue_Common_Lib, line 86
-  */ // library marker RMoRobert.CoCoHue_Common_Lib, line 87
-void bridgeAsyncGetV2(String callbackMethod, String clipV2Path, Map<String,String> bridgeData = null, Map data = null) { // library marker RMoRobert.CoCoHue_Common_Lib, line 88
-   if (bridgeData == null) { // library marker RMoRobert.CoCoHue_Common_Lib, line 89
-      bridgeData = parent.getBridgeData() // library marker RMoRobert.CoCoHue_Common_Lib, line 90
-   } // library marker RMoRobert.CoCoHue_Common_Lib, line 91
-   Map params = [ // library marker RMoRobert.CoCoHue_Common_Lib, line 92
-      uri: "https://${bridgeData.ip}", // library marker RMoRobert.CoCoHue_Common_Lib, line 93
-      path: "/clip/v2${clipV2Path}", // library marker RMoRobert.CoCoHue_Common_Lib, line 94
-      headers: ["hue-application-key": bridgeData.username], // library marker RMoRobert.CoCoHue_Common_Lib, line 95
-      contentType: "application/json", // library marker RMoRobert.CoCoHue_Common_Lib, line 96
-      timeout: 15, // library marker RMoRobert.CoCoHue_Common_Lib, line 97
-      ignoreSSLIssues: true // library marker RMoRobert.CoCoHue_Common_Lib, line 98
-   ] // library marker RMoRobert.CoCoHue_Common_Lib, line 99
-   asynchttpGet(callbackMethod, params, data) // library marker RMoRobert.CoCoHue_Common_Lib, line 100
-} // library marker RMoRobert.CoCoHue_Common_Lib, line 101
+// HTTP methods (might be better to split into separate library if not needed for some?)
 
-
-// ~~~~~ end include (8) RMoRobert.CoCoHue_Common_Lib ~~~~~
-
-// ~~~~~ start include (73) RMoRobert.CoCoHue_Constants_Lib ~~~~~
-// Version 1.0.0 // library marker RMoRobert.CoCoHue_Constants_Lib, line 1
-
-library ( // library marker RMoRobert.CoCoHue_Constants_Lib, line 3
-   author: "RMoRobert", // library marker RMoRobert.CoCoHue_Constants_Lib, line 4
-   category: "Convenience", // library marker RMoRobert.CoCoHue_Constants_Lib, line 5
-   description: "For internal CoCoHue use only. Not intended for external use. Contains field variables shared by many CoCoHue apps and drivers.", // library marker RMoRobert.CoCoHue_Constants_Lib, line 6
-   name: "CoCoHue_Constants_Lib", // library marker RMoRobert.CoCoHue_Constants_Lib, line 7
-   namespace: "RMoRobert"  // library marker RMoRobert.CoCoHue_Constants_Lib, line 8
-) // library marker RMoRobert.CoCoHue_Constants_Lib, line 9
-
-// -------------------------------------- // library marker RMoRobert.CoCoHue_Constants_Lib, line 11
-// APP AND DRIVER NAMESPACE AND NAMES: // library marker RMoRobert.CoCoHue_Constants_Lib, line 12
-// -------------------------------------- // library marker RMoRobert.CoCoHue_Constants_Lib, line 13
-
-// -- CoCoHue -- // library marker RMoRobert.CoCoHue_Constants_Lib, line 15
-@Field static final String NAMESPACE = "RMoRobert" // library marker RMoRobert.CoCoHue_Constants_Lib, line 16
-@Field static final String APP_NAME = "CoCoHue - Hue Bridge Integration" // library marker RMoRobert.CoCoHue_Constants_Lib, line 17
+/** Performs asynchttpGet() to Bridge using data retrieved from parent app or as passed in
+  * @param callbackMethod Callback method
+  * @param clipV2Path The Hue V2 API path (without '/clip/v2', automatically prepended), e.g. '/resource' or '/resource/light'
+  * @param bridgeData Bridge data from parent getBridgeData() call, or will call this method on parent if null
+  * @param data Extra data to pass as optional third (data) parameter to asynchtttpGet() method
+  */
+void bridgeAsyncGetV2(String callbackMethod, String clipV2Path, Map<String,String> bridgeData = null, Map data = null) {
+   if (bridgeData == null) {
+      bridgeData = parent.getBridgeData()
+   }
+   Map params = [
+      uri: "https://${bridgeData.ip}",
+      path: "/clip/v2${clipV2Path}",
+      headers: ["hue-application-key": bridgeData.username],
+      contentType: "application/json",
+      timeout: 15,
+      ignoreSSLIssues: true
+   ]
+   asynchttpGet(callbackMethod, params, data)
+}
 
 
-// -- CoCoHue -- // library marker RMoRobert.CoCoHue_Constants_Lib, line 20
-@Field static final String DRIVER_NAME_BRIDGE = "CoCoHue Bridge" // library marker RMoRobert.CoCoHue_Constants_Lib, line 21
-@Field static final String DRIVER_NAME_BUTTON = "CoCoHue Button" // library marker RMoRobert.CoCoHue_Constants_Lib, line 22
-@Field static final String DRIVER_NAME_CT_BULB = "CoCoHue CT Bulb" // library marker RMoRobert.CoCoHue_Constants_Lib, line 23
-@Field static final String DRIVER_NAME_DIMMABLE_BULB = "CoCoHue Dimmable Bulb" // library marker RMoRobert.CoCoHue_Constants_Lib, line 24
-@Field static final String DRIVER_NAME_GROUP = "CoCoHue Group" // library marker RMoRobert.CoCoHue_Constants_Lib, line 25
-@Field static final String DRIVER_NAME_MOTION = "CoCoHue Motion Sensor" // library marker RMoRobert.CoCoHue_Constants_Lib, line 26
-@Field static final String DRIVER_NAME_PLUG = "CoCoHue Plug" // library marker RMoRobert.CoCoHue_Constants_Lib, line 27
-@Field static final String DRIVER_NAME_RGBW_BULB = "CoCoHue RGBW Bulb" // library marker RMoRobert.CoCoHue_Constants_Lib, line 28
-@Field static final String DRIVER_NAME_SCENE = "CoCoHue Scene" // library marker RMoRobert.CoCoHue_Constants_Lib, line 29
 
-// -------------------------------------- // library marker RMoRobert.CoCoHue_Constants_Lib, line 31
-// DNI PREFIX for child devices: // library marker RMoRobert.CoCoHue_Constants_Lib, line 32
-// -------------------------------------- // library marker RMoRobert.CoCoHue_Constants_Lib, line 33
+// ~~~ IMPORTED FROM RMoRobert.CoCoHue_Constants_Lib ~~~
+// Version 1.0.0
 
-@Field static final String DNI_PREFIX = "CCH"   // "CCH" for CoCoHue // library marker RMoRobert.CoCoHue_Constants_Lib, line 35
+library (
+   author: "RMoRobert",
+   category: "Convenience",
+   description: "For internal CoCoHue use only. Not intended for external use. Contains field variables shared by many CoCoHue apps and drivers.",
+   name: "CoCoHue_Constants_Lib",
+   namespace: "RMoRobert"
+)
 
-// -------------------------------------- // library marker RMoRobert.CoCoHue_Constants_Lib, line 37
-// OTHER: // library marker RMoRobert.CoCoHue_Constants_Lib, line 38
-// -------------------------------------- // library marker RMoRobert.CoCoHue_Constants_Lib, line 39
+// --------------------------------------
+// APP AND DRIVER NAMESPACE AND NAMES:
+// --------------------------------------
+@Field static final String NAMESPACE                  = "RMoRobert"
+@Field static final String DRIVER_NAME_BRIDGE         = "CoCoHue Bridge"
+@Field static final String DRIVER_NAME_BUTTON         = "CoCoHue Button"
+@Field static final String DRIVER_NAME_CT_BULB        = "CoCoHue CT Bulb"
+@Field static final String DRIVER_NAME_DIMMABLE_BULB  = "CoCoHue Dimmable Bulb"
+@Field static final String DRIVER_NAME_GROUP          = "CoCoHue Group"
+@Field static final String DRIVER_NAME_MOTION         = "CoCoHue Motion Sensor"
+@Field static final String DRIVER_NAME_PLUG           = "CoCoHue Plug"
+@Field static final String DRIVER_NAME_RGBW_BULB      = "CoCoHue RGBW Bulb"
+@Field static final String DRIVER_NAME_RGB_BULB       = "CoCoHue RGB Bulb"
+@Field static final String DRIVER_NAME_SCENE          = "CoCoHue Scene"
 
-// Used in app and Bridge driver, may eventually find use in more: // library marker RMoRobert.CoCoHue_Constants_Lib, line 41
+// --------------------------------------
+// DNI PREFIX for child devices:
+// --------------------------------------
+@Field static final String DNI_PREFIX = "CCH"
 
-@Field static final String APIV1 = "V1" // library marker RMoRobert.CoCoHue_Constants_Lib, line 43
-@Field static final String APIV2 = "V2" // library marker RMoRobert.CoCoHue_Constants_Lib, line 44
-
-// ~~~~~ end include (73) RMoRobert.CoCoHue_Constants_Lib ~~~~~
+// --------------------------------------
+// OTHER:
+// --------------------------------------
+// Used in app and Bridge driver, may eventually find use in more:
+@Field static final String APIV1 = "V1"
+@Field static final String APIV2 = "V2"

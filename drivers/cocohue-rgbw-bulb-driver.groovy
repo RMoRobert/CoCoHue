@@ -1,5 +1,5 @@
 /*
- * =============================  CoCoHue RGBW Bulb (Driver) ===============================
+ * =============================  __DRIVER_NAME_RGBW_BULB__ (Driver) ===============================
  *
  *  Copyright 2019-2024 Robert Morris
  * 
@@ -14,7 +14,7 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2024-08-31
+ *  Last modified: 2024-09-03
  *
  *  Changelog:
  *  v5.0   - Use API v2 by default, remove deprecated features
@@ -84,7 +84,7 @@ import hubitat.scheduling.AsyncResponse
 @Field static final String xyParsingMode = "ct"
 
 metadata {
-   definition(name: DRIVER_NAME_RGBW_BULB, namespace: NAMESPACE, author: "Robert Morris", importUrl: "https://raw.githubusercontent.com/HubitatCommunity/CoCoHue/master/drivers/cocohue-rgbw-bulb-driver.groovy") {
+   definition(name: "__DRIVER_NAME_RGBW_BULB__", namespace: "__NAMESPACE__", author: "Robert Morris", importUrl: "https://raw.githubusercontent.com/HubitatCommunity/CoCoHue/master/drivers/cocohue-rgbw-bulb-driver.groovy") {
       capability "Actuator"
       capability "ColorControl"
       capability "ColorTemperature"

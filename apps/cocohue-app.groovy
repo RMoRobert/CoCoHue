@@ -1,14 +1,11 @@
 /**
- * ===========================  CoCoHue - Hue Bridge Integration =========================
+ * ===========================  __APP_NAME__ =========================
  *
  *  Copyright 2019-2024 Robert Morris
  *
  *  DESCRIPTION:
- *  Community-developed Hue Bridge integration app for Hubitat, including support for lights,
+ *  Hue Bridge integration app for Hubitat, including support for lights,
  *  groups, and scenes.
- 
- *  TO INSTALL:
- *  See documentation on Hubitat Community forum or README.MD file in GitHub repo
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  *  in compliance with the License. You may obtain a copy of the License at:
@@ -21,7 +18,7 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2024-09-01
+ *  Last modified: 2024-09-03
 
  *  Changelog:
  *  v5.0   - Use API v2 by default, remove deprecated features
@@ -71,7 +68,7 @@ String getDriverNameForDeviceType(String deviceType) {
          return DRIVER_NAME_RGBW_BULB
          break
       case "color light":
-         return DRIVER_NAME_RGBW_BULB // eventually should make RGB driver
+         return DRIVER_NAME_RGB_BULB
          break
       case "color temperature light":
          return DRIVER_NAME_CT_BULB
@@ -93,13 +90,13 @@ String getDriverNameForDeviceType(String deviceType) {
 @Field static final Integer minV2SwVersion = 1955082050         // ... but 1955082050 recommended for production use
 
 definition (
-   name: APP_NAME,
-   namespace: NAMESPACE,
+   name: "__APP_NAME__",
+   namespace: "__NAMESPACE__",
    author: "Robert Morris",
-   description: "${APP_NAME != 'Hue Bridge Integration' ? 'Community-created ' : ''}Philips Hue integration for Hue Bridge lights and other Hue features and devices",
+   description: "__APP_DESCRIPTION__",
    category: "Convenience",
    installOnOpen: true,
-   documentationLink: (APP_NAME != 'Hue Bridge Integration' ? "https://community.hubitat.com/t/release-cocohue-hue-bridge-integration-including-scenes/27978" : "https://docs2.hubitat.com/en/apps/hue-bridge-integration"),
+   documentationLink: "__DOCUMENTATION_LINK__",
    iconUrl: "",
    iconX2Url: "",
    iconX3Url: ""
@@ -117,6 +114,7 @@ preferences {
    page name: "pageSelectScenes"
    page name: "pageSelectMotionSensors"
    page name: "pageSelectButtons"
+   page name: "pageSupportOptions"
 }
 
 void installed() {
@@ -276,11 +274,10 @@ void upgradeCCHv1DNIsToV2ResponseHandler(AsyncResponse resp, data=null) {
   * usable in new (CoCoHue-based) integration. DO NOT REMOVE this method unless can ensure
   * no user is upgrading from old/built-in Hue app (pre-platform 2.4.0):
  */
-void convertBuiltInIntegrationStatesToNew() {
-   //log.trace "convertBuiltInIntegrationStatesToNew..."
+void convertBuiltInIntegrationStatesToNew(Boolean forceTryAgain=false) {
+   if (logEnable) log.debug "convertBuiltInIntegrationStatesToNew..."
    if (!state.updatedTo || state.updatedTo < currentSchemaVersion) { 
-      if (state.bridgeHost) {  // basic heuristic to determine if was built-in integration (uses this state name to track Bridge IP; CoCoHue did not)
-         //log.trace "proceeding..."
+      if (state.bridgeHost || forceTryAgain==true) {  // basic heuristic to determine if was built-in integration (uses this state name to track Bridge IP; CoCoHue did not)
          // nothing -- want to upgrade
       }
       else {
@@ -350,7 +347,7 @@ void convertBuiltInIntegrationStatesToNew() {
             if (logEnable == true) log.debug "Converting child device for light ID V1 $lightIdV1 to $newDniV1"
             ogDev.setDeviceNetworkId(newDniV1)
          }
-         else {
+         else if (ogDev.deviceNetworkId.length() == 12) {
             // Bridge (DNI = MAC, no separators, e.g., 001788201234)
             try {
                if (logEnable == true) log.debug "Converting child bridge device DNI of ${ogDev.deviceNetworkId} to ${DNI_PREFIX}/${app.id}"
@@ -359,6 +356,9 @@ void convertBuiltInIntegrationStatesToNew() {
             catch (Exception ex) {
                log.warn "Error updating Bridge DNI to new format: $ex"
             }
+         }
+         else {
+            if (logEnable == true) log.debug "Unable to determine device type for devvice ${ogDev.displayName} with DNI  ${ogDev.deviceNetworkId}. Ignoring."
          }
       }
       app.updateSetting("useEventStream", [type: "bool", value: false])
@@ -520,14 +520,26 @@ def pageFirstPage() {
    state.authRefreshInterval = 5
    state.discoTryCount = 0
    state.authTryCount = 0
+   // Shouldn't happen with installOnOpen: true, but just in case:
    if (app.getInstallationState() == "INCOMPLETE") {
-      // Shouldn't happen with installOnOpen: true, but just in case...
       dynamicPage(name: "pageIncomplete", uninstall: true, install: true) {
          section() {
             paragraph "Please select \"Done\" to finish installation.<br>Then, re-open to set up your Hue Bridge."
          }
       }
    }
+   
+   // Basic heuristic to determine is upgrade from original (pre-2.4.0) built-in app
+   else if (state.bridgeHost && (!state.updatedTo || state.updatedTo < currentSchemaVersion)) {
+      // Normally happens on hub reboot via initialize() in Bridge driver, but try here too in case
+      // that doesn't happen:
+      dynamicPage(name: "pageFirstPage", uninstall: true, install: true) {
+         section() {
+            paragraph "Please select \"Done\" to finish upgrading the integration. Then re-open to continue setup if needed."
+         }
+      }
+   }
+   // Show "real" pages otherwise, depending on state:
    else {
       if (state.bridgeLinked) {
          return pageManageBridge()
@@ -701,6 +713,28 @@ def pageLinkBridge() {
    }
 }
 
+def pageSupportOptions() {
+   dynamicPage(name: "pageSupportOptions", uninstall: true, install: false, nextPage: "pageManageBridge") {
+      section() {
+         #IF __APP_NAME__==BUILTIN
+         String introText = "Use these options only with guidance from Hubitat Support or community.hubitat.com."
+         #ENDIF
+         #IF __APP_NAME__==COCOHUE
+         String introText = "Use these options only with guidance from the developer or community.hubitat.com. See: https://docs2.hubitat.com/en/apps/hue-bridge-integration"         
+         #ENDIF
+         paragraph introText
+
+         #IF __APP_NAME__==BUILTIN
+         paragraph "Retry migration from pre-2.4.0 built-in integration app to new app (and device/DNI) format:"
+         input name: "btnRetryBuiltInMigration", type: "button", title: "Retry Migration", submitOnChange: true
+         #ENDIF
+         
+         paragraph "Retry enabling V2 API (server-sent events/SSE/eventstream) option:"
+         input name: "btnRetryV2APIEnable", type: "button", title: "Retry Migration", submitOnChange: true
+      }
+   }
+}
+
 def pageManageBridge() {
    if (settings["newBulbs"]) {
       if (logEnable == true) log.debug "New bulbs selected. Creating..."
@@ -779,6 +813,8 @@ def pageManageBridge() {
       section("Advanced Options", hideable: true, hidden: true) {
          href(name: "hrefReAddBridge", title: "Edit Bridge IP, re-authorize, or re-discover...",
                description: "", page: "pageReAddBridge")
+         href(name: "hrefSupportOptions", title: "Advanced Debug Options...",
+               description: "", page: "pageSupportOptions")
          if (settings.useSSDP != false) {
             input name: "keepSSDP", type: "bool", title: "Remain subscribed to Bridge discovery requests (recommended to keep enabled if Bridge has dynamic IP address)",
                defaultValue: true
@@ -1501,12 +1537,13 @@ void parseBridgeInfoResponse(resp, Map data) {
             }
          }
          if (!(settings.boolCustomLabel)) {
-            if (APP_NAME != "Hue Bridge Integration") {
+            #IF __APP_NAME__==BUILTIN
                app.updateLabel("""CoCoHue - Hue Bridge Integration (${getBridgeId()}${friendlyBridgeName ? " - $friendlyBridgeName)" : ")"}""")
             }
-            else {
+            #ENDIF
+            #IF __APP_NAME__==COCOHUE
                app.updateLabel("""Hue Bridge Integration (${getBridgeId()}${friendlyBridgeName ? " - $friendlyBridgeName)" : ")"}""")
-            }
+            #ENDIF
          }
       }
       catch (IllegalArgumentException e) { // could be bad DNI if already exists
@@ -1780,6 +1817,16 @@ void appButtonHandler(btn) {
          break
       case "btnDiscoBridgeRefresh":
          sendBridgeDiscoveryCommand()
+         break
+      case "btnRetryBuiltInMigration":
+         app.updateSetting("logEnable", true)
+         state.remove("currentSchemaVersion")
+         convertBuiltInIntegrationStatesToNew(true)
+         break
+      case "btnRetryV2APIEnable":
+         app.updateSetting("logEnable", true)
+         state.remove("useV2UpgradeCompleted")
+         upgradeCCHv1DNIsToV2()
          break
       default:
          log.warn "Unhandled app button press: $btn"

@@ -1,5 +1,5 @@
 /**
- * =============================  CoCoHue Bridge (Driver) ===============================
+ * =============================  __DRIVER_NAME_BRIDGE__ (Driver) ===============================
  *
  *  Copyright 2019-2024 Robert Morris
  * 
@@ -14,7 +14,7 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2024-09-01
+ *  Last modified: 2024-09-03
  *
  *  Changelog:
  *  v5.0    - Use API v2 by default, remove deprecated features
@@ -58,8 +58,8 @@ import groovy.transform.Field
 
 metadata {
    definition(
-      name: DRIVER_NAME_BRIDGE,
-      namespace: NAMESPACE,
+      name: "__DRIVER_NAME_BRIDGE__",
+      namespace:"__NAMESPACE__",
       author: "Robert Morris",
       singleThreaded: true,
       importUrl: "https://raw.githubusercontent.com/HubitatCommunity/CoCoHue/master/drivers/cocohue-bridge-driver.groovy"
@@ -183,7 +183,7 @@ void parse(String description) {
    if (logEnable) log.debug "parse: $description"
    List<String> messages = description.split("\n\n")
    setEventStreamStatusToConnected() // should help avoid spurious disconnect messages?
-   if (logEnable) log.debug "messages (${messages.size() total}): $messages"
+   if (logEnable) log.debug "messages (${messages.size()} total): $messages"
    messages.each { String message -> 
       List<String> lines = description.split("\n")
       StringBuilder sbData = new StringBuilder()
@@ -376,7 +376,7 @@ void parseLightStatesV2(List lightsJson) {
          DeviceWrapper dev = parent.getChildDevice("${device.deviceNetworkId}/Light/${id}")
          if (dev == null) {
             dev = parent.getChildDevice("${device.deviceNetworkId}/Light/${id_v1}")
-            if (dev != null) log.warn "Device ${dev.displayName} with Hue V1 ID $id_v1 and V2 ID $id never converted to V2 DNI format"
+            if (dev != null) log.warn "Device ${dev.displayName} with Hue V1 ID $id_v1 and V2 ID $id never converted to V2 DNI format. Try selecting \"Done\" in the parent app to retry conversion. Found and using V1 device for now."
          }
          if (dev != null) {
             dev.createEventsFromMapV2(data)
@@ -418,7 +418,7 @@ void parseGroupStatesV2(List groupsJson) {
          DeviceWrapper dev = parent.getChildDevice("${device.deviceNetworkId}/Group/${id}")
          if (dev == null) {
             dev = parent.getChildDevice("${device.deviceNetworkId}/Group/${id_v1}")
-            if (dev != null) log.warn "Device ${dev.displayName} with Hue V1 ID $id_v1 and V2 ID $id never converted to V2 DNI format"
+            if (dev != null) log.warn "Device ${dev.displayName} with Hue V1 ID $id_v1 and V2 ID $id never converted to V2 DNI format. Try selecting \"Done\" in the parent app to retry conversion. Found and using V1 device for now."
          }
          if (dev != null) {
             dev.createEventsFromMapV2(data)
@@ -467,7 +467,7 @@ void parseSceneStatesV2(List scenesJson) {
          DeviceWrapper dev = parent.getChildDevice("${device.deviceNetworkId}/Scene/${id}")
          if (dev == null) {
             dev = parent.getChildDevice("${device.deviceNetworkId}/Scene/${id_v1}")
-            if (dev != null) log.warn "Device ${dev.displayName} with Hue V1 ID $id_v1 and V2 ID $id never converted to V2 DNI format"
+            if (dev != null) log.warn "Device ${dev.displayName} with Hue V1 ID $id_v1 and V2 ID $id never converted to V2 DNI format. Try selecting \"Done\" in the parent app to retry conversion. Found and using V1 device for now."
          }
          if (dev != null) {
             dev.createEventsFromMapV2(data)
@@ -494,7 +494,7 @@ void parseMotionSensorStatesV2(List sensorJson) {
                   d.deviceNetworkId.startsWith("${device.deviceNetworkId}/Sensor/") &&
                   id_v1 in d.deviceNetworkId.tokenize('/')[-1].tokenize('|')
                }
-            if (dev != null) log.warn "Device ${dev.displayName} with Hue V1 ID $id_v1 and V2 ID $id never converted to V2 DNI format"
+            if (dev != null) log.warn "Device ${dev.displayName} with Hue V1 ID $id_v1 and V2 ID $id never converted to V2 DNI format. Try selecting \"Done\" in the parent app to retry conversion. Found and using V1 device for now."
          }
          if (dev != null) {
             dev.createEventsFromMapV2(data)

@@ -1,5 +1,5 @@
 /*
- * =============================  CoCoHue Button (Driver) ===============================
+ * =============================  __DRIVER_NAME_BUTTON__ (Driver) ===============================
  *
  *  Copyright 2022-2024 Robert Morris
  * 
@@ -14,7 +14,7 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2024-08-31
+ *  Last modified: 2024-09-03
  *
  *  Changelog:
  *  v5.0     - Use API v2 by default, remove deprecated features
@@ -35,7 +35,7 @@ import groovy.transform.Field
 @Field static final Integer debugAutoDisableMinutes = 30
 
 metadata {
-   definition(name: DRIVER_NAME_BUTTON, namespace: NAMESPACE, author: "Robert Morris", importUrl: "https://raw.githubusercontent.com/HubitatCommunity/CoCoHue/master/drivers/cocohue-button-driver.groovy") {
+   definition(name: "__DRIVER_NAME_BUTTON__", namespace: "__NAMESPACE__", author: "Robert Morris", importUrl: "https://raw.githubusercontent.com/HubitatCommunity/CoCoHue/master/drivers/cocohue-button-driver.groovy") {
       capability "Actuator"
       //capability "Refresh"
       capability "PushableButton"

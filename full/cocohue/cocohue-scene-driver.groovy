@@ -1,5 +1,5 @@
 /*
- * =============================  __DRIVER_NAME_SCENE__ ===============================
+ * =============================  CoCoHue Scene ===============================
  *
  *  Copyright 2019-2024 Robert Morris
  * 
@@ -37,8 +37,6 @@
  *  v1.5b   - Initial public release
  */ 
 
-#include RMoRobert.CoCoHue_Common_Lib
-#include RMoRobert.CoCoHue_Constants_Lib
 
 import hubitat.scheduling.AsyncResponse
 import groovy.transform.Field
@@ -46,7 +44,7 @@ import groovy.transform.Field
 @Field static final Integer debugAutoDisableMinutes = 30
 
 metadata {
-   definition(name: "__DRIVER_NAME_SCENE__", namespace: "__NAMESPACE__", author: "Robert Morris", importUrl: "https://raw.githubusercontent.com/HubitatCommunity/CoCoHue/master/drivers/cocohue-scene-driver.groovy") {
+   definition(name: "CoCoHue Scene", namespace: "RMoRobert", author: "Robert Morris", importUrl: "https://raw.githubusercontent.com/HubitatCommunity/CoCoHue/master/drivers/cocohue-scene-driver.groovy") {
       capability "Actuator"
       capability "Refresh"
       capability "Switch"
@@ -336,3 +334,146 @@ void autoOffHandler() {
 String getGroupID() {
    return state.group
 }
+
+// ~~~ IMPORTED FROM RMoRobert.CoCoHue_Common_Lib ~~~
+// Version 1.0.3
+// For use with CoCoHue drivers (not app)
+
+/**
+ * 1.0.4 - Add common bridgeAsyncGetV2() method (goal to reduce individual driver code)
+ * 1.0.3 - Add APIV1 and APIV2 "constants"
+ * 1.0.2  - HTTP error handling tweaks
+ */
+
+library (
+   base: "driver",
+   author: "RMoRobert",
+   category: "Convenience",
+   description: "For internal CoCoHue use only. Not intended for external use. Contains common code shared by many CoCoHue drivers.",
+   name: "CoCoHue_Common_Lib",
+   namespace: "RMoRobert"
+)
+
+void debugOff() {
+   log.warn "Disabling debug logging"
+   device.updateSetting("logEnable", [value:"false", type:"bool"])
+}
+
+/** Performs basic check on data returned from HTTP response to determine if should be
+  * parsed as likely Hue Bridge data or not; returns true (if OK) or logs errors/warnings and
+  * returns false if not
+  * @param resp The async HTTP response object to examine
+  */
+private Boolean checkIfValidResponse(hubitat.scheduling.AsyncResponse resp) {
+   if (logEnable == true) log.debug "Checking if valid HTTP response/data from Bridge..."
+   Boolean isOK = true
+   if (resp.status < 400) {
+      if (resp.json == null) {
+         isOK = false
+         if (resp.headers == null) log.error "Error: HTTP ${resp.status} when attempting to communicate with Bridge"
+         else log.error "No JSON data found in response. ${resp.headers.'Content-Type'} (HTTP ${resp.status})"
+         parent.sendBridgeDiscoveryCommandIfSSDPEnabled(true) // maybe IP changed, so attempt rediscovery 
+         parent.setBridgeOnlineStatus(false)
+      }
+      else if (resp.json) {
+         if ((resp.json instanceof List) && resp.json.getAt(0).error) {
+            // Bridge (not HTTP) error (bad username, bad command formatting, etc.):
+            isOK = false
+            log.warn "Error from Hue Bridge: ${resp.json[0].error}"
+            // Not setting Bridge to offline when light/scene/group devices end up here because could
+            // be old/bad ID and don't want to consider Bridge offline just for that (but also won't set
+            // to online because wasn't successful attempt)
+         }
+         // Otherwise: probably OK (not changing anything because isOK = true already)
+      }
+      else {
+         isOK = false
+         log.warn("HTTP status code ${resp.status} from Bridge")
+         // TODO: Update for mDNS if/when switch:
+         if (resp?.status >= 400) parent.sendBridgeDiscoveryCommandIfSSDPEnabled(true) // maybe IP changed, so attempt rediscovery 
+         parent.setBridgeOnlineStatus(false)
+      }
+      if (isOK == true) parent.setBridgeOnlineStatus(true)
+   }
+   else {
+      log.warn "Error communicating with Hue Bridge: HTTP ${resp?.status}"
+      isOK = false
+   }
+   return isOK
+}
+
+void doSendEvent(String eventName, eventValue, String eventUnit=null, Boolean forceStateChange=false) {
+   //if (logEnable == true) log.debug "doSendEvent($eventName, $eventValue, $eventUnit)"
+   String descriptionText = "${device.displayName} ${eventName} is ${eventValue}${eventUnit ?: ''}"
+   if (settings.txtEnable == true) log.info(descriptionText)
+   if (eventUnit) {
+      if (forceStateChange == true) sendEvent(name: eventName, value: eventValue, descriptionText: descriptionText, unit: eventUnit, isStateChange: true) 
+      else sendEvent(name: eventName, value: eventValue, descriptionText: descriptionText, unit: eventUnit) 
+   } else {
+      if (forceStateChange == true) sendEvent(name: eventName, value: eventValue, descriptionText: descriptionText, isStateChange: true) 
+      else sendEvent(name: eventName, value: eventValue, descriptionText: descriptionText) 
+   }
+}
+
+// HTTP methods (might be better to split into separate library if not needed for some?)
+
+/** Performs asynchttpGet() to Bridge using data retrieved from parent app or as passed in
+  * @param callbackMethod Callback method
+  * @param clipV2Path The Hue V2 API path (without '/clip/v2', automatically prepended), e.g. '/resource' or '/resource/light'
+  * @param bridgeData Bridge data from parent getBridgeData() call, or will call this method on parent if null
+  * @param data Extra data to pass as optional third (data) parameter to asynchtttpGet() method
+  */
+void bridgeAsyncGetV2(String callbackMethod, String clipV2Path, Map<String,String> bridgeData = null, Map data = null) {
+   if (bridgeData == null) {
+      bridgeData = parent.getBridgeData()
+   }
+   Map params = [
+      uri: "https://${bridgeData.ip}",
+      path: "/clip/v2${clipV2Path}",
+      headers: ["hue-application-key": bridgeData.username],
+      contentType: "application/json",
+      timeout: 15,
+      ignoreSSLIssues: true
+   ]
+   asynchttpGet(callbackMethod, params, data)
+}
+
+
+
+// ~~~ IMPORTED FROM RMoRobert.CoCoHue_Constants_Lib ~~~
+// Version 1.0.0
+
+library (
+   author: "RMoRobert",
+   category: "Convenience",
+   description: "For internal CoCoHue use only. Not intended for external use. Contains field variables shared by many CoCoHue apps and drivers.",
+   name: "CoCoHue_Constants_Lib",
+   namespace: "RMoRobert"
+)
+
+// --------------------------------------
+// APP AND DRIVER NAMESPACE AND NAMES:
+// --------------------------------------
+@Field static final String NAMESPACE                  = "RMoRobert"
+@Field static final String DRIVER_NAME_BRIDGE         = "CoCoHue Bridge"
+@Field static final String DRIVER_NAME_BUTTON         = "CoCoHue Button"
+@Field static final String DRIVER_NAME_CT_BULB        = "CoCoHue CT Bulb"
+@Field static final String DRIVER_NAME_DIMMABLE_BULB  = "CoCoHue Dimmable Bulb"
+@Field static final String DRIVER_NAME_GROUP          = "CoCoHue Group"
+@Field static final String DRIVER_NAME_MOTION         = "CoCoHue Motion Sensor"
+@Field static final String DRIVER_NAME_PLUG           = "CoCoHue Plug"
+@Field static final String DRIVER_NAME_RGBW_BULB      = "CoCoHue RGBW Bulb"
+@Field static final String DRIVER_NAME_RGB_BULB       = "CoCoHue RGB Bulb"
+@Field static final String DRIVER_NAME_SCENE          = "CoCoHue Scene"
+
+// --------------------------------------
+// DNI PREFIX for child devices:
+// --------------------------------------
+@Field static final String DNI_PREFIX = "CCH"
+
+// --------------------------------------
+// OTHER:
+// --------------------------------------
+// Used in app and Bridge driver, may eventually find use in more:
+@Field static final String APIV1 = "V1"
+@Field static final String APIV2 = "V2"

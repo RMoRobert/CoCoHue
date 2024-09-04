@@ -4,11 +4,8 @@
  *  Copyright 2019-2024 Robert Morris
  *
  *  DESCRIPTION:
- *  Community-developed Hue Bridge integration app for Hubitat, including support for lights,
+ *  Hue Bridge integration app for Hubitat, including support for lights,
  *  groups, and scenes.
- 
- *  TO INSTALL:
- *  See documentation on Hubitat Community forum or README.MD file in GitHub repo
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  *  in compliance with the License. You may obtain a copy of the License at:
@@ -21,7 +18,7 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2024-08-31
+ *  Last modified: 2024-09-03
 
  *  Changelog:
  *  v5.0   - Use API v2 by default, remove deprecated features
@@ -58,34 +55,47 @@ import hubitat.scheduling.AsyncResponse
 import com.hubitat.app.DeviceWrapper
 
 
-
 @Field static final Integer debugAutoDisableMinutes = 30
 
 // Current "schema" of app settings, state, DNI format, and related features that occasionally change -- used by some methods to check
 // if need to run once-post-upgrade conversions, etc. Increase iff such modifications become necessary:
 @Field static final Integer currentSchemaVersion = 5
 
-@Field static final Map driverMap = [
-   "extended color light":     "CoCoHue RGBW Bulb",
-   "color light":              "CoCoHue RGBW Bulb",  // eventually should make this one RGB
-   "color temperature light":  "CoCoHue CT Bulb",
-   "dimmable light":           "CoCoHue Dimmable Bulb",
-   "on/off light":             "CoCoHue On/Off Plug",
-   "on/off plug-in unit":      "CoCoHue On/Off Plug",
-   "DEFAULT":                  "CoCoHue RGBW Bulb"
-]
+String getDriverNameForDeviceType(String deviceType) {
+   switch (deviceType) {
+      case "extended color light":
+         return DRIVER_NAME_RGBW_BULB
+         break
+      case "color light":
+         return DRIVER_NAME_RGB_BULB
+         break
+      case "color temperature light":
+         return DRIVER_NAME_CT_BULB
+         break
+      case "dimmable light":
+         return DRIVER_NAME_DIMMABLE_BULB
+         break
+      case "on/off light":
+      case "on/off plug-in unit":
+         return DRIVER_NAME_PLUG
+         break
+      default:
+         return DRIVER_NAME_RGBW_BULB  // reasonable enough?
+         break
+   }
+}
 
 @Field static final Integer minPossibleV2SwVersion = 1948086000 // minimum swversion on Bridge needed for Hue V2 API
 @Field static final Integer minV2SwVersion = 1955082050         // ... but 1955082050 recommended for production use
 
 definition (
-   name: APP_NAME,
-   namespace: NAMESPACE,
+   name: "CoCoHue - Hue Bridge Integration",
+   namespace: "RMoRobert",
    author: "Robert Morris",
-   description: "${APP_NAME != 'Hue Bridge Integration' ? 'Community-created ' : ''}Philips Hue integration for Hue Bridge lights and other Hue features and devices",
+   description: "Community-created Philips Hue integration for Hue Bridge lights and other Hue devices and features",
    category: "Convenience",
    installOnOpen: true,
-   documentationLink: (APP_NAME != 'Hue Bridge Integration' ? "https://community.hubitat.com/t/release-cocohue-hue-bridge-integration-including-scenes/27978" : "https://docs2.hubitat.com/en/apps/hue-bridge-integration"),
+   documentationLink: "https://community.hubitat.com/t/release-cocohue-hue-bridge-integration-including-scenes/27978",
    iconUrl: "",
    iconX2Url: "",
    iconX3Url: ""
@@ -103,10 +113,12 @@ preferences {
    page name: "pageSelectScenes"
    page name: "pageSelectMotionSensors"
    page name: "pageSelectButtons"
+   page name: "pageSupportOptions"
 }
 
 void installed() {
    log.debug "installed()"
+   app.updateSetting("logEnable", true)
    initialize()
 }
 
@@ -145,7 +157,7 @@ void upgradeCCHv1DNIsToV2() {
       asynchttpGet("upgradeCCHv1DNIsToV2ResponseHandler", params)
    }
    else {
-      if (logEnable == true) log.debug "Not configured to use Hue V2 API, so not upgrading DNIs to V2 API format."
+      if (logEnable == true && !state.useV2) log.debug "Not configured to use Hue V2 API, so not upgrading DNIs to V2 API format."
    }
 }
 
@@ -153,28 +165,22 @@ void upgradeCCHv1DNIsToV2ResponseHandler(AsyncResponse resp, data=null) {
    if (logEnable == true) log.debug "upgradeCCHv1DNIsToV2ResponseHandler()"
    if (resp.status == 200 && !(resp.error) && resp.json?.data) {
       if (logEnable == true) log.debug "Parsing data from Bridge /resources endpoint..."
-
+      
       // -- Get all relevant device data from API response: --
-      List<Map> lightsData = resp.json.data.findAll { it.type == "light" } ?: [:] // lights
-      List<Map> roomsData = resp.json.data.findAll { it.type == "room" } ?: [:]  // rooms (groups)
-      List<Map> zonesData = resp.json.data.findAll { it.type == "zone" } ?: [:]    // zones (groups)
-      List<Map> groupsData = resp.json.data.findAll { it.type == "grouped_light" } ?: [:]  // "pure" groups (groups)
-      List<Map> scenesData = resp.json.data.findAll { it.type == "scene" } ?: [:]  // scenes
-      List<Map> motionData = resp.json.data.findAll { it.type == "motion" } ?: [:]  // motion for motion sensorsor motion sensors
-      List<Map> temperatureData = resp.json.data.findAll { it.type == "temperature" } ?: [:]  // temperature for motion sensors
-      List<Map> illuminanceData = resp.json.data.findAll { it.type == "light_level" } ?: [:]  // lux for motion sensors (all three of above have separate V1 IDs)
+      List<Map> lightsData = resp.json.data.findAll { it.type == "light" } ?: [[:]] // lights
+      List<Map> roomsData = resp.json.data.findAll { it.type == "room" } ?: [[:]]  // rooms (groups)
+      List<Map> zonesData = resp.json.data.findAll { it.type == "zone" } ?: [[:]]    // zones (groups)
+      List<Map> groupsData = resp.json.data.findAll { it.type == "grouped_light" } ?: [[:]]  // "pure" groups (groups)
+      List<Map> scenesData = resp.json.data.findAll { it.type == "scene" } ?: [[:]]  // scenes
+      List<Map> motionData = resp.json.data.findAll { it.type == "motion" } ?: [[:]]  // motion for motion sensorsor motion sensors
+      List<Map> temperatureData = resp.json.data.findAll { it.type == "temperature" } ?: [[:]]  // temperature for motion sensors
+      List<Map> illuminanceData = resp.json.data.findAll { it.type == "light_level" } ?: [[:]]  // lux for motion sensors (all three of above have separate V1 IDs)
       // Don't need this for motion or button since was coupled with other data in V1:
       //List<Map> batteryData = resp.json.data.findAll { it.type == "device_power" }
       // Not doing buttons because have always been created using only V2 ID
 
       // -- Now, look up each Hubitat device and perform DNI conversion if found on Hue --
-      final List<Map<String,String>> conversionKeys = [
-         // Format is ["V1 DNI Infix": "id_v1 prefix in V2 API data"]
-         ["Light": "/lights/"],
-         ["Group": "/groups/"],
-         ["Scene": "/scenes/"]
-      ]
-      // converting lights, groups, and scens are all pretty similar:
+      // converting lights, groups, and scens are all pretty similar (TODO: see if can refactor and reuse more code among all 3?):
       lightsData.each { Map hueData ->
          String id = hueData.id 
          String id_v1 = hueData.id_v1
@@ -267,11 +273,10 @@ void upgradeCCHv1DNIsToV2ResponseHandler(AsyncResponse resp, data=null) {
   * usable in new (CoCoHue-based) integration. DO NOT REMOVE this method unless can ensure
   * no user is upgrading from old/built-in Hue app (pre-platform 2.4.0):
  */
-void convertBuiltInIntegrationStatesToNew() {
-   //log.trace "convertBuiltInIntegrationStatesToNew..."
+void convertBuiltInIntegrationStatesToNew(Boolean forceTryAgain=false) {
+   if (logEnable) log.debug "convertBuiltInIntegrationStatesToNew..."
    if (!state.updatedTo || state.updatedTo < currentSchemaVersion) { 
-      if (state.bridgeHost) {  // basic heuristic to determine if was built-in integration (uses this state name to track Bridge IP; CoCoHue did not)
-         //log.trace "proceeding..."
+      if (state.bridgeHost || forceTryAgain==true) {  // basic heuristic to determine if was built-in integration (uses this state name to track Bridge IP; CoCoHue did not)
          // nothing -- want to upgrade
       }
       else {
@@ -325,7 +330,7 @@ void convertBuiltInIntegrationStatesToNew() {
          app.removeSetting("pollOptions")
       }
       //log.trace "dni conversion prep"
-      // Convert DNIs from original built-in to CoCoHue format:
+      // Convert DNIs from original built-in to new, CoCoHue-esque format:
       getChildDevices().each { DeviceWrapper ogDev ->
          if (ogDev.deviceNetworkId.startsWith("hueGroup:")) {
             // Group (DNI format = hueGroup:<appId>/<HueV1D>, e.g., hueGroup:12:89)
@@ -341,7 +346,7 @@ void convertBuiltInIntegrationStatesToNew() {
             if (logEnable == true) log.debug "Converting child device for light ID V1 $lightIdV1 to $newDniV1"
             ogDev.setDeviceNetworkId(newDniV1)
          }
-         else {
+         else if (ogDev.deviceNetworkId.length() == 12) {
             // Bridge (DNI = MAC, no separators, e.g., 001788201234)
             try {
                if (logEnable == true) log.debug "Converting child bridge device DNI of ${ogDev.deviceNetworkId} to ${DNI_PREFIX}/${app.id}"
@@ -351,10 +356,13 @@ void convertBuiltInIntegrationStatesToNew() {
                log.warn "Error updating Bridge DNI to new format: $ex"
             }
          }
+         else {
+            if (logEnable == true) log.debug "Unable to determine device type for devvice ${ogDev.displayName} with DNI  ${ogDev.deviceNetworkId}. Ignoring."
+         }
       }
       app.updateSetting("useEventStream", [type: "bool", value: false])
       unschedule()
-      // Quick way of keeping track of what CoCoHue version app should be updated to when all is done:
+      // Quick way of keeping track of what CoCoHue version app/device/etc. settings should be "updated" to when breaking changes are made:
       state.updatedTo = currentSchemaVersion
       // Should re-etablish polling, etc. if configured and lost in above shuffle:
       initialize()
@@ -388,8 +396,11 @@ void initialize() {
          unsubscribe("ssdpHandler")
          unschedule("periodicSendDiscovery")
       }
-      subscribe(location, "systemStart", hubRestartHandler)
-      if (state.bridgeAuthorized) sendBridgeDiscoveryCommandIfSSDPEnabled() // do discovery if user clicks "Done"
+      subscribe(location, "systemStart", "hubRestartHandler")
+      if (state.bridgeAuthorized) {
+         // Do discovery if user clicks "Done" (but wait a bit in case other data also being fetched...)
+         runIn(10, "sendBridgeDiscoveryCommandIfSSDPEnabled")
+      }
    }
    else {
       unsubscribe("ssdpHandler")
@@ -491,7 +502,7 @@ void sendBridgeDiscoveryCommandIfSSDPEnabled(Boolean checkIfRecent=true) {
 }
 
 void hubRestartHandler(evt) {
-   sendBridgeDiscoveryCommandIfSSDPEnabled()
+   runIn(10, "sendBridgeDiscoveryCommandIfSSDPEnabled")
 }
 
 // Scheduled job handler; if using SSDP, schedules to run once a day just in case
@@ -508,14 +519,26 @@ def pageFirstPage() {
    state.authRefreshInterval = 5
    state.discoTryCount = 0
    state.authTryCount = 0
+   // Shouldn't happen with installOnOpen: true, but just in case:
    if (app.getInstallationState() == "INCOMPLETE") {
-      // Shouldn't happen with installOnOpen: true, but just in case...
       dynamicPage(name: "pageIncomplete", uninstall: true, install: true) {
          section() {
-            paragraph "Please select \"Done\" to install CoCoHue.<br>Then, re-open to set up your Hue Bridge."
+            paragraph "Please select \"Done\" to finish installation.<br>Then, re-open to set up your Hue Bridge."
          }
       }
    }
+   
+   // Basic heuristic to determine is upgrade from original (pre-2.4.0) built-in app
+   else if (state.bridgeHost && (!state.updatedTo || state.updatedTo < currentSchemaVersion)) {
+      // Normally happens on hub reboot via initialize() in Bridge driver, but try here too in case
+      // that doesn't happen:
+      dynamicPage(name: "pageFirstPage", uninstall: true, install: true) {
+         section() {
+            paragraph "Please select \"Done\" to finish upgrading the integration. Then re-open to continue setup if needed."
+         }
+      }
+   }
+   // Show "real" pages otherwise, depending on state:
    else {
       if (state.bridgeLinked) {
          return pageManageBridge()
@@ -554,8 +577,8 @@ def pageAddBridge() {
                input name: "selectedDiscoveredBridge", type: "enum", title: "Discovered bridges:", options: state.discoveredBridges,
                      multiple: false, submitOnChange: true
                if (!(settings.selectedDiscoveredBridge)) {
-                  if (!(state.discoveredBridges)) paragraph("Please wait while CoCoHue discovers Hue Bridges on your network...")
-                  else paragraph("Select a Hue Bridge above to begin adding it to CoCoHue.")
+                  if (!(state.discoveredBridges)) paragraph("Please wait while we discover Hue Bridges on your network...")
+                  else paragraph("Select a Hue Bridge above to begin adding it to your Hubitat Elevation hub.")
                }
                else {
                   if (/*!state.bridgeLinked ||*/ !state.bridgeAuthorized)
@@ -617,7 +640,7 @@ def pageReAddBridge() {
 }
 
 def pageLinkBridge() {
-   if (logEnable == true) log.debug "Beginning brdige link process..."
+   if (logEnable == true) log.debug "Beginning bridge link process..."
    String ipAddress = (settings.useSSDP != false) ? settings.selectedDiscoveredBridge : settings.bridgeIP
    state.ipAddress = ipAddress
    if (logEnable == true) log.debug "  IP address = ${state.ipAddress}"
@@ -632,7 +655,7 @@ def pageLinkBridge() {
       }
    }
    dynamicPage(name: "pageLinkBridge", refreshInterval: state.authRefreshInterval, uninstall: true, install: false,
-               nextPage: "pageFirstPage") {  
+               nextPage: "pageFirstPage") {
       section("Linking Hue Bridge") {
          if (!(state.bridgeAuthorized)) {
                log.debug "Attempting Hue Bridge authorization; attempt number ${state.authTryCount+1}"
@@ -661,8 +684,8 @@ def pageLinkBridge() {
                if (!state.bridgeLinked || !getChildDevice("${DNI_PREFIX}/${app.id}")) {
                   log.debug "Bridge authorized. Requesting information from Bridge and creating Hue Bridge device on Hubitat..."
                   paragraph "Bridge authorized. Requesting information from Bridge and creating Hue Bridge device on Hubitat..."
-                  if (settings["useSSDP"]) sendBridgeInfoRequest()
-                  else sendBridgeInfoRequest(ip: settings.bridgeIP ?: state.ipAddress, port: settings.customPort as Integer ?: null)
+                  if (settings["useSSDP"]) sendBridgeInfoRequest(createBridge: true)
+                  else sendBridgeInfoRequest(createBridge: true, ip: settings.bridgeIP ?: state.ipAddress, port: settings.customPort as Integer ?: null)
                }
                else {
                   if (logEnable == true) log.debug("Bridge already linked; skipping Bridge device creation")
@@ -685,6 +708,18 @@ def pageLinkBridge() {
          else {
             paragraph "<script>\$('button[name=\"_action_next\"]').hide()</script>"
          }
+      }
+   }
+}
+
+def pageSupportOptions() {
+   dynamicPage(name: "pageSupportOptions", uninstall: true, install: false, nextPage: "pageManageBridge") {
+      section() {
+         paragraph introText
+
+         
+         paragraph "Retry enabling V2 API (server-sent events/SSE/eventstream) option:"
+         input name: "btnRetryV2APIEnable", type: "button", title: "Retry Migration", submitOnChange: true
       }
    }
 }
@@ -760,13 +795,15 @@ def pageManageBridge() {
             options: [0:"Disabled", 15:"15 seconds", 20:"20 seconds", 30:"30 seconds", 45:"45 seconds", 60:"1 minute (default)", 120:"2 minutes",
                       180:"3 minutes", 300:"5 minutes", 420:"7 minutes", 6000:"10 minutes", 1800:"30 minutes", 3600:"1 hour", 7200:"2 hours", 18000:"5 hours"],
                       defaultValue: 60
-         input name: "boolCustomLabel", type: "bool", title: "Customize the name of this CoCoHue app instance", defaultValue: false, submitOnChange: true
+         input name: "boolCustomLabel", type: "bool", title: "Customize the name of this app", defaultValue: false, submitOnChange: true
          if (settings.boolCustomLabel) label title: "Custom name for this app", required: false
          input name: "logEnable", type: "bool", title: "Enable debug logging", defaultValue: true
       }
       section("Advanced Options", hideable: true, hidden: true) {
          href(name: "hrefReAddBridge", title: "Edit Bridge IP, re-authorize, or re-discover...",
                description: "", page: "pageReAddBridge")
+         href(name: "hrefSupportOptions", title: "Advanced Debug Options...",
+               description: "", page: "pageSupportOptions")
          if (settings.useSSDP != false) {
             input name: "keepSSDP", type: "bool", title: "Remain subscribed to Bridge discovery requests (recommended to keep enabled if Bridge has dynamic IP address)",
                defaultValue: true
@@ -808,7 +845,7 @@ def pageSelectLights() {
       }
       if (!bulbCache) {
          section("Discovering bulbs/lights. Please wait...") {
-            paragraph "Select \"Refresh\" if you see this message for an extended period of time"
+            paragraph "Select \"Refresh\" if you see this message for an extended period of time and do not see devices you have added to Hue."
             input name: "btnBulbRefresh", type: "button", title: "Refresh", submitOnChange: true
          }
       }
@@ -886,7 +923,7 @@ def pageSelectGroups() {
       }
       if (!groupCache) { 
          section("Discovering groups. Please wait...") {
-               paragraph "Select \"Refresh\" if you see this message for an extended period of time"
+               paragraph "Select \"Refresh\" if you see this message for an extended period of time and do not see devices you have added to Hue."
                input name: "btnGroupRefresh", type: "button", title: "Refresh", submitOnChange: true
          }
       }
@@ -936,11 +973,17 @@ def pageSelectScenes() {
    state.useV2 ? bridge.getAllScenesV2() : bridge.getAllScenesV1()
    List arrNewScenes = []
    Map sceneCache = bridge.getAllScenesCache()
-   Map groupCache = state.useV2 ? (bridge.getAllRoomsCache() + bridge.getAllZonesCache()) : bridge.getAllGroupsCache()
+   Map groupCache 
+   if (state.useV2 == true) {
+      groupCache = (bridge.getAllRoomsCache() ?: [:]) + (bridge.getAllZonesCache() ?: [:])
+   }
+   else {
+      groupCache = bridge.getAllGroupsCache()
+   }
    List<DeviceWrapper> unclaimedScenes = getChildDevices().findAll { it.deviceNetworkId.startsWith("${DNI_PREFIX}/${app.id}/Scene/") }
    Map grps = [:]
    groupCache?.each { grps << [(it.key) : (it.value.name)] }
-   dynamicPage(name: "pageSelectScenes", refreshInterval: sceneCache ? 0 : 7, uninstall: true, install: false, nextPage: "pageManageBridge") {  
+   dynamicPage(name: "pageSelectScenes", refreshInterval: sceneCache ? 0 : 7, uninstall: true, install: false, nextPage: "pageManageBridge") {
       Map addedScenes = [:]  // To be populated with scenes user has added, matched by Hue ID
       if (!bridge) {
          log.error "No Bridge device found"
@@ -983,7 +1026,7 @@ def pageSelectScenes() {
 
       if (!sceneCache) {
          section("Discovering scenes. Please wait...") {
-            paragraph "Select \"Refresh\" if you see this message for an extended period of time"
+            paragraph "Select \"Refresh\" if you see this message for an extended period of time and do not see devices you have added to Hue."
             input name: "btnSceneRefresh", type: "button", title: "Refresh", submitOnChange: true
          }
       }
@@ -1063,7 +1106,7 @@ def pageSelectMotionSensors() {
       }
       if (!sensorCache) {
          section("Discovering sensors. Please wait...") {
-            paragraph "Select \"Refresh\" if you see this message for an extended period of time"
+            paragraph "Select \"Refresh\" if you see this message for an extended period of time and do not see devices you have added to Hue."
             input name: "btnSensorRefresh", type: "button", title: "Refresh", submitOnChange: true
          }
       }
@@ -1140,7 +1183,7 @@ def pageSelectButtons() {
       }
       if (!buttonCache) {
          section("Discovering buttons. Please wait...") {
-            paragraph "Select \"Refresh\" if you see this message for an extended period of time"
+            paragraph "Select \"Refresh\" if you see this message for an extended period of time and do not see devices you have added to Hue."
             input name: "btnButtonRefresh", type: "button", title: "Refresh", submitOnChange: true
          }
       }
@@ -1199,7 +1242,7 @@ void createNewSelectedBulbDevices() {
       if (b) {
          try {
             if (logEnable == true) log.debug "Creating new device for Hue light ${it} (${b.name})"
-            String devDriver = driverMap[b.type.toLowerCase()] ?: driverMap["DEFAULT"]
+            String devDriver = getDriverNameForDeviceType(b.type.toLowerCase())
             String devDNI = "${DNI_PREFIX}/${app.id}/Light/${it}"
             Map devProps = [name: (settings["boolAppendBulb"] ? b.name + " (Hue Bulb)" : b.name)]
             addChildDevice(NAMESPACE, devDriver, devDNI, devProps)
@@ -1220,7 +1263,6 @@ void createNewSelectedBulbDevices() {
  * page (intended to be called after navigating away/using "Done" from that page)
  */
 void createNewSelectedGroupDevices() {
-   String driverName = "CoCoHue Group"
    DeviceWrapper bridge = getChildDevice("${DNI_PREFIX}/${app.id}")
    if (bridge == null) log.error("Unable to find Bridge device")
    Map groupCache = bridge?.getAllGroupsCache()
@@ -1231,7 +1273,7 @@ void createNewSelectedGroupDevices() {
             if (logEnable == true) log.debug("Creating new device for Hue group ${it} (${g.name})")
             String devDNI = "${DNI_PREFIX}/${app.id}/Group/${it}"
             Map devProps = [name: (settings["boolAppendGroup"] ? g.name + " (Hue Group)" : g.name)]
-            addChildDevice(NAMESPACE, driverName, devDNI, devProps)
+            addChildDevice(NAMESPACE, DRIVER_NAME_GROUP, devDNI, devProps)
 
          }
          catch (Exception ex) {
@@ -1251,7 +1293,6 @@ void createNewSelectedGroupDevices() {
  * page (intended to be called after navigating away/using "Done" from that page)
  */
 void createNewSelectedSceneDevices() {
-   String driverName = "CoCoHue Scene"
    DeviceWrapper bridge = getChildDevice("${DNI_PREFIX}/${app.id}")
    if (!bridge) log.error("Unable to find Bridge device")
    Map sceneCache = bridge?.getAllScenesCache()
@@ -1262,7 +1303,7 @@ void createNewSelectedSceneDevices() {
                if (logEnable == true) log.debug "Creating new device for Hue group ${it} (state.sceneFullNames?.get(it) ?: sc.name)"
                String devDNI = "${DNI_PREFIX}/${app.id}/Scene/${it}"
                Map devProps = [name: (state.sceneFullNames?.get(it) ?: sc.name)]
-               addChildDevice(NAMESPACE, driverName, devDNI, devProps)
+               addChildDevice(NAMESPACE, DRIVER_NAME_SCENE, devDNI, devProps)
          } catch (Exception ex) {
                log.error "Unable to create new scene device for $it: $ex"
          }
@@ -1280,7 +1321,6 @@ void createNewSelectedSceneDevices() {
  * page (intended to be called after navigating away/using "Done" from that page)
  */
 void createNewSelectedSensorDevices() {
-   String driverName = "CoCoHue Motion Sensor"
    DeviceWrapper bridge = getChildDevice("${DNI_PREFIX}/${app.id}")
    if (bridge == null) log.error("Unable to find Bridge device")
    Map<String,String> sensorCache = bridge?.getAllSensorsCache()
@@ -1294,7 +1334,7 @@ void createNewSelectedSensorDevices() {
             if (logEnable == true) log.debug "Creating new device for Hue sensor ${id}: (${name})"
             String devDNI = "${DNI_PREFIX}/${app.id}/Sensor/${id}"
             Map devProps = [name: name]
-            addChildDevice(NAMESPACE, driverName, devDNI, devProps)
+            addChildDevice(NAMESPACE, DRIVER_NAME_MOTION, devDNI, devProps)
          }
          catch (Exception ex) {
             log.error "Unable to create new sensor device for $id: $ex"
@@ -1314,7 +1354,6 @@ void createNewSelectedSensorDevices() {
  * page (intended to be called after navigating away/using "Done" from that page)
  */
 void createNewSelectedButtonDevices() {
-   String devDriver = "CoCoHue Button"
    DeviceWrapper bridge = getChildDevice("${DNI_PREFIX}/${app.id}")
    if (bridge == null) log.error("Unable to find Bridge device")
    Map buttonCache = bridge?.getAllButtonsCache()
@@ -1325,7 +1364,7 @@ void createNewSelectedButtonDevices() {
             if (logEnable == true) log.debug "Creating new device for Hue button device ${it} (${b.name})"
             String devDNI = "${DNI_PREFIX}/${app.id}/Button/${it}"
             Map devProps = [name: b.name]
-            DeviceWrapper d = addChildDevice(NAMESPACE, devDriver, devDNI, devProps)
+            DeviceWrapper d = addChildDevice(NAMESPACE, DRIVER_NAME_BUTTON, devDNI, devProps)
             if (d) {
                d.updateDataValue("manufacturer_name", b.manufacturer_name)
                d.updateDataValue("model_id", b.model_id)
@@ -1348,8 +1387,8 @@ void createNewSelectedButtonDevices() {
  */
 void sendUsernameRequest(String protocol="http", Integer port=null) {
    if (logEnable == true) log.debug "sendUsernameRequest()... (IP = ${state.ipAddress})"
-   String locationNameNormalized = location.name?.replaceAll("\\P{InBasic_Latin}", "_").take(13) // Cap at first 13 characters (possible 30-char total limit?)
-   String userDesc = locationNameNormalized ? "Hubitat CoCoHue#${locationNameNormalized}" : "Hubitat CoCoHue"
+   String locationNameNormalized = location.name?.replaceAll("\\P{InBasic_Latin}", "_").take(16) // Cap at first 16 characters (possible 30-char total limit?)
+   String userDesc = locationNameNormalized ? "Hubitat ${DNI_PREFIX}#${locationNameNormalized}" : "Hubitat ${DNI_PREFIX}"
    String ip = state.ipAddress
    Map params = [
       uri:  ip ? """${protocol}://${ip}${port ? ":$port" : ''}""" : getBridgeData().fullHost,
@@ -1435,6 +1474,7 @@ void sendBridgeInfoRequest(Map options) {
 void parseBridgeInfoResponse(resp, Map data) {
    //resp?.properties.each { log.trace it }
    if (logEnable == true) log.debug "parseBridgeInfoResponse(resp?.data = ${resp?.data}, data = $data)"
+   String ipAddress = (data?.ip == null) ? state.ipAddress : data.ip
    Map body
    try {
       body = resp.json
@@ -1465,8 +1505,8 @@ void parseBridgeInfoResponse(resp, Map data) {
       }
       state.bridgeMAC = bridgeMAC
       try {
-         if (!bridgeDevice) bridgeDevice = addChildDevice(NAMESPACE, "CoCoHue Bridge", "${DNI_PREFIX}/${app.id}", null,
-                              [label: """CoCoHue Bridge ${getBridgeId()}${friendlyBridgeName ? " ($friendlyBridgeName)" : ""}""", name: "CoCoHue Bridge"])
+         if (!bridgeDevice) bridgeDevice = addChildDevice(NAMESPACE, DRIVER_NAME_BRIDGE, "${DNI_PREFIX}/${app.id}", null,
+                              [label: """${DRIVER_NAME_BRIDGE} ${getBridgeId()}${friendlyBridgeName ? " ($friendlyBridgeName)" : ""}""", name: DRIVER_NAME_BRIDGE])
          if (!bridgeDevice) {
             log.error "    Bridge device unable to be created or found. Check that driver is installed and no existing device exists for this Bridge." 
          }
@@ -1486,7 +1526,6 @@ void parseBridgeInfoResponse(resp, Map data) {
             }
          }
          if (!(settings.boolCustomLabel)) {
-            app.updateLabel("""CoCoHue - Hue Bridge Integration (${getBridgeId()}${friendlyBridgeName ? " - $friendlyBridgeName)" : ")"}""")
          }
       }
       catch (IllegalArgumentException e) { // could be bad DNI if already exists
@@ -1500,8 +1539,8 @@ void parseBridgeInfoResponse(resp, Map data) {
       if (!(state.bridgeLinked)) { // so in discovery
          if (logEnable == true) log.debug "  Adding Bridge with MAC $bridgeMAC ($friendlyBridgeName) to list of discovered Bridges"
          if (!state.discoveredBridges) state.discoveredBridges = []
-         if (!(state.discoveredBridges.any { it.containsKey(data?.ip) } )) {
-            state.discoveredBridges.add([(data.ip): "${friendlyBridgeName} - ${bridgeMAC}"])
+         if (!(state.discoveredBridges.any { it.containsKey(ipAddress) })) {
+            state.discoveredBridges.add([(ipAddress): "${friendlyBridgeName} - ${bridgeMAC}"])
          }
       }
       else { // Bridge already added, so likely added with discovery; check if IP changed
@@ -1699,7 +1738,7 @@ void updateSceneStateToOffForGroup(String groupID, String excludeDNI=null) {
  * Finds Hubitat devices for member bulbs of group and returns true if any (that are found) are on; returns false
  * if all off or no member bulb devices found.
  * For Hue v1 API only
- * @param Instance of CoCoHue Group device on which to check member bulb states
+ * @param Instance of child Group device on which to check member bulb states
  */
 Boolean getIsAnyGroupMemberBulbOn(groupDevice) {
    if (logEnable == true) log.debug "Determining whether any group member bulbs on for group $groupDevice"
@@ -1761,54 +1800,55 @@ void appButtonHandler(btn) {
       case "btnDiscoBridgeRefresh":
          sendBridgeDiscoveryCommand()
          break
+      case "btnRetryBuiltInMigration":
+         app.updateSetting("logEnable", true)
+         state.remove("currentSchemaVersion")
+         convertBuiltInIntegrationStatesToNew(true)
+         break
+      case "btnRetryV2APIEnable":
+         app.updateSetting("logEnable", true)
+         state.remove("useV2UpgradeCompleted")
+         upgradeCCHv1DNIsToV2()
+         break
       default:
          log.warn "Unhandled app button press: $btn"
    }
 }
-// ~~~~~ start include (73) RMoRobert.CoCoHue_Constants_Lib ~~~~~
-// Version 1.0.0 // library marker RMoRobert.CoCoHue_Constants_Lib, line 1
 
-library ( // library marker RMoRobert.CoCoHue_Constants_Lib, line 3
-   author: "RMoRobert", // library marker RMoRobert.CoCoHue_Constants_Lib, line 4
-   category: "Convenience", // library marker RMoRobert.CoCoHue_Constants_Lib, line 5
-   description: "For internal CoCoHue use only. Not intended for external use. Contains field variables shared by many CoCoHue apps and drivers.", // library marker RMoRobert.CoCoHue_Constants_Lib, line 6
-   name: "CoCoHue_Constants_Lib", // library marker RMoRobert.CoCoHue_Constants_Lib, line 7
-   namespace: "RMoRobert"  // library marker RMoRobert.CoCoHue_Constants_Lib, line 8
-) // library marker RMoRobert.CoCoHue_Constants_Lib, line 9
+// ~~~ IMPORTED FROM RMoRobert.CoCoHue_Constants_Lib ~~~
+// Version 1.0.0
 
-// -------------------------------------- // library marker RMoRobert.CoCoHue_Constants_Lib, line 11
-// APP AND DRIVER NAMESPACE AND NAMES: // library marker RMoRobert.CoCoHue_Constants_Lib, line 12
-// -------------------------------------- // library marker RMoRobert.CoCoHue_Constants_Lib, line 13
+library (
+   author: "RMoRobert",
+   category: "Convenience",
+   description: "For internal CoCoHue use only. Not intended for external use. Contains field variables shared by many CoCoHue apps and drivers.",
+   name: "CoCoHue_Constants_Lib",
+   namespace: "RMoRobert"
+)
 
-// -- CoCoHue -- // library marker RMoRobert.CoCoHue_Constants_Lib, line 15
-@Field static final String NAMESPACE = "RMoRobert" // library marker RMoRobert.CoCoHue_Constants_Lib, line 16
-@Field static final String APP_NAME = "CoCoHue - Hue Bridge Integration" // library marker RMoRobert.CoCoHue_Constants_Lib, line 17
+// --------------------------------------
+// APP AND DRIVER NAMESPACE AND NAMES:
+// --------------------------------------
+@Field static final String NAMESPACE                  = "RMoRobert"
+@Field static final String DRIVER_NAME_BRIDGE         = "CoCoHue Bridge"
+@Field static final String DRIVER_NAME_BUTTON         = "CoCoHue Button"
+@Field static final String DRIVER_NAME_CT_BULB        = "CoCoHue CT Bulb"
+@Field static final String DRIVER_NAME_DIMMABLE_BULB  = "CoCoHue Dimmable Bulb"
+@Field static final String DRIVER_NAME_GROUP          = "CoCoHue Group"
+@Field static final String DRIVER_NAME_MOTION         = "CoCoHue Motion Sensor"
+@Field static final String DRIVER_NAME_PLUG           = "CoCoHue Plug"
+@Field static final String DRIVER_NAME_RGBW_BULB      = "CoCoHue RGBW Bulb"
+@Field static final String DRIVER_NAME_RGB_BULB       = "CoCoHue RGB Bulb"
+@Field static final String DRIVER_NAME_SCENE          = "CoCoHue Scene"
 
+// --------------------------------------
+// DNI PREFIX for child devices:
+// --------------------------------------
+@Field static final String DNI_PREFIX = "CCH"
 
-// -- CoCoHue -- // library marker RMoRobert.CoCoHue_Constants_Lib, line 20
-@Field static final String DRIVER_NAME_BRIDGE = "CoCoHue Bridge" // library marker RMoRobert.CoCoHue_Constants_Lib, line 21
-@Field static final String DRIVER_NAME_BUTTON = "CoCoHue Button" // library marker RMoRobert.CoCoHue_Constants_Lib, line 22
-@Field static final String DRIVER_NAME_CT_BULB = "CoCoHue CT Bulb" // library marker RMoRobert.CoCoHue_Constants_Lib, line 23
-@Field static final String DRIVER_NAME_DIMMABLE_BULB = "CoCoHue Dimmable Bulb" // library marker RMoRobert.CoCoHue_Constants_Lib, line 24
-@Field static final String DRIVER_NAME_GROUP = "CoCoHue Group" // library marker RMoRobert.CoCoHue_Constants_Lib, line 25
-@Field static final String DRIVER_NAME_MOTION = "CoCoHue Motion Sensor" // library marker RMoRobert.CoCoHue_Constants_Lib, line 26
-@Field static final String DRIVER_NAME_PLUG = "CoCoHue Plug" // library marker RMoRobert.CoCoHue_Constants_Lib, line 27
-@Field static final String DRIVER_NAME_RGBW_BULB = "CoCoHue RGBW Bulb" // library marker RMoRobert.CoCoHue_Constants_Lib, line 28
-@Field static final String DRIVER_NAME_SCENE = "CoCoHue Scene" // library marker RMoRobert.CoCoHue_Constants_Lib, line 29
-
-// -------------------------------------- // library marker RMoRobert.CoCoHue_Constants_Lib, line 31
-// DNI PREFIX for child devices: // library marker RMoRobert.CoCoHue_Constants_Lib, line 32
-// -------------------------------------- // library marker RMoRobert.CoCoHue_Constants_Lib, line 33
-
-@Field static final String DNI_PREFIX = "CCH"   // "CCH" for CoCoHue // library marker RMoRobert.CoCoHue_Constants_Lib, line 35
-
-// -------------------------------------- // library marker RMoRobert.CoCoHue_Constants_Lib, line 37
-// OTHER: // library marker RMoRobert.CoCoHue_Constants_Lib, line 38
-// -------------------------------------- // library marker RMoRobert.CoCoHue_Constants_Lib, line 39
-
-// Used in app and Bridge driver, may eventually find use in more: // library marker RMoRobert.CoCoHue_Constants_Lib, line 41
-
-@Field static final String APIV1 = "V1" // library marker RMoRobert.CoCoHue_Constants_Lib, line 43
-@Field static final String APIV2 = "V2" // library marker RMoRobert.CoCoHue_Constants_Lib, line 44
-
-// ~~~~~ end include (73) RMoRobert.CoCoHue_Constants_Lib ~~~~~
+// --------------------------------------
+// OTHER:
+// --------------------------------------
+// Used in app and Bridge driver, may eventually find use in more:
+@Field static final String APIV1 = "V1"
+@Field static final String APIV2 = "V2"

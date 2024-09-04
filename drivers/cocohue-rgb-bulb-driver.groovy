@@ -1,5 +1,5 @@
 /*
- * =============================  __DRIVER_NAME_GROUP__ (Driver) ===============================
+ * =============================  __DRIVER_NAME_RGB_BULB__ (Driver) ===============================
  *
  *  Copyright 2019-2024 Robert Morris
  * 
@@ -17,45 +17,13 @@
  *  Last modified: 2024-09-03
  *
  *  Changelog:
- *  v5.0   - Use API v2 by default, remove deprecated features
- *  v4.2    - Library updates, prep for more v2 API
- *  v4.1.7  - Fix for unexpected Hubitat event creation when v2 API reports level of 0
- *  v4.1.5  - Improved v2 brightness parsing
- *  v4.0    - Add SSE support for push
- *  v3.5.2 -  setColor() fix (refactor code into library--was not previously)
- *  v3.5.1  - Refactor some code into libraries (code still precompiled before upload; should not have any visible changes)
- *  v3.5    - Add LevelPreset capability (replaces old level prestaging option); added preliminary color
- *            and CT prestating coommands; added "reachable" attribte from Bridge to bulb and group
- *            drivers (thanks to @jtp10181 for original implementation)
- *  v3.1.3  - Adjust setLevel(0) to honor rate
- *  v3.1.1  - Fix for setColorTempeature() not turning bulb on in some cases
- *  v3.1    - Improved error handling and debug logging; added optional setColorTemperature parameters
- *  v3.0    - Improved HTTP error handling
- *  v2.1.1  - Improved rounding for level (brightness) to/from Bridge
- *  v2.1    - Added optional rate to setColor per Hubitat (used by Hubitat Groups and Scenes); more static typing;
- *            GroupScenes for this group will now also be marked as off (if option enabled) when Bridge reports all group bulbs as off instead of only when off() sent
- *  v2.0    - Added startLevelChange rate option; improved HTTP error handling; attribute events now generated
- *            only after hearing back from Bridge; Bridge online/offline status improvements
- *  v1.9    - Parse xy as ct (previously did rgb but without parsing actual color)
- *  v1.8c   - Added back color/CT events for manual commands not from bridge without polling
- *  v1.8b   - Skip spurious color name event if bulb not in correct mode
- *  v1.8    - Changed effect state to custom attribute instead of colorMode
- *            Added ability to disable group->bulb state propagation
- *  v1.7b   - Modified startLevelChange behavior to avoid possible problems with third-party devices
- *            Removed ["alert:" "none"] from on() command, now possible explicitly with flashOff()
- *  v1.7    - Bulb switch/level states now propgate to groups w/o polling
- *  v1.6b   - Changed bri_inc to match Hubitat behavior
- *  v1.5b   - Eliminated duplicate color/CT events on refresh
- *  v1.5    - Group switch/level/etc. states now propagated to member bulbs w/o polling
- *  v1.1    - Added parity with bulb features (effects, etc.)
- *  v1.0    - Initial Release
+ *  v5.0    - Initial release, based on RGBW driver
  */ 
 
 #include RMoRobert.CoCoHue_Common_Lib
 #include RMoRobert.CoCoHue_Constants_Lib
 #include RMoRobert.CoCoHue_Bri_Lib
 #include RMoRobert.CoCoHue_CT_Lib
-#include RMoRobert.CoCoHue_HueSat_Lib
 #include RMoRobert.CoCoHue_Flash_Lib
 #include RMoRobert.CoCoHue_Effect_Lib
 
@@ -71,22 +39,21 @@ import hubitat.scheduling.AsyncResponse
 @Field static final Map<Integer,String> lightEffects = [0: "None", 1:"Color Loop"]
 @Field static final Integer maxEffectNumber = 1
 
-// Default preference values
-@Field static final BigDecimal defaultLevelTransitionTime = 1000
+// These defaults are specified in Hue (decisecond) durations, used if not specified in preference or command:
+@Field static final Integer defaultLevelTransitionTime = 4
+@Field static final Integer defaultOnTransitionTime = 4
 
 // Default list of command Map keys to ignore if SSE enabled and command is sent from hub (not polled from Bridge), used to
 // ignore duplicates that are expected to be processed from SSE momentarily:
-// Unlike bulbs, SSE API does not seem to send anything besides on/off:
-@Field static final List<String> listKeysToIgnoreIfSSEEnabledAndNotFromBridge = ["on"]
+@Field static final List<String> listKeysToIgnoreIfSSEEnabledAndNotFromBridge = ["on", "bri"]
 
 // "ct" or "hs" for now -- to be finalized later:
-@Field static final String xyParsingMode = "ct"
+@Field static final String xyParsingMode = "hs"
 
 metadata {
-   definition(name: "__DRIVER_NAME_GROUP__", namespace: "__NAMESPACE__", author: "Robert Morris", importUrl: "https://raw.githubusercontent.com/HubitatCommunity/CoCoHue/master/drivers/cocohue-group-driver.groovy") {
+   definition(name: "__DRIVER_NAME_RGB_BULB__", namespace: "__NAMESPACE__", author: "Robert Morris", importUrl: "https://raw.githubusercontent.com/HubitatCommunity/CoCoHue/master/drivers/cocohue-rgb-bulb-driver.groovy") {
       capability "Actuator"
       capability "ColorControl"
-      capability "ColorTemperature"
       capability "Refresh"
       capability "Switch"
       capability "SwitchLevel"
@@ -98,29 +65,33 @@ metadata {
       command "flash"
       command "flashOnce"
       command "flashOff"
-   
+
       attribute "effect", "string"
       attribute "reachable", "string"
    }
-       
+
    preferences {
-      input name: "transitionTime", type: "enum", description: "", title: "Transition time", options:
-         [[0:"ASAP"],[400:"400ms"],[500:"500ms"],[1000:"1s"],[1500:"1.5s"],[2000:"2s"],[5000:"5s"]], defaultValue: 400
+      input name: "transitionTime", type: "enum", description: "", title: "Level transition time", options:
+         [[0:"ASAP"],[200:"200ms"],[400:"400ms (default)"],[500:"500ms"],[1000:"1s"],[1500:"1.5s"],[2000:"2s"],[5000:"5s"]], defaultValue: 400
       input name: "levelChangeRate", type: "enum", description: "", title: '"Start level change" rate', options:
          [["slow":"Slow"],["medium":"Medium"],["fast":"Fast (default)"]], defaultValue: "fast"
-      input name: "ctTransitionTime", type: "enum", description: "", title: "Color temperature transition time", options:
-         [[(-2): "Hue default/do not specify (default)"],[(-1): "Use level transition time (default)"],[0:"ASAP"],[200:"200ms"],[400:"400ms (default)"],[500:"500ms"],[1000:"1s"],[1500:"1.5s"],[2000:"2s"],[5000:"5s"]], defaultValue: -1
+      /*
+      // Sending "bri" with "on:true" alone seems to have no effect, so might as well not implement this for now...
+      input name: "onTransitionTime", type: "enum", description: "", title: "On transition time", options:
+         [[(-2): "Hue default/do not specify (recommended; default; Hue may ignore other values)"],[0:"ASAP"],[200:"200ms"],[400:"400ms (default)"],[500:"500ms"],[1000:"1s"],[1500:"1.5s"],[2000:"2s"],[5000:"5s"]], defaultValue: -2
+      // Not recommended because of problem described here:  https://developers.meethue.com/forum/t/using-transitiontime-with-on-false-resets-bri-to-1/4585
+      input name: "offTransitionTime", type: "enum", description: "", title: "Off transition time", options:
+         [[(-2): "Hue default/do not specify (recommended; default)"],[(-1): "Use on transition time"],[0:"ASAP"],[200:"200ms"],[400:"400ms (default)"],[500:"500ms"],[1000:"1s"],[1500:"1.5s"],[2000:"2s"],[5000:"5s"]], defaultValue: -1
+      */
       input name: "rgbTransitionTime", type: "enum", description: "", title: "RGB transition time", options:
-         [[(-2): "Hue default/do not specify (default)"],[(-1): "Use level transition time (default)"],[0:"ASAP"],[200:"200ms"],[400:"400ms (default)"],[500:"500ms"],[1000:"1s"],[1500:"1.5s"],[2000:"2s"],[5000:"5s"]], defaultValue: -1
+         [[(-2): "Hue default/do not specify"],[(-1): "Use level transition time (default)"],[0:"ASAP"],[200:"200ms"],[400:"400ms (default)"],[500:"500ms"],[1000:"1s"],[1500:"1.5s"],[2000:"2s"],[5000:"5s"]], defaultValue: -1
       input name: "hiRezHue", type: "bool", title: "Enable hue in degrees (0-360 instead of 0-100)", defaultValue: false
       // Note: the following setting does not apply to SSE, which should update the group state immediately regardless:
-      input name: "updateBulbs", type: "bool", description: "", title: "Update member bulb states immediately when group state changes (applicable only if not using V2 API/eventstream)",
-         defaultValue: true
-      input name: "updateScenes", type: "bool", description: "", title: "Mark all GroupScenes for this group as off when group device turns off (applicable only if not using V2 API/eventstream)",
-         defaultValue: true
+      input name: "updateGroups", type: "bool", description: "", title: "Update state of groups immediately when bulb state changes (applicable only if not using V2 API/eventstream)",
+         defaultValue: false
       input name: "logEnable", type: "bool", title: "Enable debug logging", defaultValue: true
       input name: "txtEnable", type: "bool", title: "Enable descriptionText logging", defaultValue: true
-    }
+   }
 }
 
 void installed() {
@@ -145,12 +116,12 @@ void initialize() {
 
 // Probably won't happen but...
 void parse(String description) {
-   log.warn("Running unimplemented parse for: '${description}'")
+   log.warn "Running unimplemented parse for: '${description}'"
 }
 
 /**
  * Parses V1 Hue Bridge device ID number out of Hubitat DNI for use with Hue V1 API calls
- * Hubitat DNI is created in format "CCH/BridgeMACAbbrev/Group/HueDeviceID", so just
+ * Hubitat DNI is created in format "CCH/BridgeMACAbbrev/Light/HueDeviceID", so just
  * looks for number after last "/" character; or try state if DNI is V2 format (avoid if posssible,
  *  as Hue is likely to deprecate V1 ID data in future)
  */
@@ -167,7 +138,7 @@ String getHueDeviceIdV1() {
 
 /**
  * Parses V2 Hue Bridge device ID out of Hubitat DNI for use with Hue V2 API calls
- * Hubitat DNI is created in format "CCH/BridgeMACAbbrev/Group/HueDeviceID", so just
+ * Hubitat DNI is created in format "CCH/BridgeMACAbbrev/Light/HueDeviceID", so just
  * looks for string after last "/" character
  */
 String getHueDeviceIdV2() {
@@ -176,20 +147,26 @@ String getHueDeviceIdV2() {
 
 void on(Number transitionTime = null) {
    if (logEnable == true) log.debug "on()"
-   Map bridgeCmd = ["on": true]
-   if (transitionTime != null) {
-      scaledRate = (transitionTime * 10) as Integer
-      bridgeCmd << ["transitiontime": scaledRate]
+   Map bridgeCmd
+   Integer scaledRate = transitionTime != null ? Math.round(transitionTime * 10).toInteger() : getScaledOnTransitionTime()
+   if (scaledRate == null) {
+      bridgeCmd = ["on": true]
+   }
+   else {
+      bridgeCmd = ["on": true, "transitiontime": scaledRate]
    }
    sendBridgeCommandV1(bridgeCmd)
 }
 
 void off(Number transitionTime = null) {
    if (logEnable == true) log.debug "off()"
-   Map bridgeCmd = ["on": false]
-   if (transitionTime != null) {
-      scaledRate = (transitionTime * 10) as Integer
-      bridgeCmd << ["transitiontime": scaledRate]
+   Map bridgeCmd
+   Integer scaledRate = transitionTime != null ? Math.round(transitionTime * 10).toInteger() : null
+   if (scaledRate == null) {
+      bridgeCmd = ["on": false]
+   }
+   else {
+      bridgeCmd = ["on": false, "transitiontime": scaledRate]
    }
    sendBridgeCommandV1(bridgeCmd)
 }
@@ -200,13 +177,13 @@ void refresh() {
 
 /**
  * (for "classic"/v1 HTTP API)
- * Iterates over Hue light state commands/states in Hue v1 format (e.g., ["on": true]) and does
+ * Iterates over Hue light state commands/states in Hue API v1 format (e.g., ["on": true]) and does
  * a sendEvent for each relevant attribute; intended to be called either when commands are sent
  * to Bridge or to parse/update light states based on data received from Bridge
  * @param bridgeMap Map of light states that are or would be sent to bridge OR state as received from
  *  Bridge
  * @param isFromBridge Set to true if this is data read from Hue Bridge rather than intended to be sent
- *  to Bridge; TODO: see if still needed now that pseudo-prestaging removed
+ *  to Bridge; TODO: see if still needed after removal of pseudo-prestaging features
  */
 void createEventsFromMapV1(Map bridgeCommandMap, Boolean isFromBridge = false, Set<String> keysToIgnoreIfSSEEnabledAndNotFromBridge=listKeysToIgnoreIfSSEEnabledAndNotFromBridge) {
    if (!bridgeCommandMap) {
@@ -220,7 +197,7 @@ void createEventsFromMapV1(Map bridgeCommandMap, Boolean isFromBridge = false, S
       if (logEnable == true) log.debug "Map after ignored keys removed: ${bridgeMap}"
    }
    String eventName, eventUnit, descriptionText
-   def eventValue // could be string or number
+   def eventValue // could be String or number
    String colorMode = bridgeMap["colormode"]
    if (isFromBridge && colorMode == "xy") {
       if (xyParsingMode == "ct") {
@@ -231,25 +208,18 @@ void createEventsFromMapV1(Map bridgeCommandMap, Boolean isFromBridge = false, S
       }
       if (logEnable == true) log.debug "In XY mode but parsing as CT (colorMode = $colorMode)"
    }
-   Boolean isOn = bridgeMap["any_on"]
+   Boolean isOn = bridgeMap["on"]
    bridgeMap.each {
       switch (it.key) {
          case "on":
-            if (isFromBridge) break
-         case "any_on":
             eventName = "switch"
             eventValue = it.value ? "on" : "off"
             eventUnit = null
-            if (device.currentValue(eventName) != eventValue) {
-               doSendEvent(eventName, eventValue, eventUnit)
-               if (eventValue == "off" && settings["updateScenes"] != false) {
-                  parent.updateSceneStateToOffForGroup(getHueDeviceIdV1())
-               }
-            }
+            if (device.currentValue(eventName) != eventValue) doSendEvent(eventName, eventValue, eventUnit)
             break
          case "bri":
             eventName = "level"
-            eventValue = scaleBriFromBridge(it.value)
+            eventValue = scaleBriFromBridge(it.value, "1")
             eventUnit = "%"
             if (device.currentValue(eventName) != eventValue) {
                doSendEvent(eventName, eventValue, eventUnit)
@@ -257,29 +227,13 @@ void createEventsFromMapV1(Map bridgeCommandMap, Boolean isFromBridge = false, S
             break
          case "colormode":
             eventName = "colorMode"
-            eventValue = (it.value == "hs" ? "RGB" : "CT")
+            eventValue = (colorMode == "ct" ? "CT" : "RGB")
+            // Doing this above instead of reading from Bridge like used to...
+            //eventValue = (it.value == "hs" ? "RGB" : "CT")
             eventUnit = null
             if (device.currentValue(eventName) != eventValue) {
                doSendEvent(eventName, eventValue, eventUnit)
             }
-            break
-         case "ct":
-            eventName = "colorTemperature"
-            eventValue = it.value != 0 ? scaleCTFromBridge(it.value) : 0
-            eventUnit = "K"
-            if (device.currentValue(eventName) != eventValue) {
-               if (isFromBridge && colorMode == "hs") {
-                  if (logEnable == true) log.debug "Skipping colorTemperature event creation because light not in ct mode"
-                  break
-               }
-               doSendEvent(eventName, eventValue, eventUnit)
-            }
-            if (isFromBridge && colorMode == "hs") break
-            setGenericTempName(eventValue)
-            eventName = "colorMode"
-            eventValue = "CT"
-            eventUnit = null
-            if (device.currentValue(eventName) != eventValue) doSendEvent(eventName, eventValue, eventUnit)
             break
          case "hue":
             eventName = "hue"
@@ -338,7 +292,7 @@ void createEventsFromMapV1(Map bridgeCommandMap, Boolean isFromBridge = false, S
 }
 
 /**
- * (for V2 API)
+ * (for "new"/V2 API, including eventstream data)
  * Iterates over Hue light state states in Hue API v2 format (e.g., "on={on=true}") and does
  * a sendEvent for each relevant attribute; intended to be called when EventSocket data
  * received for device (as an alternative to polling)
@@ -350,7 +304,7 @@ void createEventsFromMapV2(Map data) {
    Boolean hasCT = data.color_temperature?.mirek != null
    data.each { String key, value ->
       switch (key) {
-         case "on":  // appears equivalent to any_on in group (which is already CoCoHue behavior, so good)
+         case "on":
             eventName = "switch"
             eventValue = value.on ? "on" : "off"
             eventUnit = null
@@ -374,21 +328,7 @@ void createEventsFromMapV2(Map data) {
                if (logEnable == true) log.debug "color received but also have CT, so assume CT parsing"
             }
             break
-         case "color_temperature":
-            if (!hasCT) {
-               if (logEnable == true) "ignoring color_temperature because mirek null"
-               return
-            }
-            eventName = "colorTemperature"
-            eventValue = scaleCTFromBridge(value.mirek)
-            eventUnit = "K"
-            if (device.currentValue(eventName) != eventValue) doSendEvent(eventName, eventValue, eventUnit)
-            setGenericTempName(eventValue)
-            eventName = "colorMode"
-            eventValue = "CT"
-            eventUnit = null
-            if (device.currentValue(eventName) != eventValue) doSendEvent(eventName, eventValue, eventUnit)
-            break
+         // TODO: Figure out equivalent of "reachable" in V2 (zigbee_connectivity on owner?)
          case "id_v1":
             if (state.id_v1 != value) state.id_v1 = value
             break
@@ -399,8 +339,8 @@ void createEventsFromMapV2(Map data) {
 }
 
 /**
- * Sends HTTP PUT to Bridge using the either command map provided
- * @param commandMap Groovy Map (will be converted to JSON) of Hue API commands to send, e.g., [on: true]
+ * Sends HTTP PUT to Bridge using the V1-format map data provided
+ * @param commandMap Groovy Map (will be converted to JSON) of Hue V1 API commands to send, e.g., [on: true]
  * @param createHubEvents Will iterate over Bridge command map and do sendEvent for all
  *        affected device attributes (e.g., will send an "on" event for "switch" if ["on": true] in map)
  */
@@ -413,7 +353,7 @@ void sendBridgeCommandV1(Map commandMap, Boolean createHubEvents=true) {
    Map<String,String> data = parent.getBridgeData()
    Map params = [
       uri: data.fullHost,
-      path: "/api/${data.username}/groups/${getHueDeviceIdV1()}/action",
+      path: "/api/${data.username}/lights/${getHueDeviceIdV1()}/state",
       contentType: 'application/json',
       body: commandMap,
       timeout: 15
@@ -433,41 +373,11 @@ void parseSendCommandResponseV1(AsyncResponse resp, Map data) {
    if (checkIfValidResponse(resp) && data) {
       if (logEnable == true) log.debug "  Bridge response valid; creating events from data map"
       createEventsFromMapV1(data)
-      if ((data.containsKey("on") || data.containsKey("bri")) && settings["updateBulbs"]) {
-         parent.updateMemberBulbStatesFromGroup(data, state.memberBulbs, device.getDeviceNetworkId().endsWith('/0'))
-      }
-      if (data["on"] == false && settings["updateScenes"] != false) {
-         parent.updateSceneStateToOffForGroup(getHueDeviceIdV1())
+      if ((data.containsKey("on") || data.containsKey("bri")) && settings["updateGroups"]) {
+         parent.updateGroupStatesFromBulb(data, getHueDeviceIdV1())
       }
    }
    else {
       if (logEnable == true) log.debug "  Not creating events from map because not specified to do or Bridge response invalid"
    }
-}
-
-/**
- *  Sets state.memberBulbs to IDs of bulbs contained in this group; used to manipulate CoCoHue member
- *  bulb states (e.g., on, off, level, etc.) when group state changed so this info propogates faster than
- *  polling (or if polling disabled)
- */ 
-void setMemberBulbIDs(List ids) {
-   state.memberBulbs = ids
-}
-
-/**
- *  Returns Hue IDs of member bulbs (see setMemberBulbIDs for use case; exposed for use by bridge child app)
- */
-List getMemberBulbIDs() {
-   return state.memberBulbs
-}
-
-/**
- * Sets all group attribute values to something, intended to be called when device initially created to avoid
- * missing attribute values (may cause problems with GH integration, etc. otherwise). Default values are
- * approximately warm white and off.
- */
-private void setDefaultAttributeValues() {
-   if (logEnable == true) log.debug "Setting group device states to sensibile default values..."
-   Map defaultValues = [any_on: false, bri: 254, hue: 8593, sat: 121, ct: 370 ]
-   createEventsFromMapV1(defaultValues)
 }
