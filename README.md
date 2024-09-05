@@ -11,4 +11,4 @@ This is a Hue Bridge integration designed to replace (or supplement) Hubitat's b
 integration.
 
 Files here may be used for testing and in development stages for regular releases of the app, but this repository is not
-recommended for most users.
+recommended for most users. See the `full/cocohue` directory for the app and driver files if interested, however.
