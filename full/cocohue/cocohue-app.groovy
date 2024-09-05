@@ -717,7 +717,6 @@ def pageSupportOptions() {
       section() {
          paragraph introText
 
-         
          paragraph "Retry enabling V2 API (server-sent events/SSE/eventstream) option:"
          input name: "btnRetryV2APIEnable", type: "button", title: "Retry Migration", submitOnChange: true
       }
@@ -1817,14 +1816,6 @@ void appButtonHandler(btn) {
 
 // ~~~ IMPORTED FROM RMoRobert.CoCoHue_Constants_Lib ~~~
 // Version 1.0.0
-
-library (
-   author: "RMoRobert",
-   category: "Convenience",
-   description: "For internal CoCoHue use only. Not intended for external use. Contains field variables shared by many CoCoHue apps and drivers.",
-   name: "CoCoHue_Constants_Lib",
-   namespace: "RMoRobert"
-)
 
 // --------------------------------------
 // APP AND DRIVER NAMESPACE AND NAMES:

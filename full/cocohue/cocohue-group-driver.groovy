@@ -475,15 +475,6 @@ private void setDefaultAttributeValues() {
  * 1.0.2  - HTTP error handling tweaks
  */
 
-library (
-   base: "driver",
-   author: "RMoRobert",
-   category: "Convenience",
-   description: "For internal CoCoHue use only. Not intended for external use. Contains common code shared by many CoCoHue drivers.",
-   name: "CoCoHue_Common_Lib",
-   namespace: "RMoRobert"
-)
-
 void debugOff() {
    log.warn "Disabling debug logging"
    device.updateSetting("logEnable", [value:"false", type:"bool"])
@@ -573,14 +564,6 @@ void bridgeAsyncGetV2(String callbackMethod, String clipV2Path, Map<String,Strin
 // ~~~ IMPORTED FROM RMoRobert.CoCoHue_Constants_Lib ~~~
 // Version 1.0.0
 
-library (
-   author: "RMoRobert",
-   category: "Convenience",
-   description: "For internal CoCoHue use only. Not intended for external use. Contains field variables shared by many CoCoHue apps and drivers.",
-   name: "CoCoHue_Constants_Lib",
-   namespace: "RMoRobert"
-)
-
 // --------------------------------------
 // APP AND DRIVER NAMESPACE AND NAMES:
 // --------------------------------------
@@ -613,15 +596,6 @@ library (
 
 // 1.0.4  - accept String for setLevel() level also 
 // 1.0.3  - levelhandling tweaks
-
-library (
-   base: "driver",
-   author: "RMoRobert",
-   category: "Convenience",
-   description: "For internal CoCoHue use only. Not intended for external use. Contains brightness/level-related code shared by many CoCoHue drivers.",
-   name: "CoCoHue_Bri_Lib",
-   namespace: "RMoRobert"
-)
 
 // "SwitchLevel" commands:
 
@@ -768,15 +742,6 @@ Integer scaleBriFromBridge(Number bridgeLevel, String apiVersion="1") {
 // ~~~ IMPORTED FROM RMoRobert.CoCoHue_CT_Lib ~~~
 // Version 1.0.1
 
-library (
-   base: "driver",
-   author: "RMoRobert",
-   category: "Convenience",
-   description: "For internal CoCoHue use only. Not intended for external use. Contains CT-related code shared by many CoCoHue drivers.",
-    name: "CoCoHue_CT_Lib",
-   namespace: "RMoRobert"
-)
-
 void setColorTemperature(Number colorTemperature, Number level = null, Number transitionTime = null) {
    if (logEnable == true) log.debug "setColorTemperature($colorTemperature, $level, $transitionTime)"
    state.lastKnownColorMode = "CT"
@@ -866,15 +831,6 @@ void setGenericTempName(temp) {
 
 // ~~~ IMPORTED FROM RMoRobert.CoCoHue_HueSat_Lib ~~~
 // Version 1.0.2
-
-library (
-   base: "driver",
-   author: "RMoRobert",
-   category: "Convenience",
-   description: "For internal CoCoHue use only. Not intended for external use. Contains hue/saturation-related code shared by many CoCoHue drivers.",
-   name: "CoCoHue_HueSat_Lib",
-   namespace: "RMoRobert"
-)
 
 void setColor(Map value) {
    if (logEnable == true) log.debug "setColor($value)"
@@ -1034,15 +990,6 @@ void setGenericName(hue) {
 // ~~~ IMPORTED FROM RMoRobert.CoCoHue_Flash_Lib ~~~
 // Version 1.0.0
 
-library (
-   base: "driver",
-   author: "RMoRobert",
-   category: "Convenience",
-   description: "For internal CoCoHue use only. Not intended for external use. Contains flash-related code shared by many CoCoHue drivers.",
-   name: "CoCoHue_Flash_Lib",
-   namespace: "RMoRobert"
-)
-
 void flash() {
    if (logEnable == true) log.debug "flash()"
    if (settings.txtEnable == true) log.info("${device.displayName} started 15-cycle flash")
@@ -1066,15 +1013,6 @@ void flashOff() {
 
 // ~~~ IMPORTED FROM RMoRobert.CoCoHue_Effect_Lib ~~~
 // Version 1.0.1
-
-library (
-   base: "driver",
-   author: "RMoRobert",
-   category: "Convenience",
-   description: "For internal CoCoHue use only. Not intended for external use. Contains effects-related code shared by many CoCoHue drivers.",
-   name: "CoCoHue_Effect_Lib",
-   namespace: "RMoRobert"
-)
 
 void setEffect(String effect) {
    if (logEnable == true) log.debug "setEffect($effect)"

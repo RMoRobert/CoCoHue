@@ -345,15 +345,6 @@ String getGroupID() {
  * 1.0.2  - HTTP error handling tweaks
  */
 
-library (
-   base: "driver",
-   author: "RMoRobert",
-   category: "Convenience",
-   description: "For internal CoCoHue use only. Not intended for external use. Contains common code shared by many CoCoHue drivers.",
-   name: "CoCoHue_Common_Lib",
-   namespace: "RMoRobert"
-)
-
 void debugOff() {
    log.warn "Disabling debug logging"
    device.updateSetting("logEnable", [value:"false", type:"bool"])
@@ -442,14 +433,6 @@ void bridgeAsyncGetV2(String callbackMethod, String clipV2Path, Map<String,Strin
 
 // ~~~ IMPORTED FROM RMoRobert.CoCoHue_Constants_Lib ~~~
 // Version 1.0.0
-
-library (
-   author: "RMoRobert",
-   category: "Convenience",
-   description: "For internal CoCoHue use only. Not intended for external use. Contains field variables shared by many CoCoHue apps and drivers.",
-   name: "CoCoHue_Constants_Lib",
-   namespace: "RMoRobert"
-)
 
 // --------------------------------------
 // APP AND DRIVER NAMESPACE AND NAMES:
