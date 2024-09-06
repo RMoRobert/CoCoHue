@@ -447,14 +447,6 @@ void setLevel(value) {
 
 void setLevel(Number value, Number rate) {
    if (logEnable == true) log.debug "setLevel($value, $rate)"
-   // For backwards compatibility; will be removed in future version:
-   if (levelStaging) {
-      log.warn "Level prestaging preference enabled and setLevel() called. This is deprecated and may be removed in the future. Please move to new, standard presetLevel() command."
-      if (device.currentValue("switch") != "on") {
-         presetLevel(value)
-         return
-      }
-   }
    if (value < 0) value = 1
    else if (value > 100) value = 100
    else if (value == 0) {
@@ -477,21 +469,6 @@ void setLevel(value, rate) {
    Integer intLevel = Math.round(floatLevel)
    Float floatRate = Float.parseFloat(rate.toString())
    setLevel(intLevel, floatRate)
-}
-
-void presetLevel(Number level) {
-   if (logEnable == true) log.debug "presetLevel($level)"
-   if (level < 0) level = 1
-   else if (level > 100) level = 100
-   Integer newLevel = scaleBriToBridge(level)
-   Integer scaledRate = ((transitionTime != null ? transitionTime.toBigDecimal() : 1000) / 1000).toInteger()
-   Boolean isOn = device.currentValue("switch") == "on"
-   doSendEvent("levelPreset", level)
-   if (isOn) {
-      setLevel(level)
-   } else {
-      state.presetLevel = true
-   }
 }
 
 /**

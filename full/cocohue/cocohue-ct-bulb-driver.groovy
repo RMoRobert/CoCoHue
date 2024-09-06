@@ -477,14 +477,6 @@ void setLevel(value) {
 
 void setLevel(Number value, Number rate) {
    if (logEnable == true) log.debug "setLevel($value, $rate)"
-   // For backwards compatibility; will be removed in future version:
-   if (levelStaging) {
-      log.warn "Level prestaging preference enabled and setLevel() called. This is deprecated and may be removed in the future. Please move to new, standard presetLevel() command."
-      if (device.currentValue("switch") != "on") {
-         presetLevel(value)
-         return
-      }
-   }
    if (value < 0) value = 1
    else if (value > 100) value = 100
    else if (value == 0) {
@@ -507,21 +499,6 @@ void setLevel(value, rate) {
    Integer intLevel = Math.round(floatLevel)
    Float floatRate = Float.parseFloat(rate.toString())
    setLevel(intLevel, floatRate)
-}
-
-void presetLevel(Number level) {
-   if (logEnable == true) log.debug "presetLevel($level)"
-   if (level < 0) level = 1
-   else if (level > 100) level = 100
-   Integer newLevel = scaleBriToBridge(level)
-   Integer scaledRate = ((transitionTime != null ? transitionTime.toBigDecimal() : 1000) / 1000).toInteger()
-   Boolean isOn = device.currentValue("switch") == "on"
-   doSendEvent("levelPreset", level)
-   if (isOn) {
-      setLevel(level)
-   } else {
-      state.presetLevel = true
-   }
 }
 
 /**
@@ -602,14 +579,6 @@ Integer scaleBriFromBridge(Number bridgeLevel, String apiVersion="1") {
 void setColorTemperature(Number colorTemperature, Number level = null, Number transitionTime = null) {
    if (logEnable == true) log.debug "setColorTemperature($colorTemperature, $level, $transitionTime)"
    state.lastKnownColorMode = "CT"
-   // For backwards compatibility; will be removed in future version:
-   if (colorStaging) {
-      log.warn "Color prestaging preference enabled and setColorTemperature() called. This is deprecated and may be removed in the future. Please move to new presetColorTemperature() command."
-      if (device.currentValue("switch") != "on") {
-         presetColorTemperature(colorTemperature)
-         return
-      }
-   }
    Integer newCT = scaleCTToBridge(colorTemperature)
    Integer scaledRate = defaultLevelTransitionTime/100
    if (transitionTime != null) {
@@ -623,22 +592,6 @@ void setColorTemperature(Number colorTemperature, Number level = null, Number tr
       bridgeCmd << ["bri": scaleBriToBridge(level)]
    }
    sendBridgeCommandV1(bridgeCmd)
-}
-
-// Not a standard command (yet?), but I hope it will get implemented as such soon in
-// the same manner as this. Otherwise, subject to change if/when that happens....
-void presetColorTemperature(Number colorTemperature) {
-   if (logEnable == true) log.debug "presetColorTemperature($colorTemperature)"
-   Boolean isOn = device.currentValue("switch") == "on"
-   doSendEvent("colorTemperaturePreset", colorTemperature)
-   if (isOn) {
-      setColorTemperature(colorTemperature)
-   } else {
-      state.remove("presetCT")
-      state.presetColorTemperature = true
-      state.presetHue = false
-      state.presetSaturation = false
-   }
 }
 
 /**

@@ -19,7 +19,6 @@
  * =======================================================================================
  *
  *  Last modified: 2024-09-03
-
  *  Changelog:
  *  v5.0   - Use API v2 by default, remove deprecated features
  *  v4.1.9 - Add note that Hue Labs features are now deprecated
@@ -136,7 +135,6 @@ void updated() {
    // also check here:
    convertBuiltInIntegrationStatesToNew()
 }
-
 
 /** Upgrades pre-CoCoHue-5.0 DNIs from v1 API to match 5.x/V2 API format (v2 Hue IDs, not v1)
   * Should do ONLY if know Bridge is capable of supporting v2 API
@@ -262,11 +260,11 @@ void upgradeCCHv1DNIsToV2ResponseHandler(AsyncResponse resp, data=null) {
             if (logEnable == true) log.debug "Unable to convert sensor with V2 id $id because no V1 ID found in Hue Bridge response"
          }
       }
+      state.useV2UpgradeCompleted = true // indicate conversion complete so does not try every time
    }
    else {
       log.warn "Unable to upgrade to V2 DNIs. HTTP ${resp.status}. Error(s): ${resp.error}. Data: ${resp.data}"
    }
-   state.useV2UpgradeCompleted = true // indicate conversion complete so does not try every time
 }
 
 /** Converts application state values and scheduled jobs used by built-in integration to ones
@@ -276,15 +274,16 @@ void upgradeCCHv1DNIsToV2ResponseHandler(AsyncResponse resp, data=null) {
 void convertBuiltInIntegrationStatesToNew(Boolean forceTryAgain=false) {
    if (logEnable) log.debug "convertBuiltInIntegrationStatesToNew..."
    if (!state.updatedTo || state.updatedTo < currentSchemaVersion) { 
-      if (state.bridgeHost || forceTryAgain==true) {  // basic heuristic to determine if was built-in integration (uses this state name to track Bridge IP; CoCoHue did not)
+      // basic heuristic to determine if was built-in integration (uses this state name to track Bridge IP; CoCoHue did not):
+      if (state.bridgeHost || forceTryAgain==true) {
          // nothing -- want to upgrade
       }
       else {
          if (logEnable) "Not attempting conversion from pre-2.3.9 built-in integration because existing install does not appear to have been built-in integration"
          return
       }
-      //log.trace "proceeding more..."
       if (logEnable == true) log.debug "Converting pre-2.3.9 built-in integration configuration to new built-in integration configuration..."
+      // Removing old state variables and settings used by old built-in but not CoCoHue-derived app:
       state.remove("bridgeRefreshCount")
       state.remove("bridges")
       state.remove("bulbHash")
@@ -300,6 +299,7 @@ void convertBuiltInIntegrationStatesToNew(Boolean forceTryAgain=false) {
       state.remove("lastResponse")
       app.removeSetting("selectedBulbs")
       app.removeSetting("selectedGroups")
+      // "Convert" old built-in app settings and state to corresponding values for CoCoHue-derived app:
       if (settings.selectedHue) {
          // this is MAC (no separators)
          state.bridgeMAC = settings.selectedHue
@@ -329,25 +329,24 @@ void convertBuiltInIntegrationStatesToNew(Boolean forceTryAgain=false) {
          app.updateSetting("pollInterval", [type: "number", value: newPollInt])
          app.removeSetting("pollOptions")
       }
-      //log.trace "dni conversion prep"
       // Convert DNIs from original built-in to new, CoCoHue-esque format:
       getChildDevices().each { DeviceWrapper ogDev ->
          if (ogDev.deviceNetworkId.startsWith("hueGroup:")) {
-            // Group (DNI format = hueGroup:<appId>/<HueV1D>, e.g., hueGroup:12:89)
+            // Group (old DNI format = hueGroup:<appId>/<HueV1D>, e.g., hueGroup:12:89)
             String groupIdV1 = ogDev.deviceNetworkId.split("/")[-1]
             String newDniV1 = "${DNI_PREFIX}/${app.id}/Group/${groupIdV1}"
             if (logEnable == true) log.debug "Converting child device for group ID V1 $groupIdV1 to $newDniV1"
             ogDev.setDeviceNetworkId(newDniV1)
          }
          else if (ogDev.deviceNetworkId.contains("/")) {
-            // Light (DNI format = <appId>/<HueV1D>, e.g., 12/3)
+            // Light (old DNI format = <appId>/<HueV1D>, e.g., 12/3)
             String lightIdV1 = ogDev.deviceNetworkId.split("/")[-1]
             String newDniV1 = "${DNI_PREFIX}/${app.id}/Light/${lightIdV1}"
             if (logEnable == true) log.debug "Converting child device for light ID V1 $lightIdV1 to $newDniV1"
             ogDev.setDeviceNetworkId(newDniV1)
          }
          else if (ogDev.deviceNetworkId.length() == 12) {
-            // Bridge (DNI = MAC, no separators, e.g., 001788201234)
+            // Bridge (old DNI = MAC, no separators, e.g., 001788201234)
             try {
                if (logEnable == true) log.debug "Converting child bridge device DNI of ${ogDev.deviceNetworkId} to ${DNI_PREFIX}/${app.id}"
                ogDev.setDeviceNetworkId("${DNI_PREFIX}/${app.id}")
@@ -526,12 +525,10 @@ def pageFirstPage() {
             paragraph "Please select \"Done\" to finish installation.<br>Then, re-open to set up your Hue Bridge."
          }
       }
-   }
-   
-   // Basic heuristic to determine is upgrade from original (pre-2.4.0) built-in app
+   }   
+   // Basic heuristic to determine is upgrade from original (pre-2.4.0) built-in app:
    else if (state.bridgeHost && (!state.updatedTo || state.updatedTo < currentSchemaVersion)) {
-      // Normally happens on hub reboot via initialize() in Bridge driver, but try here too in case
-      // that doesn't happen:
+      // Normally happens on hub reboot via initialize() in Bridge driver, but try here too in case doesn't happen:
       dynamicPage(name: "pageFirstPage", uninstall: true, install: true) {
          section() {
             paragraph "Please select \"Done\" to finish upgrading the integration. Then re-open to continue setup if needed."
@@ -715,10 +712,11 @@ def pageLinkBridge() {
 def pageSupportOptions() {
    dynamicPage(name: "pageSupportOptions", uninstall: true, install: false, nextPage: "pageManageBridge") {
       section() {
+         String introText = "Use these options only with guidance from the developer or community.hubitat.com. See: https://docs2.hubitat.com/en/apps/hue-bridge-integration"         
          paragraph introText
 
          paragraph "Retry enabling V2 API (server-sent events/SSE/eventstream) option:"
-         input name: "btnRetryV2APIEnable", type: "button", title: "Retry Migration", submitOnChange: true
+         input name: "btnRetryV2APIEnable", type: "button", title: "Retry Hue V2 API Migration", submitOnChange: true
       }
    }
 }
@@ -801,6 +799,7 @@ def pageManageBridge() {
       section("Advanced Options", hideable: true, hidden: true) {
          href(name: "hrefReAddBridge", title: "Edit Bridge IP, re-authorize, or re-discover...",
                description: "", page: "pageReAddBridge")
+         // Consider hiding this page in UI if becomes problem?
          href(name: "hrefSupportOptions", title: "Advanced Debug Options...",
                description: "", page: "pageSupportOptions")
          if (settings.useSSDP != false) {
@@ -1525,6 +1524,7 @@ void parseBridgeInfoResponse(resp, Map data) {
             }
          }
          if (!(settings.boolCustomLabel)) {
+               app.updateLabel("""Hue Bridge Integration (${getBridgeId()}${friendlyBridgeName ? " - $friendlyBridgeName)" : ")"}""")
          }
       }
       catch (IllegalArgumentException e) { // could be bad DNI if already exists

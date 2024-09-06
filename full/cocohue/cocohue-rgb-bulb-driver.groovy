@@ -14,7 +14,7 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2024-09-03
+ *  Last modified: 2024-09-06
  *
  *  Changelog:
  *  v5.0    - Initial release, based on RGBW driver
@@ -531,14 +531,6 @@ void setLevel(value) {
 
 void setLevel(Number value, Number rate) {
    if (logEnable == true) log.debug "setLevel($value, $rate)"
-   // For backwards compatibility; will be removed in future version:
-   if (levelStaging) {
-      log.warn "Level prestaging preference enabled and setLevel() called. This is deprecated and may be removed in the future. Please move to new, standard presetLevel() command."
-      if (device.currentValue("switch") != "on") {
-         presetLevel(value)
-         return
-      }
-   }
    if (value < 0) value = 1
    else if (value > 100) value = 100
    else if (value == 0) {
@@ -561,21 +553,6 @@ void setLevel(value, rate) {
    Integer intLevel = Math.round(floatLevel)
    Float floatRate = Float.parseFloat(rate.toString())
    setLevel(intLevel, floatRate)
-}
-
-void presetLevel(Number level) {
-   if (logEnable == true) log.debug "presetLevel($level)"
-   if (level < 0) level = 1
-   else if (level > 100) level = 100
-   Integer newLevel = scaleBriToBridge(level)
-   Integer scaledRate = ((transitionTime != null ? transitionTime.toBigDecimal() : 1000) / 1000).toInteger()
-   Boolean isOn = device.currentValue("switch") == "on"
-   doSendEvent("levelPreset", level)
-   if (isOn) {
-      setLevel(level)
-   } else {
-      state.presetLevel = true
-   }
 }
 
 /**
@@ -650,95 +627,104 @@ Integer scaleBriFromBridge(Number bridgeLevel, String apiVersion="1") {
    return scaledLevel
 }
 
-// ~~~ IMPORTED FROM RMoRobert.CoCoHue_CT_Lib ~~~
-// Version 1.0.1
+// ~~~ IMPORTED FROM RMoRobert.CoCoHue_HueSat_Lib ~~~
+// Version 1.0.2
 
-void setColorTemperature(Number colorTemperature, Number level = null, Number transitionTime = null) {
-   if (logEnable == true) log.debug "setColorTemperature($colorTemperature, $level, $transitionTime)"
-   state.lastKnownColorMode = "CT"
-   // For backwards compatibility; will be removed in future version:
-   if (colorStaging) {
-      log.warn "Color prestaging preference enabled and setColorTemperature() called. This is deprecated and may be removed in the future. Please move to new presetColorTemperature() command."
-      if (device.currentValue("switch") != "on") {
-         presetColorTemperature(colorTemperature)
-         return
-      }
+void setColor(Map value) {
+   if (logEnable == true) log.debug "setColor($value)"
+   state.lastKnownColorMode = "RGB"
+   if (value.hue == null || value.hue == "NaN" || value.saturation == null || value.saturation == "NaN") {
+      if (logEnable == true) log.debug "Exiting setColor because no hue and/or saturation set"
+      return
    }
-   Integer newCT = scaleCTToBridge(colorTemperature)
-   Integer scaledRate = defaultLevelTransitionTime/100
-   if (transitionTime != null) {
-      scaledRate = (transitionTime * 10) as Integer
+   Map bridgeCmd 
+   Integer newHue = scaleHueToBridge(value.hue)
+   Integer newSat = scaleSatToBridge(value.saturation)
+   Integer newBri = (value.level != null && value.level != "NaN") ? scaleBriToBridge(value.level) : null
+   Integer scaledRate = value.rate != null ? Math.round(value.rate * 10).toInteger() : getScaledRGBTransitionTime()
+   if (scaledRate == null) {
+      bridgeCmd = ["on": true, "hue": newHue, "sat": newSat]
    }
-   else if (settings["transitionTime"] != null) {
-      scaledRate = ((settings["transitionTime"] as Integer) / 100) as Integer
+   else {
+      bridgeCmd = ["on": true, "hue": newHue, "sat": newSat, "transitiontime": scaledRate]
    }
-   Map bridgeCmd = ["on": true, "ct": newCT, "transitiontime": scaledRate]
-   if (level) {
-      bridgeCmd << ["bri": scaleBriToBridge(level)]
-   }
+   if (newBri) bridgeCmd << ["bri": newBri]
    sendBridgeCommandV1(bridgeCmd)
 }
 
-// Not a standard command (yet?), but I hope it will get implemented as such soon in
-// the same manner as this. Otherwise, subject to change if/when that happens....
-void presetColorTemperature(Number colorTemperature) {
-   if (logEnable == true) log.debug "presetColorTemperature($colorTemperature)"
-   Boolean isOn = device.currentValue("switch") == "on"
-   doSendEvent("colorTemperaturePreset", colorTemperature)
-   if (isOn) {
-      setColorTemperature(colorTemperature)
-   } else {
-      state.remove("presetCT")
-      state.presetColorTemperature = true
-      state.presetHue = false
-      state.presetSaturation = false
-   }
+void setHue(value) {
+   if (logEnable == true) log.debug "setHue($value)"
+   state.lastKnownColorMode = "RGB"
+   Integer newHue = scaleHueToBridge(value)
+   Integer scaledRate = ((transitionTime != null ? transitionTime.toBigDecimal() : defaultLevelTransitionTime) / 100).toInteger()
+   Map bridgeCmd = ["on": true, "hue": newHue, "transitiontime": scaledRate]
+   sendBridgeCommandV1(bridgeCmd)
 }
 
-/**
- * Scales CT from Kelvin (Hubitat units) to mireds (Hue units)
- */
-private Integer scaleCTToBridge(Number kelvinCT, Boolean checkIfInRange=true) {
-   Integer mireds = Math.round(1000000/kelvinCT) as Integer
-   if (checkIfInRange == true) {
-      if (mireds < minMireds) mireds = minMireds
-      else if (mireds > maxMireds) mireds = maxMireds
-   }
-   return mireds
+void setSaturation(value) {
+   if (logEnable == true) log.debug "setSaturation($value)"
+   state.lastKnownColorMode = "RGB"
+   Integer newSat = scaleSatToBridge(value)
+   Integer scaledRate = ((transitionTime != null ? transitionTime.toBigDecimal() : 1000) / 100).toInteger()
+   Map bridgeCmd = ["on": true, "sat": newSat, "transitiontime": scaledRate]
+   sendBridgeCommandV1(bridgeCmd)
 }
 
-/**
- * Scales CT from mireds (Hue units) to Kelvin (Hubitat units)
- */
-private Integer scaleCTFromBridge(Number mireds) {
-   Integer kelvin = Math.round(1000000/mireds) as Integer
-   return kelvin
+Integer scaleHueToBridge(hubitatHue) {
+   Integer scaledHue = Math.round(hubitatHue.toBigDecimal() / (hiRezHue ? 360 : 100) * 65535)
+   if (scaledHue < 0) scaledHue = 0
+   else if (scaledHue > 65535) scaledHue = 65535
+   return scaledHue
 }
 
+Integer scaleHueFromBridge(bridgeLevel) {
+   Integer scaledHue = Math.round(bridgeLevel.toBigDecimal() / 65535 * (hiRezHue ? 360 : 100))
+   if (scaledHue < 0) scaledHue = 0
+   else if (scaledHue > 360) scaledHue = 360
+   else if (scaledHue > 100 && !hiRezHue) scaledHue = 100
+   return scaledHue
+}
+
+Integer scaleSatToBridge(hubitatSat) {
+   Integer scaledSat = Math.round(hubitatSat.toBigDecimal() / 100 * 254)
+   if (scaledSat < 0) scaledSat = 0
+   else if (scaledSat > 254) scaledSat = 254
+   return scaledSat
+}
+
+Integer scaleSatFromBridge(bridgeSat) {
+   Integer scaledSat = Math.round(bridgeSat.toBigDecimal() / 254 * 100)
+   if (scaledSat < 0) scaledSat = 0
+   else if (scaledSat > 100) scaledSat = 100
+   return scaledSat
+}
+
+
 /**
- * Reads device preference for CT transition time, or provides default if not available; device
- * can use input(name: ctTransitionTime, ...) to provide this
+ * Reads device preference for setColor/RGB transition time, or provides default if not available; device
+ * can use input(name: rgbTransitionTime, ...) to provide this
  */
-Integer getScaledCTTransitionTime() {
+Integer getScaledRGBTransitionTime() {
    Integer scaledRate = null
-   if (settings.ctTransitionTime == null || settings.ctTransitionTime == "-2" || settings.ctTransitionTime == -2) {
-      // keep null; will result in not specifiying with command
+   if (settings.rgbTransitionTime == null || settings.rgbTransitionTime == "-2" || settings.rgbTransitionTime == -2) {
+      // keep null; will result in not specifying with command
    }
-   else if (settings.ctTransitionTime == "-1" || settings.ctTransitionTime == -1) {
-      scaledRate = (settings.transitionTime != null) ? Math.round(settings.transitionTime.toFloat() / 100) : (defaultTransitionTime != null ? defaultTransitionTime : 250)
+   else if (settings.rgbTransitionTime == "-1" || settings.rgbTransitionTime == -1) {
+      scaledRate = (settings.transitionTime != null) ? Math.round(settings.transitionTime.toFloat() / 100) : defaultTransitionTime
    }
    else {
-      scaledRate = Math.round(settings.ctTransitionTime.toFloat() / 100)
+      scaledRate = Math.round(settings.rgbTransitionTime.toFloat() / 100)
    }
-   return scaledRate
 }
 
-void setGenericTempName(temp) {
-   if (!temp) return
-   String genericName = convertTemperatureToGenericColorName(temp)
-   if (device.currentValue("colorName") != genericName) doSendEvent("colorName", genericName)
+// Hubiat-provided color/name mappings
+void setGenericName(hue) {
+   String colorName
+   hue = hue.toInteger()
+   if (hiRezHue) hue = (hue / 3.6)
+   colorName = convertHueToGenericColorName(hue, device.currentSaturation ?: 100)
+   if (device.currentValue("colorName") != colorName) doSendEvent("colorName", colorName)
 }
-
 
 // ~~~ IMPORTED FROM RMoRobert.CoCoHue_Flash_Lib ~~~
 // Version 1.0.0

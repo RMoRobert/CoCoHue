@@ -600,14 +600,6 @@ void setLevel(value) {
 
 void setLevel(Number value, Number rate) {
    if (logEnable == true) log.debug "setLevel($value, $rate)"
-   // For backwards compatibility; will be removed in future version:
-   if (levelStaging) {
-      log.warn "Level prestaging preference enabled and setLevel() called. This is deprecated and may be removed in the future. Please move to new, standard presetLevel() command."
-      if (device.currentValue("switch") != "on") {
-         presetLevel(value)
-         return
-      }
-   }
    if (value < 0) value = 1
    else if (value > 100) value = 100
    else if (value == 0) {
@@ -630,21 +622,6 @@ void setLevel(value, rate) {
    Integer intLevel = Math.round(floatLevel)
    Float floatRate = Float.parseFloat(rate.toString())
    setLevel(intLevel, floatRate)
-}
-
-void presetLevel(Number level) {
-   if (logEnable == true) log.debug "presetLevel($level)"
-   if (level < 0) level = 1
-   else if (level > 100) level = 100
-   Integer newLevel = scaleBriToBridge(level)
-   Integer scaledRate = ((transitionTime != null ? transitionTime.toBigDecimal() : 1000) / 1000).toInteger()
-   Boolean isOn = device.currentValue("switch") == "on"
-   doSendEvent("levelPreset", level)
-   if (isOn) {
-      setLevel(level)
-   } else {
-      state.presetLevel = true
-   }
 }
 
 /**
@@ -725,14 +702,6 @@ Integer scaleBriFromBridge(Number bridgeLevel, String apiVersion="1") {
 void setColorTemperature(Number colorTemperature, Number level = null, Number transitionTime = null) {
    if (logEnable == true) log.debug "setColorTemperature($colorTemperature, $level, $transitionTime)"
    state.lastKnownColorMode = "CT"
-   // For backwards compatibility; will be removed in future version:
-   if (colorStaging) {
-      log.warn "Color prestaging preference enabled and setColorTemperature() called. This is deprecated and may be removed in the future. Please move to new presetColorTemperature() command."
-      if (device.currentValue("switch") != "on") {
-         presetColorTemperature(colorTemperature)
-         return
-      }
-   }
    Integer newCT = scaleCTToBridge(colorTemperature)
    Integer scaledRate = defaultLevelTransitionTime/100
    if (transitionTime != null) {
@@ -746,22 +715,6 @@ void setColorTemperature(Number colorTemperature, Number level = null, Number tr
       bridgeCmd << ["bri": scaleBriToBridge(level)]
    }
    sendBridgeCommandV1(bridgeCmd)
-}
-
-// Not a standard command (yet?), but I hope it will get implemented as such soon in
-// the same manner as this. Otherwise, subject to change if/when that happens....
-void presetColorTemperature(Number colorTemperature) {
-   if (logEnable == true) log.debug "presetColorTemperature($colorTemperature)"
-   Boolean isOn = device.currentValue("switch") == "on"
-   doSendEvent("colorTemperaturePreset", colorTemperature)
-   if (isOn) {
-      setColorTemperature(colorTemperature)
-   } else {
-      state.remove("presetCT")
-      state.presetColorTemperature = true
-      state.presetHue = false
-      state.presetSaturation = false
-   }
 }
 
 /**
@@ -815,14 +768,6 @@ void setGenericTempName(temp) {
 void setColor(Map value) {
    if (logEnable == true) log.debug "setColor($value)"
    state.lastKnownColorMode = "RGB"
-   // For backwards compatibility; will be removed in future version:
-   if (colorStaging) {
-      log.warn "Color prestaging preference enabled and setColor() called. This is deprecated and may be removed in the future. Please move to new presetColor() command."
-      if (device.currentValue("switch") != "on") {
-         presetColor(value)
-         return
-      }
-   }
    if (value.hue == null || value.hue == "NaN" || value.saturation == null || value.saturation == "NaN") {
       if (logEnable == true) log.debug "Exiting setColor because no hue and/or saturation set"
       return
@@ -842,52 +787,9 @@ void setColor(Map value) {
    sendBridgeCommandV1(bridgeCmd)
 }
 
-// Really a hack to get this usable from the admin UI since you can only have one COLOR_MAP input, which
-// is already implicitly taken by setColor(). Accepts JSON object like {"hue": 10, "saturation": 100, "level": 50}
-// and will convert to Groovy map for use with other implenentation of this command (which I hope will be standardized
-// some day..)
-void presetColor(String jsonValue) {
-   if (logEnable == true) log.debug "presetColor(String $jsonValue)"
-   Map value = new groovy.json.JsonSlurper().parseText(jsonValue)
-   presetColor(value)
-}
-
-// Not currently a standard Hubitat command, so implementation subject to change if it becomes one;
-// for now, assuming it may be done by taking a color map like setColor() (but see also JSON variant above)
-// May also need presetHue() and presetSaturation(), but not including for now...
-void presetColor(Map value) {
-   if (logEnable == true) log.debug "presetColor(Map $value)"
-   if (value.hue != null) {
-      doSendEvent("huePreset", value.hue)
-   }
-   if (value.saturation != null) {
-      doSendEvent("saturationPreset", value.saturation)
-   }
-   if (value.level != null) {
-      doSendEvent("levelPreset", value.level)
-   }
-   Boolean isOn = device.currentValue("switch") == "on"
-   if (isOn) {
-      setColor(value)
-   } else {
-      state.presetHue = (value.hue != null)
-      state.presetSaturation = (value.saturation != null)
-      state.presetLevel = (value.level != null)
-      state.presetColorTemperature = false
-   }
-}
-
 void setHue(value) {
    if (logEnable == true) log.debug "setHue($value)"
    state.lastKnownColorMode = "RGB"
-   // For backwards compatibility; will be removed in future version:
-   if (colorStaging) {
-      log.warn "Color prestaging preference enabled and setHue() called. This is deprecated and may be removed in the future. Please move to new presetColor() command."
-      if (device.currentValue("switch") != "on") {
-         presetColor([hue: value])
-         return
-      }
-   }
    Integer newHue = scaleHueToBridge(value)
    Integer scaledRate = ((transitionTime != null ? transitionTime.toBigDecimal() : defaultLevelTransitionTime) / 100).toInteger()
    Map bridgeCmd = ["on": true, "hue": newHue, "transitiontime": scaledRate]
@@ -897,14 +799,6 @@ void setHue(value) {
 void setSaturation(value) {
    if (logEnable == true) log.debug "setSaturation($value)"
    state.lastKnownColorMode = "RGB"
-   // For backwards compatibility; will be removed in future version:
-   if (colorStaging) {
-      log.warn "Color prestaging preference enabled and setSaturation() called. This is deprecated and may be removed in the future. Please move to new presetColor() command."
-      if (device.currentValue("switch") != "on") {
-         presetColor([saturation: value])
-         return
-      }
-   }
    Integer newSat = scaleSatToBridge(value)
    Integer scaledRate = ((transitionTime != null ? transitionTime.toBigDecimal() : 1000) / 100).toInteger()
    Map bridgeCmd = ["on": true, "sat": newSat, "transitiontime": scaledRate]
