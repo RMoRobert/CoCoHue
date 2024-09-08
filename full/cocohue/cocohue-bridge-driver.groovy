@@ -54,6 +54,9 @@ import groovy.transform.Field
 
 @Field static final Integer debugAutoDisableMinutes = 30
 
+@Field static final Object eventStreamStatusLock = new Object()
+@Field static Map<Long,Boolean> eventStreamOpenStatus = [:]  // key = bridge device idAsLong, value = true if connected
+
 metadata {
    definition(
       name: "CoCoHue Bridge",
@@ -96,10 +99,10 @@ void initialize() {
       log.debug "Debug logging will be automatically disabled in ${debugAutoDisableMinutes} minutes"
       runIn(debugAutoDisableMinutes*60, "debugOff")
    }
-   if (parent.getEventStreamEnabledSetting()) runIn(2, "connectEventStream")
-   // Performing this check here since capability "Initialize" declared and will run on every boot, including after update if hub updated to 2.4.0 or
-   // newer with CoCoHue-based integration app (will check if already done there and have no effect if so):
-   parent.convertBuiltInIntegrationStatesToNew()
+   disconnectEventStream()
+   doSendEvent("eventStreamStatus", "disconnected")
+   if (parent.getEventStreamEnabledSetting()) runIn(3, "connectEventStream")
+
 }
 
 void connectEventStream() {
@@ -152,16 +155,21 @@ void eventStreamStatus(String message) {
    }
 }
 
-// TODO: Re-think this approach (or just eliminate and see if can work around any other issues?)
 void setEventStreamStatusToConnected() {
-   parent.setEventStreamOpenStatus(true) // notify app
+   synchronized(eventStreamStatusLock) {
+      if (logEnable) "set eventStreamOpenStatus[${device.idAsLong}] to true (connected)"
+      eventStreamOpenStatus[device.idAsLong] = true
+   }
    unschedule("setEventStreamStatusToDisconnected")
-   if (device.currentValue("eventStreamStatus") == "disconnected") doSendEvent("eventStreamStatus", "connected")
-   state.connectionRetryTime = 3
+   if (device.currentValue("eventStreamStatus") != "connected") doSendEvent("eventStreamStatus", "connected")
+   state.connectionRetryTime = 4
 }
 
 void setEventStreamStatusToDisconnected() {
-   parent.setEventStreamOpenStatus(false) // notify app
+   synchronized(eventStreamStatusLock) {
+      if (logEnable) "set eventStreamOpenStatus[${device.idAsLong}] to false (disconnected)"
+      eventStreamOpenStatus[device.idAsLong] = false
+   }
    doSendEvent("eventStreamStatus", "disconnected")
    if (state.connectionRetryTime) {
       state.connectionRetryTime *= 2
@@ -172,11 +180,21 @@ void setEventStreamStatusToDisconnected() {
    else {
       state.connectionRetryTime = 5
    }
-   if (logEnable) log.debug "Reconnecting SSE in ${state.connectionRetryTime}"
+   if (logEnable) log.debug "Will attempt eventstream reconnection in ${state.connectionRetryTime}"
    runIn(state.connectionRetryTime, "reconnectEventStream")
 }
 
-// For EventStream:
+/** Returns true if evenstream currently connected, false if not (or unknown), intended to be used by parent
+  * app if needed
+*/
+Boolean getEventStreamOpenStatus() {
+   if (logEnable) "getEventStreamOpenStatus()"
+   synchronized(eventStreamStatusLock) {
+      return eventStreamOpenStatus[device.idAsLong] == true
+   }
+}
+
+// For Eventstream:
 void parse(String description) {
    if (logEnable) log.debug "parse: $description"
    List<String> messages = description.split("\n\n")

@@ -131,12 +131,9 @@ void updated() {
    initialize()
    // Upgrade pre-CoCoHue-5.0 DNIs to match new DNI format (will only change if using V2 and hasn't been done yet)
    upgradeCCHv1DNIsToV2()
-   // Crossgrade from built-in integration to updated CoCoHue-based integration is done via Bridge "initialize()" method for seamlessness, but
-   // also check here:
-   convertBuiltInIntegrationStatesToNew()
 }
 
-/** Upgrades pre-CoCoHue-5.0 DNIs from v1 API to match 5.x/V2 API format (v2 Hue IDs, not v1)
+/** Upgrades pre-CoCoHue-5.0 DNIs from V1 API to match 5.x/V2 API format (changes V1 Hue IDs to V2)
   * Should do ONLY if know Bridge is capable of supporting v2 API
 */
 void upgradeCCHv1DNIsToV2() {
@@ -267,107 +264,6 @@ void upgradeCCHv1DNIsToV2ResponseHandler(AsyncResponse resp, data=null) {
    }
 }
 
-/** Converts application state values and scheduled jobs used by built-in integration to ones
-  * usable in new (CoCoHue-based) integration. DO NOT REMOVE this method unless can ensure
-  * no user is upgrading from old/built-in Hue app (pre-platform 2.4.0):
- */
-void convertBuiltInIntegrationStatesToNew(Boolean forceTryAgain=false) {
-   if (logEnable) log.debug "convertBuiltInIntegrationStatesToNew..."
-   if (!state.updatedTo || state.updatedTo < currentSchemaVersion) { 
-      // basic heuristic to determine if was built-in integration (uses this state name to track Bridge IP; CoCoHue did not):
-      if (state.bridgeHost || forceTryAgain==true) {
-         // nothing -- want to upgrade
-      }
-      else {
-         if (logEnable) "Not attempting conversion from pre-2.3.9 built-in integration because existing install does not appear to have been built-in integration"
-         return
-      }
-      if (logEnable == true) log.debug "Converting pre-2.3.9 built-in integration configuration to new built-in integration configuration..."
-      // Removing old state variables and settings used by old built-in but not CoCoHue-derived app:
-      state.remove("bridgeRefreshCount")
-      state.remove("bridges")
-      state.remove("bulbHash")
-      state.remove("bulbRefreshCount")
-      state.remove("bulbs")
-      state.remove("groupHASH")
-      state.remove("groups")
-      state.remove("inBulbDiscovery")
-      state.remove("lastResponse")
-      state.remove("linkRefreshcount")
-      state.remove("refreshUsernameNeeded")
-      state.remove("updating")
-      state.remove("lastResponse")
-      app.removeSetting("selectedBulbs")
-      app.removeSetting("selectedGroups")
-      // "Convert" old built-in app settings and state to corresponding values for CoCoHue-derived app:
-      if (settings.selectedHue) {
-         // this is MAC (no separators)
-         state.bridgeMAC = settings.selectedHue
-         app.removeSetting("selectedHue")
-      }
-      if (state.username && state.bridgeHost) {
-         state.bridgeLinked = true
-         state.bridgeAuthorized = true
-         String ipAddr = state.bridgeHost.split(":")[0]
-         state.ipAddress = ipAddr
-         state.remove("bridgeHost")
-      }
-      if (settings.pollOptions) {
-         Long newPollInt
-         if (settings.pollOptions == "d") {
-            newPollInt = 0 // "d" was disabled in original built-in app
-         }
-         else {
-            try {
-               newPollInt = (settings.pollOptions instanceof Long) ? settings.pollOptions : (Long.parseLong(settings.pollOptions) * 60)
-               if (newPollInt == 0) newPollInt = 10 // 0 was 10 seconds in original built-in app
-            }
-            catch (Exception ex) {
-               newPollInt = 60
-            }
-         }
-         app.updateSetting("pollInterval", [type: "number", value: newPollInt])
-         app.removeSetting("pollOptions")
-      }
-      // Convert DNIs from original built-in to new, CoCoHue-esque format:
-      getChildDevices().each { DeviceWrapper ogDev ->
-         if (ogDev.deviceNetworkId.startsWith("hueGroup:")) {
-            // Group (old DNI format = hueGroup:<appId>/<HueV1D>, e.g., hueGroup:12:89)
-            String groupIdV1 = ogDev.deviceNetworkId.split("/")[-1]
-            String newDniV1 = "${DNI_PREFIX}/${app.id}/Group/${groupIdV1}"
-            if (logEnable == true) log.debug "Converting child device for group ID V1 $groupIdV1 to $newDniV1"
-            ogDev.setDeviceNetworkId(newDniV1)
-         }
-         else if (ogDev.deviceNetworkId.contains("/")) {
-            // Light (old DNI format = <appId>/<HueV1D>, e.g., 12/3)
-            String lightIdV1 = ogDev.deviceNetworkId.split("/")[-1]
-            String newDniV1 = "${DNI_PREFIX}/${app.id}/Light/${lightIdV1}"
-            if (logEnable == true) log.debug "Converting child device for light ID V1 $lightIdV1 to $newDniV1"
-            ogDev.setDeviceNetworkId(newDniV1)
-         }
-         else if (ogDev.deviceNetworkId.length() == 12) {
-            // Bridge (old DNI = MAC, no separators, e.g., 001788201234)
-            try {
-               if (logEnable == true) log.debug "Converting child bridge device DNI of ${ogDev.deviceNetworkId} to ${DNI_PREFIX}/${app.id}"
-               ogDev.setDeviceNetworkId("${DNI_PREFIX}/${app.id}")
-            }
-            catch (Exception ex) {
-               log.warn "Error updating Bridge DNI to new format: $ex"
-            }
-         }
-         else {
-            if (logEnable == true) log.debug "Unable to determine device type for devvice ${ogDev.displayName} with DNI  ${ogDev.deviceNetworkId}. Ignoring."
-         }
-      }
-      app.updateSetting("useEventStream", [type: "bool", value: false])
-      unschedule()
-      // Quick way of keeping track of what CoCoHue version app/device/etc. settings should be "updated" to when breaking changes are made:
-      state.updatedTo = currentSchemaVersion
-      // Should re-etablish polling, etc. if configured and lost in above shuffle:
-      initialize()
-   }
-}
-
 // Used to be saved in state but removed because not necessary--can retrieve easily:
 /** Returns last 6 of MAC address, similar to built-in integration **/
 String getBridgeId() {
@@ -426,6 +322,7 @@ void initialize() {
       }
    }
    else {
+      // probably not necessary right now but could be if ever re-allow "downgrade" to V1 API:
       bridge?.disconnectEventStream()
    }
 
@@ -525,15 +422,6 @@ def pageFirstPage() {
             paragraph "Please select \"Done\" to finish installation.<br>Then, re-open to set up your Hue Bridge."
          }
       }
-   }   
-   // Basic heuristic to determine is upgrade from original (pre-2.4.0) built-in app:
-   else if (state.bridgeHost && (!state.updatedTo || state.updatedTo < currentSchemaVersion)) {
-      // Normally happens on hub reboot via initialize() in Bridge driver, but try here too in case doesn't happen:
-      dynamicPage(name: "pageFirstPage", uninstall: true, install: true) {
-         section() {
-            paragraph "Please select \"Done\" to finish upgrading the integration. Then re-open to continue setup if needed."
-         }
-      }
    }
    // Show "real" pages otherwise, depending on state:
    else {
@@ -559,7 +447,7 @@ def pageAddBridge() {
       sendBridgeDiscoveryCommand()
    }  
    dynamicPage(name: "pageAddBridge", uninstall: true, install: false,
-               refreshInterval: ((settings.use == false || selectedDiscoveredBridge) ? null : state.authRefreshInterval),
+               refreshInterval: ((settings.useSSDP == false || selectedDiscoveredBridge) ? null : state.authRefreshInterval),
                nextPage: "pageLinkBridge") {
       section("Add Hue Bridge") {
          // TODO: Switch to mDNS, leave SSDP as legacy option for v1 bridges if needed; consider making separate setting?
@@ -567,6 +455,7 @@ def pageAddBridge() {
          if (settings.useSSDP != false) {
             if (!(state.discoveredBridges)) {
                paragraph "Please wait while Hue Bridges are discovered..."
+               paragraph "Your Hue devices must already be configured on your Hue Bridge (for example, using the Hue mobile app)."
                paragraph "<script>\$('button[name=\"_action_next\"]').hide()</script>"
             }
             else {
@@ -1524,7 +1413,7 @@ void parseBridgeInfoResponse(resp, Map data) {
             }
          }
          if (!(settings.boolCustomLabel)) {
-               app.updateLabel("""Hue Bridge Integration (${getBridgeId()}${friendlyBridgeName ? " - $friendlyBridgeName)" : ")"}""")
+               app.updateLabel("""CoCoHue - Hue Bridge Integration (${getBridgeId()}${friendlyBridgeName ? " - $friendlyBridgeName)" : ")"}""")
          }
       }
       catch (IllegalArgumentException e) { // could be bad DNI if already exists
@@ -1760,16 +1649,6 @@ Boolean getIsAnyGroupMemberBulbOn(groupDevice) {
 }
 
 /**
- *  Stores EventStream status (online = true if connected, otherwise false); used to cache so
- *  do not have to ask Bridge each time want to know. Intended to be called by Bridge device in response
- *  to changes.
- */
-void setEventStreamOpenStatus(Boolean isOnline) {
-   if (logEnable == true) log.debug "setEventStreamOpenStatus($isOnline)"
-   state.eventStreamOpenStatus = isOnline
-}
-
-/**
  *  Returns true if app configured to use EventStream/SSE, else false (proxy since cannot directly access settings from child)
  */
 Boolean getEventStreamEnabledSetting() {
@@ -1779,11 +1658,13 @@ Boolean getEventStreamEnabledSetting() {
 }
 
 /**
- *  Gets EventStream status (returns true if connected, otherwise false); gets from cache (see storeEventStreamOpenStatus())
- *  so do not have to ask Bridge each time want to know. Intended to be called by light/group/etc. devices when need to know.
+ *  Gets EventStream status (returns true if connected, otherwise false); retrieved from Bridge
+ *  device with app in middle because normally to be called by light/group/etc. devices when need to know.
  */
 Boolean getEventStreamOpenStatus() {
-   if (logEnable == true) log.debug "getEventStreamOpenStatus (returning ${state.eventStreamOpenStatus})"
+   DeviceWrapper bridge = getChildDevice("${DNI_PREFIX}/${app.id}")
+   Boolean open = bridge.getEventStreamOpenStatus()
+   if (logEnable == true) "getEventStreamOpenStatus (returning ${open})"
    return (state.eventStreamOpenStatus == true) ? true : false
 }
 
@@ -1798,11 +1679,6 @@ void appButtonHandler(btn) {
          break
       case "btnDiscoBridgeRefresh":
          sendBridgeDiscoveryCommand()
-         break
-      case "btnRetryBuiltInMigration":
-         app.updateSetting("logEnable", true)
-         state.remove("currentSchemaVersion")
-         convertBuiltInIntegrationStatesToNew(true)
          break
       case "btnRetryV2APIEnable":
          app.updateSetting("logEnable", true)
