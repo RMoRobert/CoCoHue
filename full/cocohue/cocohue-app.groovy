@@ -18,7 +18,7 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2024-09-03
+ *  Last modified: 2024-09-08
  *  Changelog:
  *  v5.0   - Use API v2 by default, remove deprecated features
  *  v4.1.9 - Add note that Hue Labs features are now deprecated
@@ -600,7 +600,31 @@ def pageLinkBridge() {
 
 def pageSupportOptions() {
    dynamicPage(name: "pageSupportOptions", uninstall: true, install: false, nextPage: "pageManageBridge") {
-      section() {
+      section("Debugging Information") {
+         paragraph "Enable debug logging on Bridge child device (will remain enabled until disabled on device):"
+         input name: "btnEnableBridgeLogging", type: "button", title: "Enable Debug Logging on Bridge"
+
+         paragraph 'Writes information about child devices (created from integration on hub) to <a href="/logs">Logs</a>:'
+         input name: "btnLogChildDeviceInfo", type: "button", title: "Log Child Device Info"
+
+         paragraph 'The following options fetch data (list of lights, groups, scenes, etc.) from the Bridge ' +
+            'and write a summary of that data to <a href="/logs">Logs</a>.  Suggested use is to run the fetch (first ' +
+            'button in pair), wait at least a few seconds, then run the log of the fetched, cached data (second button in pair).'
+         input name: "btnFetchLightsInfo", type: "button", title: "Fetch Lights Info"
+         input name: "btnLogLightsInfo", type: "button", title: "Log Lights Cache"
+         input name: "btnFetchGroupsInfo", type: "button", title: "Fetch Groups Info"
+         input name: "btnLogGroupsInfo", type: "button", title: "Log Groups Cache"
+         input name: "btnFetchScenesInfo", type: "button", title: "Fetch Scenes Info"
+         input name: "btnLogScenesInfo", type: "button", title: "Log Scenes Cache"
+         if (state.useV2) {
+            input name: "btnFetchSensorsInfo", type: "button", title: "Fetch Motion Sensors Info"
+            input name: "btnLogSensorsInfo", type: "button", title: "Log Motion Sensors Cache"
+            input name: "btnFetchButtonsInfo", type: "button", title: "Fetch Buttons Info"
+            input name: "btnLogButtonsInfo", type: "button", title: "Log Buttons Cache"
+         }
+      }
+
+      section("Advanced Tools") {
          String introText = "Use these options only with guidance from the developer or community.hubitat.com. See: https://docs2.hubitat.com/en/apps/hue-bridge-integration"         
          paragraph introText
 
@@ -639,6 +663,8 @@ def pageManageBridge() {
    if (bridge != null) {
       bridge.clearBulbsCache()
       bridge.clearGroupsCache()
+      bridge.clearRoomsCache()
+      bridge.clearZonesCache()
       bridge.clearScenesCache()
       bridge.clearSensorsCache()
       bridge.clearButtonsCache()
@@ -781,7 +807,10 @@ def pageSelectGroups() {
    DeviceWrapper bridge = getChildDevice("${DNI_PREFIX}/${app.id}")
    state.useV2 ? bridge.getAllGroupsV2() : bridge.getAllGroupsV1()
    List arrNewGroups = []
-   Map groupCache = bridge.getAllGroupsCache()
+   Map groupCache = bridge.getAllGroupsCache() ?: [:] // has everything for V1, only All Hue Lights group for V2
+   if (state.useV2) {  // add room and zones for V2:
+      groupCache += (bridge.getAllRoomsCache() ?: [:]) + (bridge.getAllZonesCache() ?: [:])
+   }
    List<DeviceWrapper> unclaimedGroups = getChildDevices().findAll { it.deviceNetworkId.startsWith("${DNI_PREFIX}/${app.id}/Group/") }
    dynamicPage(name: "pageSelectGroups", refreshInterval: groupCache ? 0 : 6, uninstall: true, install: false, nextPage: "pageManageBridge") {
       Map addedGroups = [:]  // To be populated with groups user has added, matched by Hue ID
@@ -1382,7 +1411,7 @@ void parseBridgeInfoResponse(resp, Map data) {
    // Not using "full" bridge ID for this to retain V1 compatibility, but could(?):
    String bridgeID = bridgeMAC.drop(6)   // last (12-6=) 6 of MAC serial
    String swVersion = body.swversion // version 1948086000 means v2 API is available
-   DeviceWrapper bridgeDevice = getChildDevice("${DNI_PREFIX}/${app.id}") ?: getChildDevice("${DNI_PREFIX}/${app.id}")
+   DeviceWrapper bridgeDevice = getChildDevice("${DNI_PREFIX}/${app.id}")
 
    if (data?.createBridge) {
       if (logEnable == true) log.debug "    Attempting to create Hue Bridge device for $bridgeMAC"
@@ -1670,6 +1699,7 @@ Boolean getEventStreamOpenStatus() {
 
 void appButtonHandler(btn) {
    switch(btn) {
+      // "Refresh" buttons on Select Lights, Groups, Scenes, bridge discovery, etc. pages:
       case "btnBulbRefresh":
       case "btnGroupRefresh":
       case "btnSceneRefresh":
@@ -1680,11 +1710,62 @@ void appButtonHandler(btn) {
       case "btnDiscoBridgeRefresh":
          sendBridgeDiscoveryCommand()
          break
+      // Options on Advanced Debugging Options/support page:
+      case "btnEnableBridgeLogging":
+         DeviceWrapper bridgeDevice = getChildDevice("${DNI_PREFIX}/${app.id}")
+         bridgeDevice.updateSetting("logEnable", [type: "bool", value: true])
+         break
+      case "btnLogChildDeviceInfo":
+         getChildDevices().sort { it.deviceNetworkId }.each { DeviceWrapper dev ->
+            log.debug "${dev.deviceNetworkId} = ${dev.displayName}"
+         }
+         break
+      case "btnFetchLightsInfo":
+         DeviceWrapper bridgeDevice = getChildDevice("${DNI_PREFIX}/${app.id}")
+         state.useV2 ? bridgeDevice.getAllBulbsV2() : bridgeDevice.getAllBulbsV1()
+         break
+      case "btnLogLightsInfo":
+         DeviceWrapper bridgeDevice = getChildDevice("${DNI_PREFIX}/${app.id}")
+         log.debug bridgeDevice.getAllBulbsCache() ?: "EMPTY LIGHTS CACHE ON BRIDGE"
+         break
+      case "btnFetchGroupsInfo":
+         DeviceWrapper bridgeDevice = getChildDevice("${DNI_PREFIX}/${app.id}")
+         state.useV2 ? bridgeDevice.getAllGroupsV2() : bridgeDevice.getAllGroupsV1()
+         break
+      case "btnLogGroupsInfo":
+         DeviceWrapper bridgeDevice = getChildDevice("${DNI_PREFIX}/${app.id}")
+         log.debug bridgeDevice.getAllGroupsCache() ?: "EMPTY GROUPS CACHE ON BRIDGE"
+         break
+      case "btnFetchScenesInfo":
+         DeviceWrapper bridgeDevice = getChildDevice("${DNI_PREFIX}/${app.id}")
+         state.useV2 ? bridgeDevice.getAllScenesV2() : bridgeDevice.getAllScenesV1()
+         break
+      case "btnLogScenesInfo":
+         DeviceWrapper bridgeDevice = getChildDevice("${DNI_PREFIX}/${app.id}")
+         log.debug bridgeDevice.getAllScenesCache() ?: "EMPTY SCENES CACHE ON BRIDGE"
+         break
+      case "btnFetchSensorsInfo":
+         DeviceWrapper bridgeDevice = getChildDevice("${DNI_PREFIX}/${app.id}")
+         bridgeDevice.getAllSensorsV2()
+         break
+      case "btnLogSensorsInfo":
+         DeviceWrapper bridgeDevice = getChildDevice("${DNI_PREFIX}/${app.id}")
+         log.debug bridgeDevice.getAllSensorsCache() ?: "EMPTY SENSORS CACHE ON BRIDGE"
+         break
+      case "btnFetchButtonsInfo":
+         DeviceWrapper bridgeDevice = getChildDevice("${DNI_PREFIX}/${app.id}")
+         bridgeDevice.getAllButtonsV2()
+         break
+      case "btnLogButtonsInfo":
+         DeviceWrapper bridgeDevice = getChildDevice("${DNI_PREFIX}/${app.id}")
+         log.debug bridgeDevice.getAllButtonsCache() ?: "EMPTY BUTTONS CACHE ON BRIDGE"
+         break
       case "btnRetryV2APIEnable":
          app.updateSetting("logEnable", true)
          state.remove("useV2UpgradeCompleted")
          upgradeCCHv1DNIsToV2()
          break
+      // Other
       default:
          log.warn "Unhandled app button press: $btn"
    }

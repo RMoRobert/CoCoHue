@@ -14,7 +14,7 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2024-09-06
+ *  Last modified: 2024-09-08
  *
  *  Changelog:
  *  v5.0    - Initial release, based on RGBW driver

@@ -14,7 +14,7 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2024-09-03
+ *  Last modified: 2024-09-08
  *
  *  Changelog:
  *  v5.0    - Use API v2 by default, remove deprecated features
@@ -693,6 +693,7 @@ void parseGetAllGroupsOrRoomsOrZonesResponseV2(resp, Map<String,String> data) {
             }
             if (data.type == "room") state.allRooms = roomsOrZones
             else state.allZones = roomsOrZones
+            if (logEnable) log.debug "  All ${data.type}s received from Bridge: $roomsOrZones"
          }
          else if (data.type == "grouped_light") {
             // really only use to find equivalent of group 0 in V1 API or "All Hue Lights"
@@ -705,7 +706,6 @@ void parseGetAllGroupsOrRoomsOrZonesResponseV2(resp, Map<String,String> data) {
          else {
             log.warn "Unexpected type; should be \"room\", \"zone\", or \"grouped_light\": ${data.type}"
          }
-         if (logEnable) log.debug "  All ${data.type}s received from Bridge: $roomsOrZones"
       }
       catch (Exception ex) {
          log.error "Error parsing all rooms or zones response: $ex"
@@ -739,7 +739,7 @@ Map getAllRoomsCache() {
  * not working with old data
  */
 void clearRoomsCache() {
-   if (logEnable) log.debug "Running clearGroupsCache..."
+   if (logEnable) log.debug "Running clearRoomsCache..."
    state.remove("allRooms")
 }
 
