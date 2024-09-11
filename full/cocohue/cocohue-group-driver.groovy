@@ -455,6 +455,13 @@ List getMemberBulbIDs() {
 }
 
 /**
+ *  Sets state.groupedLightId to the Hue API V2 ID of the grouped_light service that owns this room or zone
+ */ 
+void setGroupedLightId(String id) {
+   state.groupedLightId = id
+}
+
+/**
  * Sets all group attribute values to something, intended to be called when device initially created to avoid
  * missing attribute values (may cause problems with GH integration, etc. otherwise). Default values are
  * approximately warm white and off.

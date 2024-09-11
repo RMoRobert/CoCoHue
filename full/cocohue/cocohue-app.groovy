@@ -130,14 +130,15 @@ void updated() {
    if (logEnable == true) log.debug "Updated with settings: ${settings}"
    initialize()
    // Upgrade pre-CoCoHue-5.0 DNIs to match new DNI format (will only change if using V2 and hasn't been done yet)
-   upgradeCCHv1DNIsToV2()
+   runIn(3, "upgradeCCHv1DNIsToV2")
 }
 
 /** Upgrades pre-CoCoHue-5.0 DNIs from V1 API to match 5.x/V2 API format (changes V1 Hue IDs to V2)
   * Should do ONLY if know Bridge is capable of supporting v2 API
 */
-void upgradeCCHv1DNIsToV2() {
-   if (logEnable == true) log.debug "upgradeV1DnisToV2()"
+void upgradeCCHv1DNIsToV2(Boolean secondAttempt=false) {
+   if (logEnable == true) log.debug "upgradeCCHv1DNIsToV2()"
+   state.remove("pendingUpgradeCCHv1DNIsToV2Retry")
    if (state.useV2 && !(state.useV2UpgradeCompleted)) {
       Map<String,String> bridgeData = getBridgeData()
       Map params = [
@@ -151,9 +152,22 @@ void upgradeCCHv1DNIsToV2() {
       if (logEnable == true) log.debug "Starting Hue V2 API DNI updates. Sending V2 API call to Bridge /resources endpoint..."
       asynchttpGet("upgradeCCHv1DNIsToV2ResponseHandler", params)
    }
-   else {
-      if (logEnable == true && !state.useV2) log.debug "Not configured to use Hue V2 API, so not upgrading DNIs to V2 API format."
+   else if (!(state.useV2) && settings.useEventStream && secondAttempt != true) {
+      // Try again in a few seconds in case state.useV2 wasn't set yet because didn't have Bridge info yet
+      // But only try once more (secondAttempt parameter avoids endless chain)
+      if (logEnable == true) log.debug "Set to use V2 if available but state not currently set for V2 usage; retrying once more in a few seconds..."
+      state.pendingUpgradeCCHv1DNIsToV2Retry = true
+      runIn(6, "retryUpgradeCCHv1DNIsToV2")
    }
+   else if (logEnable == true && !(state.useV2 || settings.useEventStream)) {
+      log.debug "Not configured to use Hue V2 API, so not upgrading DNIs to V2 API format."
+   }
+}
+
+void retryUpgradeCCHv1DNIsToV2() {
+   if (logEnable) log.debug "retryUpgradeCCHv1DNIsToV2()"
+   upgradeCCHv1DNIsToV2(true)
+   state.remove("pendingUpgradeCCHv1DNIsToV2Retry")
 }
 
 void upgradeCCHv1DNIsToV2ResponseHandler(AsyncResponse resp, data=null) {
@@ -163,8 +177,8 @@ void upgradeCCHv1DNIsToV2ResponseHandler(AsyncResponse resp, data=null) {
       
       // -- Get all relevant device data from API response: --
       List<Map> lightsData = resp.json.data.findAll { it.type == "light" } ?: [[:]] // lights
-      List<Map> roomsData = resp.json.data.findAll { it.type == "room" } ?: [[:]]  // rooms (groups)
-      List<Map> zonesData = resp.json.data.findAll { it.type == "zone" } ?: [[:]]    // zones (groups)
+      //List<Map> roomsData = resp.json.data.findAll { it.type == "room" } ?: [[:]]  // rooms (groups)
+      //List<Map> zonesData = resp.json.data.findAll { it.type == "zone" } ?: [[:]]    // zones (groups)
       List<Map> groupsData = resp.json.data.findAll { it.type == "grouped_light" } ?: [[:]]  // "pure" groups (groups)
       List<Map> scenesData = resp.json.data.findAll { it.type == "scene" } ?: [[:]]  // scenes
       List<Map> motionData = resp.json.data.findAll { it.type == "motion" } ?: [[:]]  // motion for motion sensorsor motion sensors
@@ -195,7 +209,7 @@ void upgradeCCHv1DNIsToV2ResponseHandler(AsyncResponse resp, data=null) {
             if (logEnable == true) log.debug "Unable to convert light ${hueData.metadata?.name} with V2 id $id because no V1 ID found in Hue Bridge response"
          }
       }
-      (roomsData + zonesData + groupsData).each { Map hueData ->
+      groupsData.each { Map hueData ->
          String id = hueData.id 
          String id_v1 = hueData.id_v1
          if (id_v1 != null) {
@@ -207,7 +221,7 @@ void upgradeCCHv1DNIsToV2ResponseHandler(AsyncResponse resp, data=null) {
                dev.setDeviceNetworkId(newDNI)
             }
             else {
-               if (logEnable == true) log.debug "No Hubitat device found for Hue group ${hueData.metadata?.name} with ID V1 ${id_v1} and ID V2 {$id}; skipping."
+               if (logEnable == true) log.debug "No Hubitat device found for Hue group ${hueData.metadata?.name ?: ''} with ID V1 ${id_v1} and ID V2 ${id}; skipping."
             }
          }
          else {
@@ -294,7 +308,7 @@ void initialize() {
       subscribe(location, "systemStart", "hubRestartHandler")
       if (state.bridgeAuthorized) {
          // Do discovery if user clicks "Done" (but wait a bit in case other data also being fetched...)
-         runIn(10, "sendBridgeDiscoveryCommandIfSSDPEnabled")
+         runIn(7, "sendBridgeDiscoveryCommandIfSSDPEnabled")
       }
    }
    else {
@@ -310,11 +324,12 @@ void initialize() {
    if (settings.useEventStream == true) {
       DeviceWrapper bridge = getChildDevice("${DNI_PREFIX}/${app.id}")
       if (bridge != null) {
-         bridge.connectEventStream()
+         if (state.useV2 == true) bridge.connectEventStream()
          String bridgeSwVersion = bridge.getDataValue("swversion")
          if (bridgeSwVersion == null) {
             sendBridgeInfoRequest()
-            runIn(20, "initialize") // re-check version after has time to fetch in case upgrading from old version without this value
+            // TODO: Re-time this and retryUpgradeCCHV1... method or figure out some way to avoid unschedule!
+            runIn(15, "initialize") // re-check version after has time to fetch in case upgrading from old version without this value
          }
          else if (bridgeSwVersion.isInteger() && Integer.parseInt(bridgeSwVersion) >= minV2SwVersion) {
             state.useV2 = true
@@ -398,7 +413,7 @@ void sendBridgeDiscoveryCommandIfSSDPEnabled(Boolean checkIfRecent=true) {
 }
 
 void hubRestartHandler(evt) {
-   runIn(10, "sendBridgeDiscoveryCommandIfSSDPEnabled")
+   runIn(20, "sendBridgeDiscoveryCommandIfSSDPEnabled")
 }
 
 // Scheduled job handler; if using SSDP, schedules to run once a day just in case
@@ -600,6 +615,10 @@ def pageLinkBridge() {
 
 def pageSupportOptions() {
    dynamicPage(name: "pageSupportOptions", uninstall: true, install: false, nextPage: "pageManageBridge") {
+      section("Temporary Fixes") {
+         paragraph "Fix V2 group (room/zone) device DNIs from older beta of new app version (this option will be removed in next release):"
+         input name: "btnFixGroupDNIsTEMP", type: "button", title: "Fix Group DNIs from Old Beta"
+      }
       section("Debugging Information") {
          paragraph "Enable debug logging on Bridge child device (will remain enabled until disabled on device):"
          input name: "btnEnableBridgeLogging", type: "button", title: "Enable Debug Logging on Bridge"
@@ -610,17 +629,22 @@ def pageSupportOptions() {
          paragraph 'The following options fetch data (list of lights, groups, scenes, etc.) from the Bridge ' +
             'and write a summary of that data to <a href="/logs">Logs</a>.  Suggested use is to run the fetch (first ' +
             'button in pair), wait at least a few seconds, then run the log of the fetched, cached data (second button in pair).'
-         input name: "btnFetchLightsInfo", type: "button", title: "Fetch Lights Info"
-         input name: "btnLogLightsInfo", type: "button", title: "Log Lights Cache"
-         input name: "btnFetchGroupsInfo", type: "button", title: "Fetch Groups Info"
-         input name: "btnLogGroupsInfo", type: "button", title: "Log Groups Cache"
-         input name: "btnFetchScenesInfo", type: "button", title: "Fetch Scenes Info"
-         input name: "btnLogScenesInfo", type: "button", title: "Log Scenes Cache"
+         paragraph "Lights:", width: 3
+         input name: "btnFetchLightsInfo", type: "button", title: "Fetch Lights Info", width: 4
+         input name: "btnLogLightsInfo", type: "button", title: "Log Lights Cache", width: 5
+         paragraph "Groups:", width: 3
+         input name: "btnFetchGroupsInfo", type: "button", title: "Fetch Groups Info", width: 4
+         input name: "btnLogGroupsInfo", type: "button", title: "Log Groups Cache", width: 5
+         paragraph "Scenes:", width: 3
+         input name: "btnFetchScenesInfo", type: "button", title: "Fetch Scenes Info", width: 4
+         input name: "btnLogScenesInfo", type: "button", title: "Log Scenes Cache", width: 5
          if (state.useV2) {
-            input name: "btnFetchSensorsInfo", type: "button", title: "Fetch Motion Sensors Info"
-            input name: "btnLogSensorsInfo", type: "button", title: "Log Motion Sensors Cache"
-            input name: "btnFetchButtonsInfo", type: "button", title: "Fetch Buttons Info"
-            input name: "btnLogButtonsInfo", type: "button", title: "Log Buttons Cache"
+            paragraph "Sensors:", width: 3
+            input name: "btnFetchSensorsInfo", type: "button", title: "Fetch Motion Sensors Info", width: 4
+            input name: "btnLogSensorsInfo", type: "button", title: "Log Motion Sensors Cache", width: 5
+            paragraph "Buttons:", width: 3
+            input name: "btnFetchButtonsInfo", type: "button", title: "Fetch Buttons Info", width: 4
+            input name: "btnLogButtonsInfo", type: "button", title: "Log Buttons Cache", width: 5
          }
       }
 
@@ -702,11 +726,15 @@ def pageManageBridge() {
          }
          else {
             paragraph "NOTE: Hue API V2 use is enabled. (This setting cannot be reverted once enabled.)"
+            input name: "useV1Polling", type: "bool", title: "Use V1 API for polling on Bridge (if polling enabled), even if V2 API is enabled (recommended)", defaultValue: true
          }
          input name: "pollInterval", type: "enum", title: "Poll bridge every...",
             options: [0:"Disabled", 15:"15 seconds", 20:"20 seconds", 30:"30 seconds", 45:"45 seconds", 60:"1 minute (default)", 120:"2 minutes",
                       180:"3 minutes", 300:"5 minutes", 420:"7 minutes", 6000:"10 minutes", 1800:"30 minutes", 3600:"1 hour", 7200:"2 hours", 18000:"5 hours"],
                       defaultValue: 60
+         paragraph "<small>NOTE: Polling is recommended if using the V1 Hue API, as changes made outside Hubitat will not be reflected without this feature enabled. " +
+            "Polling is still recommmended if using the V2 API, but you may consider increasing the polling interval if the instant status updates for most device attributes " +
+            "meet your needs. Consult the documentation (help icon in top right) for additional details."
          input name: "boolCustomLabel", type: "bool", title: "Customize the name of this app", defaultValue: false, submitOnChange: true
          if (settings.boolCustomLabel) label title: "Custom name for this app", required: false
          input name: "logEnable", type: "bool", title: "Enable debug logging", defaultValue: true
@@ -1181,16 +1209,19 @@ void createNewSelectedBulbDevices() {
 void createNewSelectedGroupDevices() {
    DeviceWrapper bridge = getChildDevice("${DNI_PREFIX}/${app.id}")
    if (bridge == null) log.error("Unable to find Bridge device")
-   Map groupCache = bridge?.getAllGroupsCache()
+   Map groupCache = bridge.getAllGroupsCache()
+   if (state.useV2) groupCache += (bridge.getAllRoomsCache() ?: [:]) + (bridge.getAllZonesCache() ?: [:])
    settings["newGroups"].each {
-      def g = groupCache.get(it)
+      Map g = groupCache.get(it)
       if (g) {
          try {
             if (logEnable == true) log.debug("Creating new device for Hue group ${it} (${g.name})")
             String devDNI = "${DNI_PREFIX}/${app.id}/Group/${it}"
             Map devProps = [name: (settings["boolAppendGroup"] ? g.name + " (Hue Group)" : g.name)]
-            addChildDevice(NAMESPACE, DRIVER_NAME_GROUP, devDNI, devProps)
-
+            DeviceWrapper grpDev = addChildDevice(NAMESPACE, DRIVER_NAME_GROUP, devDNI, devProps)
+            if (grpDev != null && state.useV2 && g.groupedLightId != null) {
+               grpDev.setGroupedLightId(g.groupedLightId)
+            }
          }
          catch (Exception ex) {
             log.error("Unable to create new group device for $it: $ex")
@@ -1201,7 +1232,8 @@ void createNewSelectedGroupDevices() {
    }    
    bridge.clearGroupsCache()
    state.useV2 ? bridge.getAllGroupsV2() : bridge.getAllGroupsV1()
-   bridge.refresh()
+   if (useV1Polling != false) bridge.refreshV1()
+   else bridge.refresh()
    app.removeSetting("newGroups")
 }
 
@@ -1541,7 +1573,8 @@ private void refreshBridge(Map<String,Boolean> options = [reschedule: false]) {
       log.error "No Bridge device found; could not refresh/poll"
       return
    }
-   bridge.refresh()
+   if (useV1Polling != false) bridge.refreshV1()
+   else bridge.refresh()
    if (options.reschedule == true) scheduleRefresh()
 }
 
@@ -1711,6 +1744,27 @@ void appButtonHandler(btn) {
          sendBridgeDiscoveryCommand()
          break
       // Options on Advanced Debugging Options/support page:
+      case "btnFixGroupDNIsTEMP":
+         DeviceWrapper bridgeDevice = getChildDevice("${DNI_PREFIX}/${app.id}")
+         if (state.useV2 == true) {
+            bridgeDevice.getAllGroupsV2()
+            pauseExecution(5000)
+            bridgeDevice.getAllRoomsCache()?.each { grpId, roomData ->
+               DeviceWrapper d = getChildDevice("${DNI_PREFIX}/${app.id}/Group/${roomData.roomId}")
+               if (d != null) {
+                  d.setDeviceNetworkId("${DNI_PREFIX}/${app.id}/Group/${grpId}")
+               }
+            }
+            bridgeDevice.getAllZonesCache()?.each { grpId, zoneData ->
+               DeviceWrapper d = getChildDevice("${DNI_PREFIX}/${app.id}/Group/${zoneData.zoneId}")
+               if (d != null) {
+                  d.setDeviceNetworkId("${DNI_PREFIX}/${app.id}/Group/${grpId}")
+               }
+            }
+         }
+         else {
+            log.warn "Not using V2 API; exiting"
+         }
       case "btnEnableBridgeLogging":
          DeviceWrapper bridgeDevice = getChildDevice("${DNI_PREFIX}/${app.id}")
          bridgeDevice.updateSetting("logEnable", [type: "bool", value: true])
@@ -1735,6 +1789,10 @@ void appButtonHandler(btn) {
       case "btnLogGroupsInfo":
          DeviceWrapper bridgeDevice = getChildDevice("${DNI_PREFIX}/${app.id}")
          log.debug bridgeDevice.getAllGroupsCache() ?: "EMPTY GROUPS CACHE ON BRIDGE"
+         if (state.useV2) {
+            log.debug bridgeDevice.getAllRoomsCache() ?: "EMPTY ROOMS CACHE ON BRIDGE"
+            log.debug bridgeDevice.getAllZonesCache() ?: "EMPTY ZONES CACHE ON BRIDGE"
+         }
          break
       case "btnFetchScenesInfo":
          DeviceWrapper bridgeDevice = getChildDevice("${DNI_PREFIX}/${app.id}")

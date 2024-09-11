@@ -411,9 +411,12 @@ void parseLightStatesV1(Map lightsJson) {
    //log.debug "lightsJson = $lightsJson"
    try {
       lightsJson.each { id, val ->
-         DeviceWrapper device = parent.getChildDevice("${device.deviceNetworkId}/Light/${id}")
-         if (device) {
-            device.createEventsFromMapV1(val.state, true)
+         DeviceWrapper dev = parent.getChildDevice("${device.deviceNetworkId}/Light/${id}")
+         if (dev == null) dev = parent.getChildDevices().find {
+            it.deviceNetworkId.startsWith("${device.deviceNetworkId}/Light/") && it.getHueDeviceIdV1() == id
+         }
+         if (dev) {
+            dev.createEventsFromMapV1(val.state, true)
          }
       }
       if (device.currentValue("status") != "Online") doSendEvent("status", "Online")
@@ -454,7 +457,10 @@ void parseGroupStatesV1(Map groupsJson) {
    try {
       groupsJson.each { id, val ->
          DeviceWrapper dev = parent.getChildDevice("${device.deviceNetworkId}/Group/${id}")
-         if (dev) {
+         if (dev == null) dev = parent.getChildDevices().find {
+            it.deviceNetworkId.startsWith("${device.deviceNetworkId}/Group/") && it.getHueDeviceIdV1() == id
+         }
+         if (dev != null) {
             dev.createEventsFromMapV1(val.action, true)
             dev.createEventsFromMapV1(val.state, true)
             dev.setMemberBulbIDs(val.lights)
@@ -670,22 +676,25 @@ void getAllGroupsV2() {
    // To use results in parent app: look at state.allRooms and state.allZones (not state.allGroups like v1)
    if (logEnable) log.debug "getAllGroupsV2()"
    //clearBulbsCache()
+   // TODO: Maybe just fetch /resource instead of three calls here? For now, spacing out to avoid HTTP 429
    Map<String,String> bridgeData = parent.getBridgeData()
    bridgeAsyncGetV2("parseGetAllGroupsOrRoomsOrZonesResponseV2", "/resource/grouped_light", bridgeData, [type: "grouped_light"])
+   pauseExecution(500)
    bridgeAsyncGetV2("parseGetAllGroupsOrRoomsOrZonesResponseV2", "/resource/room", bridgeData, [type: "room"])
+   pauseExecution(500)
    bridgeAsyncGetV2("parseGetAllGroupsOrRoomsOrZonesResponseV2", "/resource/zone", bridgeData, [type: "zone"])
 }
 
 void parseGetAllGroupsOrRoomsOrZonesResponseV2(resp, Map<String,String> data) {
-   if (logEnable) log.debug "parseGetAllRoomsResponseV2(), type = ${data.type}"
+   if (logEnable) log.debug "parseGetAllGroupsOrRoomsOrZonesResponseV2(), type = ${data.type}"
    if (checkIfValidResponse(resp)) {
       try {
          if (data.type == "room" || data.type == "zone") {
             Map roomsOrZones = [:]
             resp.json.data.each { Map roomOrZoneData ->
-               String groupedLightId = roomOrZoneData.services.find({ svc -> svc.type == grouped_light })?.rid
+               String groupedLightId = roomOrZoneData.services.find({ svc -> svc.rtype == "grouped_light" })?.rid
                if (groupedLightId != null) {
-                  roomsOrZones[roomOrZoneData.id] = [name: roomOrZoneData.metadata.name, groupedLightId: groupedLightId]
+                  roomsOrZones[groupedLightId] = [name: roomOrZoneData.metadata.name, type: data.type, "${data.type}Id": roomOrZoneData.id]
                }
                else {
                   if (logEnable) log.debug "No grouped_light service found for room ID ${roomOrZoneData.id}"
@@ -700,7 +709,7 @@ void parseGetAllGroupsOrRoomsOrZonesResponseV2(resp, Map<String,String> data) {
             Map allHueLightsGroup = resp.json.data?.find { it.owner?.rtype == "bridge_home" }
             if (allHueLightsGroup != null) {
                state.allGroups = [:]
-               state.allGroups[allHueLightsGroup.id] = [name: "All Hue Lights", type: "n/a"]
+               state.allGroups[allHueLightsGroup.id] = [name: "All Hue Lights", type: "grouped_light"]
             }
          }
          else {
