@@ -14,7 +14,7 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2024-09-08
+ *  Last modified: 2024-09-14
  *
  *  Changelog:
  *  v5.0   - Use API v2 by default, remove deprecated features
@@ -923,6 +923,7 @@ void setEffect(String effect) {
 
 void setEffect(Number id) {
    if (logEnable == true) log.debug "setEffect($id)"
+   // Looks like should be possible with prism effect in V2 when get here, too:
    sendBridgeCommandV1(["effect": (id == 1 ? "colorloop" : "none"), "on": true])
 }
 

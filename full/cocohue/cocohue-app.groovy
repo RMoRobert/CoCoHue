@@ -18,9 +18,9 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2024-09-08
+ *  Last modified: 2024-09-14
  *  Changelog:
- *  v5.0   - Use API v2 by default, remove deprecated features
+ *  v5.0   - Use API v2 by default for device info, remove deprecated features, add RGB-only driver
  *  v4.1.9 - Add note that Hue Labs features are now deprecated
  *  v4.1.2 - Additional button enhancements (relative_rotary -- Hue Tap Dial, etc.)
  *  v4.1   - Add support for button devices (with v2 API only)

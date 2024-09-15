@@ -14,10 +14,10 @@
  *
  * =======================================================================================
  *
- *  Last modified: 2024-09-08
+ *  Last modified: 2024-09-14
  *
  *  Changelog:
- *  v5.0    - Use API v2 by default, remove deprecated features
+ *  v5.0    - Use API v2 by default for device info, remove deprecated features
  *  v4.2.1  - Add scene on/off state reporting with v2 API
  *  v4.2    - Improved eventstream reconnection logic
  *  v4.1.4  - Improved error handling, fix missing battery for motion sensors

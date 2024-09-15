@@ -14,7 +14,7 @@
  *
  * =======================================================================================
 
- *  Last modified: 2024-09-08
+ *  Last modified: 2024-09-14
  *
  *  Changelog:
  *  v5.0    - Use API v2 by default, remove deprecated features
