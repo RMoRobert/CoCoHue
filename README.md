@@ -2,13 +2,12 @@
 
 CoCoHue: <b>Co</b>mmunity <b>Co</b>llection of <b>Hue</b> Bridge Apps and Drivers for Hubitat
 
-(Hue Bridge Integration App for Hubitat)
+CoCoHue is a Hue Bridge Integration App for Hubitat, designed as a subtitude (or supplement) for the
+buit-in Hue Bridge integration.
 
-**NOTE:** This repository hosts the test/developmenet version of CoCoHue. **Most users will want to install the production version
-from <a href="https://github.com/HubitatCommunity/CoCoHue">https://github.com/HubitatCommunity/CoCoHue</a> instead.**
+**CoCoHue is not available exclusively at:
+<a href="https://github.com/HubitatCommunity/CoCoHue">https://github.com/HubitatCommunity/CoCoHue</a>. Please
+visit this repository for the current production version of the code and occasional beta releases.**
 
-This is a Hue Bridge integration designed to replace (or supplement) Hubitat's buit-in Hue Bridge
-integration.
-
-Files here may be used for testing and in development stages for regular releases of the app, but this repository is not
-recommended for most users. See the `full/cocohue` directory for the app and driver files if interested, however.
+Code in this repository is no longer being maintained, and it may be removed in the future. Please use
+the repoistory above.
